@@ -1,0 +1,25 @@
+{
+  "name": "@pathcompiler/adapter-nextjs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pathcompiler/graph-core": "workspace:*",
+    "@pathcompiler/source-model": "workspace:*",
+    "typescript": "5.9.3",
+    "zod": "4.6.7"
+  }
+}

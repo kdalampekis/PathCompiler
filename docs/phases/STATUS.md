@@ -55,4 +55,62 @@ been run on GitHub from this session.
 
 ## Phase 1 — Static Next.js Analyzer
 
-Not started. No scanner, source-model or CLI package exists yet.
+Complete — verified locally on 2026-10-21.
+
+- Added `source-model` for validated local ingestion, default/explicit exclusions,
+  Git ignore rules, commit binding and scanned-subtree working-tree metadata.
+- Added `adapter-nextjs` using the TypeScript compiler API. Extracts source files,
+  functions, hooks, candidate React components, App Router pages/API endpoints,
+  local imports/re-exports, rendering relationships, UI actions/handlers,
+  navigation, API calls, role observations and feature flags.
+- Supports root and `src/app`, route groups, parallel slots and normalized dynamic
+  segments. Resolves relative imports, root aliases and direct source package entries.
+- Supports a single URL/method-forwarding fetch wrapper, including the fixture's
+  shared save helper, and explicit server-action declarations/calls.
+- Added the built `pathcompiler scan` CLI and workspace `pnpm pathcompiler` command.
+  Writes the required source graph and scan summary, with actionable error exits.
+- Preserved source provenance, deterministic IDs and explicit heuristic confidence.
+  No model access, target-code execution or Phase 2 semantic-target support added.
+- Documented contracts, supported forms and limitations in ADR 0003 and README.
+- Phase 0 was committed and pushed as `cca31b3`; phase delivery instructions in
+  `AGENTS.md` now require a commit and push after every completed phase.
+
+### Verification
+
+All checks below passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 0 baseline lint/typecheck/tests | Passed; 34 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed, including all package builds and tests |
+| `pnpm test` | 56 tests passed across five suites |
+| `pnpm pathcompiler scan ./fixtures/next-demo` | 19 files, 98 nodes, 205 edges |
+| Repeat scans and built-CLI artifact comparison | Byte-identical graph and summary |
+| Formatting/comment/input-order regression | Identical graph and summary; empty graph diff |
+
+Tests cover route discovery, components, alias/workspace imports, button/event and
+handler extraction, Link/router navigation, API relationships, source isolation,
+ignored files, Git binding, malformed input and CLI exit behavior. Regression cases
+include anonymous default components, re-exported handlers, shadowed globals,
+dynamic request options and shared fetch wrappers. The fixture UI was unchanged;
+its six Phase 0 browser tests were not rerun during this phase. Hosted CI was not
+inspected from this session.
+
+### Scope notes and limitations
+
+- All Phase 1 acceptance criteria are covered. The fixture reports one explicit
+  diagnostic because inherited tsconfig aliases are not expanded; its actual local
+  imports resolve without inherited aliases.
+- Permission/flag observations are heuristic and must not enforce authorization.
+  Conditional URL/method alternatives do not prove branch correlation.
+- Intercepting routes, HOCs/classes, conditional package exports, inherited aliases
+  and arbitrary request wrappers remain documented static-analysis limits.
+- Git metadata reads identify the source snapshot; commit-history analysis remains
+  Phase 4. Graph artifacts are build-time data, not approved runtime manifests.
+
+## Phase 2 — Semantic Targets
+
+Not started. Next planned phase introduces explicit semantic target annotations
+and target suggestions.

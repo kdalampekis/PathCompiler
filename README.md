@@ -6,8 +6,9 @@ PathCompiler will analyze source code, tests and Git history, discover workflows
 and compile reviewed workflows into versioned headless artifacts. The product graph
 is a build-time representation; approved workflows are the runtime source of truth.
 
-This repository currently implements **Phase 0 — Repository Foundation**. Analysis,
-discovery, compilation, SDKs and runtime guidance are future phases.
+This repository implements **Phase 0 — Repository Foundation** and
+**Phase 1 — Static Next.js Analyzer**. Workflow discovery, compilation, SDKs and
+runtime guidance are future phases.
 
 ## Development
 
@@ -55,6 +56,37 @@ The test runner builds and starts the fixture on port 3100, then shuts it down.
 Tests use independent browser contexts. Linux may require Playwright's
 `install --with-deps chromium`, as used in CI.
 
+## Scan a Next.js repository
+
+```sh
+pnpm build:packages
+pnpm pathcompiler scan ./fixtures/next-demo
+```
+
+The built CLI is named `pathcompiler`; the workspace script above invokes the same
+binary. It writes these artifacts under the current working directory:
+
+```text
+.pathcompiler/graph/source-graph.json
+.pathcompiler/reports/scan-summary.json
+```
+
+Use `--out <directory>` to change the artifact directory and repeat
+`--exclude <relative-path>` to exclude source files/directories. Exclusions use path
+prefixes, not globs. Use `pnpm pathcompiler --help` for usage.
+
+The scanner reads local source without executing the app or contacting model
+providers. It extracts files, functions/hooks, candidate React components, App Router
+pages/HTTP handlers, imports, UI actions, navigation, API calls and permission/flag
+observations. The report includes counts, commit/working-tree metadata and unresolved
+analysis diagnostics. Repeated scans of the same inputs produce identical output.
+
+Root `app/` and `src/app/`, dynamic segments, route groups and parallel slots are
+supported. Intercepting routes, inherited aliases, conditional package exports and
+arbitrary wrappers are not fully analyzed; see [analysis boundaries](docs/decisions/0003-static-analysis-boundaries.md).
+Heuristic relationships carry confidence and provenance. They are not approved
+workflows or authoritative permission rules.
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -62,9 +94,19 @@ Tests use independent browser contexts. Linux may require Playwright's
 | `@pathcompiler/workflow-ir` | Zod schemas, inferred types, `parseWorkflow(unknown)`                             |
 | `@pathcompiler/graph-core`  | `ProductGraph`, graph schemas/types, `createNodeId`, `createEdgeId`, `diffGraphs` |
 
-Both packages export ESM JavaScript and declarations from `dist/` after
+Additional Phase 1 packages:
+
+| Package | Public API |
+| --- | --- |
+| `@pathcompiler/source-model` | `readSourceProject`, source/diagnostic schemas and exclusion defaults |
+| `@pathcompiler/adapter-nextjs` | `analyzeNextProject`, `scanNextRepository`, `discoverRoute`, scan summary schema |
+| `@pathcompiler/cli` | `pathcompiler scan`, `runCli` |
+
+Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
 source; typechecking includes tests and the Next.js route types.
+`pnpm test` and `pnpm typecheck` build package dependencies first, so both commands
+also work immediately after a fresh installation.
 
 Graph APIs support `addNode`, `addEdge`, `getNode`, `nodesByType`, `neighbors`,
 `traverse`, `toJSON`, `serialize`, `fromJSON` and `deserialize`. Traversal is bounded,

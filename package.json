@@ -10,11 +10,13 @@
   "scripts": {
     "lint": "biome check .",
     "format": "biome check --write .",
-    "typecheck": "tsc --noEmit && pnpm -r typecheck",
-    "test": "vitest run",
+    "build:packages": "pnpm --filter './packages/*' build",
+    "typecheck": "pnpm build:packages && tsc --noEmit && pnpm -r typecheck",
+    "test": "pnpm build:packages && vitest run",
     "test:e2e": "pnpm --filter @pathcompiler/next-demo test:e2e",
     "build": "pnpm -r build",
-    "dev": "pnpm --filter @pathcompiler/next-demo dev"
+    "dev": "pnpm --filter @pathcompiler/next-demo dev",
+    "pathcompiler": "node packages/cli/dist/bin.js"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.2",
