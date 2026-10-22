@@ -93,6 +93,9 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
 
   packages/cli:
     dependencies:

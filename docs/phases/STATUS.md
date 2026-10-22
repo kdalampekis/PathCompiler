@@ -455,5 +455,81 @@ seven Chromium tests were not rerun. Hosted CI was not inspected from this sessi
 - CLI discovery uses a fresh source graph. Library callers may pass graphs already
   enriched with tests/history/PRs. Evidence follows two explicit support hops;
   graph packets remain private build-time artifacts, not browser manifests.
-- Seven phases are complete (0–6), leaving 24 (7–30). Phase 7 — Capability
+- At Phase 6 delivery, seven phases were complete (0–6), leaving 24 (7–30).
+  Phase 7 is delivered below.
+
+## Phase 7 — Capability Discovery
+
+Complete — verified locally on 2026-10-22.
+
+- Extended `capability-engine` with deterministic business capability discovery,
+  validated schemas and explicit evaluation. Semantic targets, accessible action
+  names and named components generate stable `domain.verb[_qualifier]` IDs.
+  Duplicate keys merge surfaces, rule citations and evidence without score inflation.
+- Candidates retain domain, verb, entity, qualifier, routes, surfaces, source
+  locations, repository commit and linked test/history/PR evidence. Added Capability
+  nodes, surface `IMPLEMENTS` links and provenance `SUPPORTED_BY` links to cloned
+  graphs. Existing source/surface/test records are preserved.
+- API associations distinguish handler reachability from owning-component context.
+  Conventional context methods exclude create endpoints from state-change evidence.
+  Roles remain observed comparisons with permission evidence, explicitly not an
+  authorization policy. No unknown roles are invented.
+- Confidence explicitly measures rule strength rather than probability. Duplicate
+  evidence, assertions, skipped tests and contextual APIs do not inflate scores.
+  Every candidate requires review; low scores and unresolved evidence are flagged.
+- Added `capabilities discover [directory]` with output/exclusion options and an
+  explicit evaluation-only `--expect` file. It scans source and mines Playwright
+  evidence without executing code/tests or invoking models. Reports and graphs
+  use separate artifacts, preserving prior scan/surface/test outputs.
+- Added the fixture's five expected IDs and exact-ID evaluation with matched,
+  unexpected and missing lists. Missing ground truth reports null error counts,
+  not a fabricated zero. Tests prove expectations never influence discovery.
+- Documented identity, merging, scoring, evidence limits and evaluation in README
+  and ADR 0009. Phase 6 was committed and pushed as `ccc93cc` before this phase.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 6 baseline lint/typecheck/tests | Passed before edits; 120 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 90 files |
+| `pnpm typecheck` | Passed, including ten package builds, root tests and fixture |
+| `pnpm test` | 129 tests passed across thirteen suites |
+| Built CLI fixture evaluation | All five expected capabilities; 0 false positives, 0 false negatives |
+| Alternative expectations regression | 4 false positives and 1 false negative; identical inferred graph |
+| No ground truth / excluded tests | Explicit not-evaluated status; source-only discovery still finds five candidates |
+| Repeat artifacts / reordered inputs | Byte-identical results; original source/surface artifacts preserved |
+| `git diff --check` | Passed |
+
+The fixture discovers `clients.create`, `clients.edit`, `clients.deactivate`,
+`plans.create` and `plans.change_structure`. Each retains source locations,
+mapped test evidence, an observed editor role and a matching API context record.
+Its score of 0.9 reflects a semantic target plus a mapped test-body UI action,
+not an executed workflow or verified authorization.
+
+Focused tests cover annotation/name/component merging, verb aliases, identity
+after label/file changes, conflicting labels, low-confidence review, unrelated
+controls/APIs/prose, skipped/assertion-only tests, historical provenance, malformed
+reports/evaluation counts and CLI arguments/exclusions. The fixture application UI
+did not change; browser execution was not repeated. Hosted CI was not inspected.
+
+### Scope notes and limitations
+
+- All required Phase 7 scope is implemented. The CLI and explicit expectation file
+  are delivery extensions. The surface implementation moved behind the unchanged
+  public API to avoid a circular import; no unrelated refactoring was performed.
+- Naming uses a finite verb vocabulary and conservative regular English rules.
+  Arbitrary synonyms, irregular nouns, localization and differing semantic domains
+  are not automatically reconciled. Explicit IDs survive source/label changes;
+  inferred IDs can change when inferred meaning changes.
+- Static surface limitations remain. Role comparisons can occur in denial branches,
+  and component-context APIs do not prove which action or form branch invokes them.
+  Static test evidence does not establish passing execution. All candidates remain
+  subject to review and private build-time artifacts.
+- Error counts are measured against the supplied reference list. The fixture's
+  zero-error result is not a general accuracy guarantee.
+- Eight phases are complete (0–7), leaving 23 (8–30). Phase 8 — Workflow Candidate
   Discovery is next and has not started.

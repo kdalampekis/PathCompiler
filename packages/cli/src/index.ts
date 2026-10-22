@@ -1,4 +1,4 @@
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { createGitHubProvider } from "@pathcompiler/adapter-github";
@@ -7,7 +7,11 @@ import {
   scanNextRepository,
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
-import { discoverProductSurfaces } from "@pathcompiler/capability-engine";
+import {
+  CapabilityExpectationsSchema,
+  discoverCapabilities,
+  discoverProductSurfaces,
+} from "@pathcompiler/capability-engine";
 import {
   associatePullRequest,
   enrichNodeHistory,
@@ -22,6 +26,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler targets suggest [directory] [--json] [--exclude <directory> ...]
        pathcompiler tests mine [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler surfaces discover [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler capabilities discover [directory] [--expect <json-file>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
@@ -38,6 +43,9 @@ github inspect requires GITHUB_TOKEN with Pull requests read permission. It read
 PR evidence into reports/pr-evidence.json and graph/pr-graph.json; supports --exclude.
 surfaces discover writes reports/product-surfaces.json and graph/surface-graph.json.
 Surfaces are static candidates requiring review, not approved capabilities or workflows.
+capabilities discover mines source/test evidence into reports/capabilities.json and
+graph/capability-graph.json. --expect supplies evaluation-only capability IDs;
+without ground truth, false positives are reported as not evaluated.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -59,9 +67,15 @@ export async function runCli(
       repo: { type: "string" },
       pr: { type: "string" },
       commit: { type: "string" },
+      expect: { type: "string" },
     },
   });
   if (values.help) return HELP;
+  if (
+    values.expect !== undefined &&
+    !(positionals[0] === "capabilities" && positionals[1] === "discover")
+  )
+    throw new Error("--expect is only supported by capabilities discover.");
   if (
     positionals[0] === "github" &&
     positionals[1] === "inspect" &&
@@ -246,6 +260,59 @@ export async function runCli(
   if (values.json)
     throw new Error("--json is only supported by targets suggest.");
   if (
+    positionals[0] === "capabilities" &&
+    positionals[1] === "discover" &&
+    positionals.length <= 3
+  ) {
+    let expectedCapabilityIds: string[] | undefined;
+    if (values.expect !== undefined) {
+      try {
+        expectedCapabilityIds = CapabilityExpectationsSchema.parse(
+          JSON.parse(await readFile(path.resolve(cwd, values.expect), "utf8")),
+        ).capabilityIds;
+      } catch (error) {
+        throw new Error(
+          "Cannot read capability expectations. Provide a JSON file with schemaVersion: 1 and unique capabilityIds (domain.action).",
+          { cause: error },
+        );
+      }
+    }
+    const project = await readSourceProject(
+      path.resolve(cwd, positionals[2] ?? "."),
+      { exclude: values.exclude ?? [] },
+    );
+    const source = analyzeNextProject(project);
+    const mined = minePlaywrightTests(project, source.graph);
+    const result = discoverCapabilities(
+      mined.graph,
+      expectedCapabilityIds === undefined ? {} : { expectedCapabilityIds },
+    );
+    for (const diagnostic of [
+      ...source.summary.diagnostics,
+      ...mined.report.diagnostics,
+    ])
+      if (
+        !result.report.diagnostics.some(
+          (item) => JSON.stringify(item) === JSON.stringify(diagnostic),
+        )
+      )
+        result.report.diagnostics.push(diagnostic);
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    await writeArtifacts(output, [
+      [
+        "reports/capabilities.json",
+        `${JSON.stringify(result.report, null, 2)}\n`,
+      ],
+      ["graph/capability-graph.json", `${result.graph.serialize()}\n`],
+    ]);
+    const evaluation = result.report.evaluation;
+    const measured =
+      evaluation.status === "evaluated"
+        ? `False positives: ${evaluation.falsePositiveCount}; false negatives: ${evaluation.falseNegativeCount}.`
+        : "False positives: not evaluated (supply --expect for measured counts).";
+    return `Discovered ${result.report.capabilities.length} candidate capabilities.\n${measured}\nArtifacts: ${output}\nAll candidates require review. Confidence measures rule strength, not probability; tests were not executed.\n`;
+  }
+  if (
     positionals[0] === "surfaces" &&
     positionals[1] === "discover" &&
     positionals.length <= 3
@@ -268,7 +335,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, or surfaces discover. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, or capabilities discover. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],

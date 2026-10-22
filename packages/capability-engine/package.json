@@ -23,6 +23,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@pathcompiler/adapter-nextjs": "workspace:*"
+    "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/test-miner-playwright": "workspace:*"
   }
 }

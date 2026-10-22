@@ -9,7 +9,8 @@ is a build-time representation; approved workflows are the runtime source of tru
 This repository implements **Phase 0 — Repository Foundation**,
 **Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets**,
 **Phase 3 — Playwright Test Mining**, **Phase 4 — Git Intelligence**,
-**Phase 5 — GitHub PR Adapter** and **Phase 6 — Product Surface Graph**.
+**Phase 5 — GitHub PR Adapter**, **Phase 6 — Product Surface Graph** and
+**Phase 7 — Capability Discovery**.
 Workflow discovery, compilation, SDKs and
 runtime guidance are future phases.
 
@@ -327,7 +328,73 @@ provider methods, with schemas and output parsers that reject unknown citations.
 No provider is installed or invoked. Future callers must select the evidence they
 intend to send and validate returned data; raw evidence may contain private source
 paths, test metadata or commit/PR text. These artifacts stay build-time only and
-must not be shipped in browser runtime manifests. Capability discovery is Phase 7.
+must not be shipped in browser runtime manifests.
+
+## Discover candidate capabilities
+
+```sh
+pnpm build:packages
+pnpm pathcompiler capabilities discover ./fixtures/next-demo \
+  --expect ./fixtures/next-demo/capabilities.expected.json
+```
+
+The command reads source and statically mines Playwright tests, then writes:
+
+```text
+.pathcompiler/reports/capabilities.json
+.pathcompiler/graph/capability-graph.json
+```
+
+The directory defaults to the current directory. `--out` and `--exclude` follow
+the existing scan conventions, and previous scan/surface/test artifacts are
+preserved. No tests, application code or model provider are executed.
+
+Discovery recognizes semantic action IDs such as `clients.create` and
+`plans.change_structure`, accessible business-action names and named action
+components/containers. It normalizes Add/New to Create and Update/Modify to Edit.
+Matching semantic keys merge into one capability with all contributing surfaces
+and evidence retained. Save/Confirm/Cancel controls, inputs, observation anchors
+and API-only code do not independently establish business capabilities.
+
+Each candidate has a stable semantic ID, domain, verb, entity, optional qualifier,
+routes, surfaces, source/evidence IDs and commit-bound provenance. IDs never include
+file positions or commit hashes; explicit semantic IDs survive label/file moves.
+Unannotated naming rules use regular English words and route context, so changes
+to inferred meaning can change their IDs. These rules do not resolve arbitrary
+synonyms, irregular nouns or multilingual product terminology.
+
+API evidence distinguishes calls reachable from an explicit handler from matching
+API calls elsewhere in the owning component. The latter is context, not proof that
+the action invokes that endpoint. `roles` contains observed source comparisons,
+with supporting permission nodes and `rolesAreAuthoritative: false`; a comparison
+can also occur in a denial branch. Unknown roles remain empty.
+
+Every capability requires review. Confidence is a rule-strength score, explicitly
+not a probability: semantic targets start at 0.8, accessible names at 0.6 and
+component names at 0.5. A mapped test-body UI action adds 0.1 and a handler API
+association adds 0.05, capped at 0.95. Repeated evidence does not accumulate points.
+Scores below 0.7 are flagged low-confidence; static test evidence never claims a
+passing test run or verifies authorization.
+
+`--expect` reads an evaluation-only JSON file with `schemaVersion: 1` and a unique
+`capabilityIds` list. It does not guide inference. The report lists matched,
+unexpected and missing IDs with false-positive/negative counts. Without an explicit
+reference list, counts are null and the CLI says “not evaluated”. The fixture's
+reviewed list produces all five intended capabilities with **0 false positives
+and 0 false negatives**; this is a fixture result, not a general accuracy claim.
+
+```ts
+import { discoverCapabilities } from "@pathcompiler/capability-engine";
+
+const { graph, report } = discoverCapabilities(technicalGraph);
+// Optional evaluation: discoverCapabilities(technicalGraph, { expectedCapabilityIds });
+```
+
+Pass a fresh technical graph, optionally enriched with tests, Git or PR context.
+The API adds surface and capability nodes to a clone; existing capability/surface
+graphs must be rebuilt from technical evidence. Capability reports remain private
+build-time artifacts. Workflow sequencing and compilation start in Phase 8.
+See [capability identity, evidence and evaluation](docs/decisions/0009-capability-discovery.md).
 
 ## Packages
 
@@ -346,8 +413,8 @@ Analysis packages:
 | `@pathcompiler/git-intelligence` | `openGitRepository`, `enrichNodeHistory`, `GitProvider`, `associatePullRequest`, Git/PR schemas and types |
 | `@pathcompiler/adapter-github` | `createGitHubProvider`, `GitHubProviderOptions`, `GITHUB_API_VERSION` |
 | `@pathcompiler/evidence` | `collectGraphEvidence`, `sourceProvenance`, evidence bundle/provenance schemas and shared workflow evidence references |
-| `@pathcompiler/capability-engine` | `discoverProductSurfaces`, surface/report schemas, `SemanticModel`, classification/summary schemas and output parsers |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `runCli` |
+| `@pathcompiler/capability-engine` | `discoverProductSurfaces`, `discoverCapabilities`, `evaluateCapabilities`, surface/capability/evaluation schemas, `SemanticModel`, classification/summary schemas and output parsers |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

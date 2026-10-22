@@ -230,6 +230,109 @@ describe("pathcompiler CLI", () => {
       await expect(runCli(invalid, cwd)).rejects.toThrow();
   });
 
+  it("discovers all fixture capabilities and evaluates explicit ground truth through the built CLI", async () => {
+    const cwd = await directory();
+    const args = [
+      binary,
+      "capabilities",
+      "discover",
+      fixture,
+      "--out",
+      "artifacts",
+      "--expect",
+      path.join(fixture, "capabilities.expected.json"),
+    ];
+    await runCli(["surfaces", "discover", fixture, "--out", "artifacts"], cwd);
+    const oldSurfaceGraph = await readFile(
+      path.join(cwd, "artifacts/graph/surface-graph.json"),
+      "utf8",
+    );
+    const first = await exec(process.execPath, args, { cwd });
+    expect(first.stdout).toContain("Discovered 5 candidate capabilities");
+    expect(first.stdout).toContain("False positives: 0; false negatives: 0");
+    expect(first.stderr).toBe("");
+    const reportPath = path.join(cwd, "artifacts/reports/capabilities.json");
+    const graphPath = path.join(cwd, "artifacts/graph/capability-graph.json");
+    const report = await readFile(reportPath, "utf8");
+    const graph = await readFile(graphPath, "utf8");
+    expect(JSON.parse(report)).toMatchObject({
+      schemaVersion: 1,
+      evidenceOnly: true,
+      evaluation: {
+        status: "evaluated",
+        falsePositiveCount: 0,
+        falseNegativeCount: 0,
+      },
+    });
+    await exec(process.execPath, args, { cwd });
+    expect(await readFile(reportPath, "utf8")).toBe(report);
+    expect(await readFile(graphPath, "utf8")).toBe(graph);
+    expect(
+      await readFile(
+        path.join(cwd, "artifacts/graph/surface-graph.json"),
+        "utf8",
+      ),
+    ).toBe(oldSurfaceGraph);
+    expect(
+      await runCli(
+        [
+          "capabilities",
+          "discover",
+          fixture,
+          "--out",
+          "no-tests",
+          "--exclude",
+          "tests",
+        ],
+        cwd,
+      ),
+    ).toContain("False positives: not evaluated");
+    const noTests = JSON.parse(
+      await readFile(
+        path.join(cwd, "no-tests/reports/capabilities.json"),
+        "utf8",
+      ),
+    );
+    expect(noTests.capabilities).toHaveLength(5);
+    expect(
+      noTests.evidence.graph.nodes.some(
+        (node: { type: string }) => node.type === "Test",
+      ),
+    ).toBe(false);
+    await writeFile(
+      path.join(cwd, "expected.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        capabilityIds: ["clients.create", "clients.delete"],
+      }),
+    );
+    expect(
+      await runCli(
+        [
+          "capabilities",
+          "discover",
+          fixture,
+          "--out",
+          "artifacts",
+          "--expect",
+          "expected.json",
+        ],
+        cwd,
+      ),
+    ).toContain("False positives: 4; false negatives: 1");
+    expect(await readFile(graphPath, "utf8")).toBe(graph);
+    await writeFile(path.join(cwd, "invalid.json"), "{}");
+    for (const invalid of [
+      ["capabilities", "discover", fixture, "--expect", "missing.json"],
+      ["capabilities", "discover", fixture, "--expect", "invalid.json"],
+      ["capabilities", "discover", fixture, "--json"],
+      ["capabilities", "discover", fixture, "extra"],
+      ["surfaces", "discover", fixture, "--expect", "expected.json"],
+      ["capabilities", "unknown"],
+    ])
+      await expect(runCli(invalid, cwd)).rejects.toThrow();
+  });
+
   it("prints help and fails nonzero for invalid arguments or source syntax", async () => {
     expect(await runCli(["--help"])).toContain("Usage: pathcompiler scan");
     for (const args of [
