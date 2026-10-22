@@ -482,6 +482,7 @@ export function analyzeNextProject(input: unknown): ScanResult {
     const file = relative(source.fileName);
     const fileId = createNodeId("File", file);
     const occurrences = new Map<string, number>();
+    const jsxActions = new Map<ts.Node, string>();
     for (const statement of source.statements) {
       if (
         (!ts.isImportDeclaration(statement) &&
@@ -531,7 +532,9 @@ export function analyzeNextProject(input: unknown): ScanResult {
           tag === "a" ||
           importOrigin(node.tagName, checker)?.module === "next/link";
         if (
-          ["button", "form", "input", "select", "textarea"].includes(tag) ||
+          ["button", "form", "input", "select", "textarea", "dialog"].includes(
+            tag,
+          ) ||
           link ||
           events.length ||
           attribute(node, "role") ||
@@ -573,6 +576,22 @@ export function analyzeNextProject(input: unknown): ScanResult {
             },
           );
           edge("EXPOSES_ACTION", ownerId, action, file);
+          const element = ts.isJsxOpeningElement(node) ? node.parent : node;
+          jsxActions.set(element, action);
+          // Lexical JSX containment, not live DOM visibility. Stop at callback/function boundaries.
+          let ancestor = element.parent;
+          while (
+            ancestor &&
+            !ts.isSourceFile(ancestor) &&
+            !ts.isFunctionLike(ancestor)
+          ) {
+            const container = jsxActions.get(ancestor);
+            if (container) {
+              edge("CONTAINS", container, action, file);
+              break;
+            }
+            ancestor = ancestor.parent;
+          }
           for (const event of events) {
             const expression = attribute(node, event);
             const handler = expression ? target(expression) : undefined;

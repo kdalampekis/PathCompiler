@@ -167,6 +167,69 @@ describe("pathcompiler CLI", () => {
       await expect(runCli(args, cwd)).rejects.toThrow();
   });
 
+  it("discovers repeatable surface artifacts, preserving source and existing scan outputs", async () => {
+    const cwd = await directory();
+    await mkdir(path.join(cwd, "app"));
+    await mkdir(path.join(cwd, "excluded"));
+    const source =
+      'export default function Page() { return <dialog><form data-pathcompiler="client.form"><button data-pathcompiler="client.save">Save</button></form></dialog>; }';
+    await writeFile(path.join(cwd, "app/page.tsx"), source);
+    await writeFile(path.join(cwd, "excluded/bad.ts"), "invalid syntax %%%");
+    await runCli(
+      ["scan", ".", "--exclude", "excluded", "--out", "artifacts"],
+      cwd,
+    );
+    const sourceGraph = await readFile(
+      path.join(cwd, "artifacts/graph/source-graph.json"),
+      "utf8",
+    );
+    const args = [
+      binary,
+      "surfaces",
+      "discover",
+      "--exclude",
+      "excluded",
+      "--out",
+      "artifacts",
+    ];
+    const first = await exec(process.execPath, args, { cwd });
+    expect(first.stdout).toContain("Discovered 4 candidate product surfaces");
+    expect(first.stderr).toBe("");
+    const reportPath = path.join(
+      cwd,
+      "artifacts/reports/product-surfaces.json",
+    );
+    const graphPath = path.join(cwd, "artifacts/graph/surface-graph.json");
+    const report = await readFile(reportPath, "utf8");
+    const graph = await readFile(graphPath, "utf8");
+    expect(JSON.parse(report)).toMatchObject({
+      schemaVersion: 1,
+      evidenceOnly: true,
+      repository: { commit: null, dirty: null },
+      surfaces: expect.any(Array),
+    });
+    expect(report).not.toContain("excluded/bad.ts");
+    expect(graph).toContain('"ProductSurface"');
+    await exec(process.execPath, args, { cwd });
+    expect(await readFile(reportPath, "utf8")).toBe(report);
+    expect(await readFile(graphPath, "utf8")).toBe(graph);
+    expect(
+      await readFile(
+        path.join(cwd, "artifacts/graph/source-graph.json"),
+        "utf8",
+      ),
+    ).toBe(sourceGraph);
+    expect(await readFile(path.join(cwd, "app/page.tsx"), "utf8")).toBe(source);
+    for (const invalid of [
+      ["surfaces", "discover", "--json"],
+      ["surfaces", "discover", "--node", "x"],
+      ["surfaces", "discover", "--pr", "1"],
+      ["surfaces", "discover", ".", "extra"],
+      ["surfaces", "unknown"],
+    ])
+      await expect(runCli(invalid, cwd)).rejects.toThrow();
+  });
+
   it("prints help and fails nonzero for invalid arguments or source syntax", async () => {
     expect(await runCli(["--help"])).toContain("Usage: pathcompiler scan");
     for (const args of [

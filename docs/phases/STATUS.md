@@ -386,5 +386,74 @@ Hosted CI was not inspected from this session.
   checks reduce races but are not transactional snapshots.
 - Path associations and PR prose do not prove changed symbols, current behavior
   or merge ancestry in the checkout. PR reports remain private build-time evidence.
-- The complete roadmap has 31 numbered phases (0–30). Six are now complete (0–5),
-  leaving 25 (6–30). Phase 6 — Product Surface Graph is next and has not started.
+- At Phase 5 delivery, six of the 31 numbered phases (0–30) were complete,
+  leaving 25 (6–30). Phase 6 is delivered below.
+
+## Phase 6 — Product Surface Graph
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/evidence` with validated, deterministic selected-node
+  packets, bounded test/history/PR support, source snapshot checks and reused
+  workflow evidence references. Preserves raw graph provenance and historical
+  commits; unborn source never receives an invented commit reference.
+- Added `@pathcompiler/capability-engine` with deterministic candidate page,
+  panel, modal, form and action rules. Preserves anchors, source locations,
+  routes, nearest container parents, evidence IDs, rule/title source and confidence.
+  All surfaces remain heuristic candidates; no capabilities/workflows are approved.
+- Extended the Next.js adapter with lexical JSX containment and unannotated native
+  dialog extraction, which supply the missing structural evidence for nesting.
+- Supports native/ARIA containers, component suffixes and interactive controls.
+  Shared declarations retain multiple routes/parents. Custom callback props and
+  observation anchors do not become actions. Unreachable candidates, unresolved
+  labels/page renders and recursive containment have explicit diagnostics.
+- Added the required optional `SemanticModel` interface and validated request/result
+  contracts with citation checks. No provider implementation, model SDK, network
+  invocation or automatic capability classification was added.
+- Added `pathcompiler surfaces discover [directory]` with output/exclusion options
+  and separate surface report/graph artifacts. Original source and scan artifacts
+  are preserved. Documented the API, CLI and limits in README and ADR 0008.
+- Phase 5 was committed and pushed as `faa2c37` before this phase began.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 5 baseline lint/typecheck/tests | Passed before edits; 108 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 85 files |
+| `pnpm typecheck` | Passed, including ten package builds, root tests and fixture |
+| `pnpm test` | 120 tests passed across twelve suites |
+| Built CLI fixture discovery | 24 candidates: three pages, one modal, three forms and 17 actions |
+| Fixture enriched graph | 132 nodes, 382 edges; all five primary action anchors present |
+| Input reorder / repeat artifacts | Identical graph/report bytes; source graph and files unchanged |
+| `git diff --check` | Passed |
+
+Focused tests cover native/ARIA and named containers, nested controls, shared
+modals, callback/custom-component boundaries, navigation isolation, recursion,
+stable semantic IDs after label/file changes, stale/unknown evidence, unborn
+snapshots, historical commit/PR references, model output validation and CLI
+arguments/exclusions. Panel rules are tested synthetically because the fixture
+has no separately annotated or named panel. No browser UI changed, so the existing
+seven Chromium tests were not rerun. Hosted CI was not inspected from this session.
+
+### Scope notes and limitations
+
+- All required Phase 6 scope is implemented. The CLI is a small delivery extension;
+  the source containment/dialog additions are necessary analyzer support for this
+  phase. Phase 7 business capability discovery remains unimplemented.
+- Containment is static and declaration-based. It does not project custom children,
+  resolve portals, visibility, state transitions or modal opener relationships.
+  Shared dialog children can stay under their source page. Candidate confidence
+  is rule strength, not verified runtime behavior.
+- Implicit Next layout rendering is still unresolved: the fixture's five layout
+  controls are omitted with diagnostics. Its redirect-only root route remains a
+  page candidate with an unresolved-render diagnostic. The inherited-tsconfig
+  diagnostic remains from Phase 1.
+- CLI discovery uses a fresh source graph. Library callers may pass graphs already
+  enriched with tests/history/PRs. Evidence follows two explicit support hops;
+  graph packets remain private build-time artifacts, not browser manifests.
+- Seven phases are complete (0–6), leaving 24 (7–30). Phase 7 — Capability
+  Discovery is next and has not started.

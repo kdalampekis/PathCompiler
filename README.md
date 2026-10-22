@@ -8,8 +8,8 @@ is a build-time representation; approved workflows are the runtime source of tru
 
 This repository implements **Phase 0 — Repository Foundation**,
 **Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets**,
-**Phase 3 — Playwright Test Mining**, **Phase 4 — Git Intelligence** and
-**Phase 5 — GitHub PR Adapter**.
+**Phase 3 — Playwright Test Mining**, **Phase 4 — Git Intelligence**,
+**Phase 5 — GitHub PR Adapter** and **Phase 6 — Product Surface Graph**.
 Workflow discovery, compilation, SDKs and
 runtime guidance are future phases.
 
@@ -266,6 +266,69 @@ Tokens stay out of reports and errors. No GitHub App, webhook, write API, commen
 collection or source upload is involved. See the
 [PR adapter contract and boundaries](docs/decisions/0007-github-pr-evidence.md).
 
+## Discover product surfaces
+
+```sh
+pnpm build:packages
+pnpm pathcompiler surfaces discover ./fixtures/next-demo
+```
+
+This promotes technical source nodes into candidate pages, panels, modals, forms
+and user actions. The directory defaults to the current directory; `--out` and
+`--exclude` work as with `scan`. It writes separate artifacts:
+
+```text
+.pathcompiler/reports/product-surfaces.json
+.pathcompiler/graph/surface-graph.json
+```
+
+Rules use page routes, component names ending in `Panel`, `Modal`, `Dialog` or
+`Form`, native/ARIA containers and interactive controls. Accessible names and
+semantic IDs provide titles; unresolved names have explicit fallbacks. Source
+labels are preserved: “Add Client” is not automatically renamed “Create Client”.
+Native containers take precedence over duplicate component-name guesses.
+
+Surfaces retain their anchor, supporting source/evidence IDs, routes, parent IDs,
+rule, confidence and file/locator/commit provenance. IDs use
+`surface:<kind>:<anchor-node-id>`, so annotated action identities survive label
+changes and file moves. The graph adds `ProductSurface`, `CONTAINS` and
+`SUPPORTED_BY` records without changing original nodes. Every surface remains
+`status: "candidate"` and `heuristic: true`; no capabilities or workflows are approved.
+
+```ts
+import { scanNextRepository } from "@pathcompiler/adapter-nextjs";
+import { discoverProductSurfaces } from "@pathcompiler/capability-engine";
+
+const source = await scanNextRepository("./fixtures/next-demo");
+const { graph, report } = discoverProductSurfaces(source.graph);
+```
+
+Library callers can supply a technical graph already enriched with test, Git or
+PR evidence. The evidence package collects selected source nodes and two outward
+hops of explicit `TESTED_BY`, `CHANGED_BY` and `SUPPORTED_BY` links to Test, Commit
+and PullRequest nodes. Raw graph records preserve their provenance and uncertainty;
+historical references retain their own commits. The CLI performs a fresh source
+scan only. Neither API nor CLI executes code, calls a model or interprets PR prose.
+
+Containment follows static component rendering and lexical JSX nesting. Shared
+components are one declaration with multiple parents/routes. Conditional branches,
+props/children projection, portal placement and modal opener/state relationships
+are not resolved. Callback bodies do not inherit surrounding JSX containment.
+The current analyzer does not connect implicit Next layouts to routes; unreachable
+controls are omitted with diagnostics. Redirect-only routes remain page candidates
+with an unresolved-render diagnostic. Static candidates do not prove live visibility.
+
+The fixture yields 24 candidates: three pages, one shared modal, three forms and
+17 actions, including all five primary workflow action anchors. Synthetic tests
+also cover named/ARIA panels. See the [surface and evidence contract](docs/decisions/0008-product-surface-candidates.md).
+
+`SemanticModel` defines optional `classifyCapabilities` and `summarizeEvidence`
+provider methods, with schemas and output parsers that reject unknown citations.
+No provider is installed or invoked. Future callers must select the evidence they
+intend to send and validate returned data; raw evidence may contain private source
+paths, test metadata or commit/PR text. These artifacts stay build-time only and
+must not be shipped in browser runtime manifests. Capability discovery is Phase 7.
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -282,7 +345,9 @@ Analysis packages:
 | `@pathcompiler/test-miner-playwright` | `minePlaywrightTests`, trace/action/assertion/target schemas and types |
 | `@pathcompiler/git-intelligence` | `openGitRepository`, `enrichNodeHistory`, `GitProvider`, `associatePullRequest`, Git/PR schemas and types |
 | `@pathcompiler/adapter-github` | `createGitHubProvider`, `GitHubProviderOptions`, `GITHUB_API_VERSION` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `runCli` |
+| `@pathcompiler/evidence` | `collectGraphEvidence`, `sourceProvenance`, evidence bundle/provenance schemas and shared workflow evidence references |
+| `@pathcompiler/capability-engine` | `discoverProductSurfaces`, surface/report schemas, `SemanticModel`, classification/summary schemas and output parsers |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

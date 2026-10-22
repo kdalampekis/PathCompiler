@@ -7,6 +7,7 @@ import {
   scanNextRepository,
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
+import { discoverProductSurfaces } from "@pathcompiler/capability-engine";
 import {
   associatePullRequest,
   enrichNodeHistory,
@@ -20,6 +21,7 @@ export const HELP = `PathCompiler — local Next.js source analysis
 Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> ...]
        pathcompiler targets suggest [directory] [--json] [--exclude <directory> ...]
        pathcompiler tests mine [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler surfaces discover [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
@@ -34,6 +36,8 @@ git inspect reads local history for a current source node, writing reports/git-e
 and graph/history-graph.json. Defaults to 20 commits per provenance file; supports --exclude.
 github inspect requires GITHUB_TOKEN with Pull requests read permission. It reads GitHub
 PR evidence into reports/pr-evidence.json and graph/pr-graph.json; supports --exclude.
+surfaces discover writes reports/product-surfaces.json and graph/surface-graph.json.
+Surfaces are static candidates requiring review, not approved capabilities or workflows.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -241,9 +245,30 @@ export async function runCli(
   }
   if (values.json)
     throw new Error("--json is only supported by targets suggest.");
+  if (
+    positionals[0] === "surfaces" &&
+    positionals[1] === "discover" &&
+    positionals.length <= 3
+  ) {
+    const source = await scanNextRepository(
+      path.resolve(cwd, positionals[2] ?? "."),
+      { exclude: values.exclude ?? [] },
+    );
+    const result = discoverProductSurfaces(source.graph);
+    result.report.diagnostics.push(...source.summary.diagnostics);
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    await writeArtifacts(output, [
+      [
+        "reports/product-surfaces.json",
+        `${JSON.stringify(result.report, null, 2)}\n`,
+      ],
+      ["graph/surface-graph.json", `${result.graph.serialize()}\n`],
+    ]);
+    return `Discovered ${result.report.surfaces.length} candidate product surfaces.\nArtifacts: ${output}\nStatic render relationships require review; they do not establish runtime visibility or approval.\n`;
+  }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, or github inspect. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, or surfaces discover. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],

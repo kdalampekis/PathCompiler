@@ -75,6 +75,25 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
 
+  packages/capability-engine:
+    dependencies:
+      "@pathcompiler/evidence":
+        specifier: workspace:*
+        version: link:../evidence
+      "@pathcompiler/graph-core":
+        specifier: workspace:*
+        version: link:../graph-core
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+
   packages/cli:
     dependencies:
       "@pathcompiler/adapter-github":
@@ -83,6 +102,9 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
       "@pathcompiler/git-intelligence":
         specifier: workspace:*
         version: link:../git-intelligence
@@ -92,6 +114,21 @@ importers:
       "@pathcompiler/test-miner-playwright":
         specifier: workspace:*
         version: link:../test-miner-playwright
+
+  packages/evidence:
+    dependencies:
+      "@pathcompiler/graph-core":
+        specifier: workspace:*
+        version: link:../graph-core
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/workflow-ir":
+        specifier: workspace:*
+        version: link:../workflow-ir
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
 
   packages/git-intelligence:
     dependencies:
