@@ -143,6 +143,11 @@ export class LocalGitRepository {
     private readonly prefix: string,
   ) {}
 
+  /** Prefix for mapping repository-root provider paths to this scan directory. Empty at root. */
+  getRepositoryPath(): string {
+    return this.prefix;
+  }
+
   private scoped(file: string): string {
     const normalized = RelativePathSchema.parse(file);
     return this.prefix ? `${this.prefix}/${normalized}` : normalized;

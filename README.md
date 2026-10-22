@@ -8,7 +8,8 @@ is a build-time representation; approved workflows are the runtime source of tru
 
 This repository implements **Phase 0 — Repository Foundation**,
 **Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets**,
-**Phase 3 — Playwright Test Mining** and **Phase 4 — Git Intelligence**.
+**Phase 3 — Playwright Test Mining**, **Phase 4 — Git Intelligence** and
+**Phase 5 — GitHub PR Adapter**.
 Workflow discovery, compilation, SDKs and
 runtime guidance are future phases.
 
@@ -215,6 +216,56 @@ source/Git commit and dirty-state mismatches are rejected. Reports include priva
 messages and source patches and must stay out of browser runtime manifests.
 See [Git evidence decisions and limits](docs/decisions/0006-local-git-evidence.md).
 
+## Add GitHub PR context
+
+Set `GITHUB_TOKEN` in your environment with read access to the repository's pull
+requests, then inspect an explicit PR or find the PR associated with a commit:
+
+```sh
+pnpm build:packages
+pnpm pathcompiler github inspect ./path/to/repository --repo OWNER/REPO --pr 123
+pnpm pathcompiler github inspect ./path/to/repository --repo OWNER/REPO --commit FULL_COMMIT_SHA
+```
+
+The directory defaults to the current directory. The repository is explicit;
+choose the GitHub repository corresponding to your local checkout. `--out` and
+`--exclude` follow the scan conventions. Nested scan directories are mapped to
+repository-relative PR paths automatically. The command writes:
+
+```text
+.pathcompiler/reports/pr-evidence.json
+.pathcompiler/graph/pr-graph.json
+```
+
+The original source/history/test artifacts are preserved. Records capture the PR
+title, nullable Markdown body, changed and previous rename paths, linked commit
+SHAs, actual merge SHA, base/head SHAs, state and provider update time. An open PR's
+temporary test merge is excluded. Commit lookup returns no match explicitly and
+asks for a PR number when multiple PRs match. Provider-confirmed lookup SHAs are
+retained separately from the original commit list, including rebased commits.
+
+`SUPPORTED_BY` edges associate current file/component/action nodes with reported
+PR paths. These are heuristic associations (0.5), not proof of current behavior or
+merge ancestry. A history graph passed to the API can also link existing Commit
+nodes through exact PR commit/merge membership or the provider's commit lookup.
+Bodies remain in the separate evidence report, with `evidenceOnly: true`; no source
+facts or approved workflows are overwritten. PR prose is untrusted input.
+
+`@pathcompiler/git-intelligence` exports the two-method `GitProvider` interface,
+`PullRequestRecordSchema`, `PullRequestEvidenceReportSchema` and
+`associatePullRequest(graph, record, { repositoryPath })`.
+`@pathcompiler/adapter-github` exports
+`createGitHubProvider({ owner, repo, token, fetch? })`; the returned provider supports
+`getPullRequest("123")` and `findPullRequestForCommit(fullSha)`. The optional fetch
+transport supports offline tests. Production requests use GitHub.com only.
+
+Reads are paginated, bounded and authenticated, with no automatic retries or
+redirects. PRs above 250 commits or 3,000 files fail explicitly; response limits and
+changing PR snapshots also fail rather than silently returning partial evidence.
+Tokens stay out of reports and errors. No GitHub App, webhook, write API, comment
+collection or source upload is involved. See the
+[PR adapter contract and boundaries](docs/decisions/0007-github-pr-evidence.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -229,8 +280,9 @@ Analysis packages:
 | `@pathcompiler/source-model` | `readSourceProject`, source/diagnostic schemas and exclusion defaults |
 | `@pathcompiler/adapter-nextjs` | `analyzeNextProject`, `scanNextRepository`, `discoverRoute`, `suggestTargets`, scan/target schemas and types |
 | `@pathcompiler/test-miner-playwright` | `minePlaywrightTests`, trace/action/assertion/target schemas and types |
-| `@pathcompiler/git-intelligence` | `openGitRepository`, `enrichNodeHistory`, commit/diff/history/blame/report schemas and types |
-| `@pathcompiler/cli` | `pathcompiler scan`, `pathcompiler targets suggest`, `pathcompiler tests mine`, `pathcompiler git inspect`, `runCli` |
+| `@pathcompiler/git-intelligence` | `openGitRepository`, `enrichNodeHistory`, `GitProvider`, `associatePullRequest`, Git/PR schemas and types |
+| `@pathcompiler/adapter-github` | `createGitHubProvider`, `GitHubProviderOptions`, `GITHUB_API_VERSION` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

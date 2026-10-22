@@ -1,12 +1,14 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { createGitHubProvider } from "@pathcompiler/adapter-github";
 import {
   analyzeNextProject,
   scanNextRepository,
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
 import {
+  associatePullRequest,
   enrichNodeHistory,
   openGitRepository,
 } from "@pathcompiler/git-intelligence";
@@ -19,6 +21,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler targets suggest [directory] [--json] [--exclude <directory> ...]
        pathcompiler tests mine [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
+       pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
 Writes .pathcompiler/graph/source-graph.json and .pathcompiler/reports/scan-summary.json
 under the current working directory, or under the directory supplied to --out.
@@ -29,6 +32,8 @@ tests mine writes reports/test-traces.json and graph/test-graph.json under .path
 (or --out), preserving source scan artifacts. Traces are evidence, not approved workflows.
 git inspect reads local history for a current source node, writing reports/git-evidence.json
 and graph/history-graph.json. Defaults to 20 commits per provenance file; supports --exclude.
+github inspect requires GITHUB_TOKEN with Pull requests read permission. It reads GitHub
+PR evidence into reports/pr-evidence.json and graph/pr-graph.json; supports --exclude.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -47,9 +52,79 @@ export async function runCli(
       exclude: { type: "string", multiple: true },
       node: { type: "string" },
       limit: { type: "string" },
+      repo: { type: "string" },
+      pr: { type: "string" },
+      commit: { type: "string" },
     },
   });
   if (values.help) return HELP;
+  if (
+    positionals[0] === "github" &&
+    positionals[1] === "inspect" &&
+    positionals.length <= 3
+  ) {
+    if (values.json || values.node !== undefined || values.limit !== undefined)
+      throw new Error(
+        "github inspect supports --repo, --pr or --commit, --out and --exclude.",
+      );
+    if (
+      !values.repo ||
+      (values.pr === undefined) === (values.commit === undefined)
+    )
+      throw new Error(
+        "github inspect requires --repo <owner/name> and exactly one of --pr <number> or --commit <sha>.",
+      );
+    const [owner, repo, extra] = values.repo.split("/");
+    if (!owner || !repo || extra !== undefined)
+      throw new Error("--repo must be a GitHub owner/name pair.");
+    const token = process.env.GITHUB_TOKEN;
+    if (!token)
+      throw new Error(
+        "Set GITHUB_TOKEN with Pull requests read permission before running github inspect.",
+      );
+    const provider = createGitHubProvider({ owner, repo, token });
+    const directory = path.resolve(cwd, positionals[2] ?? ".");
+    const git = await openGitRepository(directory);
+    const project = await readSourceProject(directory, {
+      exclude: values.exclude ?? [],
+    });
+    const source = analyzeNextProject(project);
+    const pr =
+      values.pr !== undefined
+        ? await provider.getPullRequest(values.pr)
+        : await provider.findPullRequestForCommit(values.commit ?? "");
+    if (!pr)
+      return "No pull request is associated with that commit. No artifacts written.\n";
+    const result = associatePullRequest(source.graph, pr, {
+      repositoryPath: git.getRepositoryPath(),
+    });
+    const after = await git.getSnapshot();
+    if (
+      after.commit !== project.repository.commit ||
+      after.dirty !== project.repository.dirty
+    )
+      throw new Error(
+        "Repository changed while reading PR evidence. Rescan and retry.",
+      );
+    result.report.diagnostics.push(...source.summary.diagnostics);
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    await writeArtifacts(output, [
+      [
+        "reports/pr-evidence.json",
+        `${JSON.stringify(result.report, null, 2)}\n`,
+      ],
+      ["graph/pr-graph.json", `${result.graph.serialize()}\n`],
+    ]);
+    return `Associated PR #${pr.number} with ${result.report.associatedNodeIds.length} graph nodes.\nArtifacts: ${output}\nPR context is supporting evidence; it does not establish current product behavior.\n`;
+  }
+  if (
+    values.repo !== undefined ||
+    values.pr !== undefined ||
+    values.commit !== undefined
+  )
+    throw new Error(
+      "--repo, --pr and --commit are only supported by github inspect.",
+    );
   if (
     positionals[0] === "git" &&
     positionals[1] === "inspect" &&
@@ -168,7 +243,7 @@ export async function runCli(
     throw new Error("--json is only supported by targets suggest.");
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan <directory>, pathcompiler targets suggest [directory], pathcompiler tests mine [directory], or pathcompiler git inspect [directory] --node <node-id>. Use --help for options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, or github inspect. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],

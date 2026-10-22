@@ -1,12 +1,12 @@
 import {
   createEdgeId,
   createNodeId,
-  type GraphNode,
   ProductGraph,
 } from "@pathcompiler/graph-core";
-import { compareText, RelativePathSchema } from "@pathcompiler/source-model";
+import { compareText } from "@pathcompiler/source-model";
 import { z } from "zod";
 import type { LocalGitRepository } from "./git.js";
+import { filesForNode } from "./provenance.js";
 import {
   type Commit,
   type GitEvidenceReport,
@@ -14,25 +14,8 @@ import {
 } from "./schema.js";
 
 export { LocalGitRepository, openGitRepository } from "./git.js";
+export * from "./provider.js";
 export * from "./schema.js";
-
-function filesForNode(node: GraphNode): string[] {
-  const files = new Set<string>();
-  if (node.type === "File" && typeof node.data?.path === "string")
-    files.add(RelativePathSchema.parse(node.data.path));
-  if (Array.isArray(node.data?.evidence)) {
-    for (const evidence of node.data.evidence) {
-      if (
-        evidence &&
-        typeof evidence === "object" &&
-        !Array.isArray(evidence) &&
-        typeof evidence.file === "string"
-      )
-        files.add(RelativePathSchema.parse(evidence.file));
-    }
-  }
-  return [...files].sort(compareText);
-}
 
 /** Current node → provenance files → bounded path history → commit evidence. Input graph is unchanged. */
 export async function enrichNodeHistory(

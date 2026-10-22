@@ -315,4 +315,76 @@ execution was not repeated; hosted CI was not inspected from this session.
   encodings are rejected. Commit/dirty checks are not atomic filesystem snapshots.
 - Evidence reports contain private patches/messages and stay build-time only.
   The existing inherited-tsconfig diagnostic remains. GitHub PR integration is
-  Phase 5 and has not been started.
+  delivered in Phase 5 below.
+
+## Phase 5 — GitHub PR Adapter
+
+Complete — verified locally on 2026-10-21.
+
+- Added the specified `GitProvider` interface, validated PR record/report schemas
+  and graph association API to `git-intelligence`. Source-file provenance is shared
+  with the existing Git enrichment through one internal helper.
+- Added `@pathcompiler/adapter-github`, using native fetch with token authentication
+  and the pinned GitHub REST API version `2026-03-10`. No new external dependency
+  versions were introduced.
+- Captures title, nullable body, changed/previous rename paths, linked commits,
+  actual merge SHA, base/head SHAs, state and update time. Temporary open-PR test
+  merges are excluded. Commit lookup handles no match and ambiguity explicitly;
+  provider lookup SHAs are kept separately to support rewritten/rebased commits.
+- Retrieves all supported file/commit pages, checks counts and uniqueness, and
+  rereads PR metadata to detect snapshot changes. Requests have time/output bounds,
+  sanitized errors and explicit rate-limit/permission failures. Tokens stay out of
+  records, logs and command-line arguments; redirects and automatic retries are disabled.
+- Associates mock PR evidence with current File, Component and UIAction nodes and
+  existing Commit nodes through `SUPPORTED_BY`. Source nodes and original graphs
+  remain unchanged; PR bodies stay in a separate evidence report. Path associations
+  are explicitly heuristic, and unmerged PRs remain proposed evidence.
+- Added `pathcompiler github inspect [directory] --repo owner/name` with either
+  `--pr number` or `--commit sha`, using `GITHUB_TOKEN`. Supports nested scopes,
+  output directories and exclusions; preserves existing scan/history/test artifacts.
+- Documented the provider contract, operation and limits in README and ADR 0007.
+  Phase 4 was committed and pushed as `a9a6b17` before this phase began.
+
+### Verification
+
+All checks passed with Node 22.23.3, pnpm 10.34.7 and Git 2.55.0:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 4 baseline lint/typecheck/tests | Passed; 89 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 75 files |
+| `pnpm typecheck` | Passed, including eight package builds, root tests and fixture |
+| `pnpm test` | 108 tests passed across ten suites |
+| Mock PR acceptance | Changed AddClientModal linked to File, Component and UIAction nodes; unrelated declarations unlinked |
+| Provider pagination | 101-file/101-commit fixture read completely; unexpected continuation, duplicates and count drift rejected |
+| Built CLI with mocked GitHub transport | Direct PR and commit lookup, nested scopes, exclusions and missing-token handling passed |
+| Repeat artifacts and source preservation | Byte-identical output; source graph and checkout preserved |
+| `git diff --check` | Passed |
+
+Focused tests also cover nullable bodies, rename provenance, actual/test merge
+distinction, provider-confirmed lookup SHAs, ambiguous/absent PRs, invalid inputs,
+wrong repositories, changing PR metadata, response and API count limits, malformed
+JSON/data, transport interruption, HTTP authentication/permission/not-found/rate
+errors, credential-safe errors and refusal to follow response URLs.
+
+Verification used injected API responses, a mock provider and temporary Git/Next.js
+repositories. No live GitHub token or hosted API access was exercised. The fixture
+application/browser tests were unchanged, so browser execution was not repeated.
+Hosted CI was not inspected from this session.
+
+### Scope notes and limitations
+
+- All required Phase 5 acceptance scope is implemented. The CLI is a small delivery
+  extension; optional comments are deferred. No GitHub App, webhooks or write API
+  were added.
+- GitHub.com is the initial host. PRs above 250 commits or 3,000 files fail
+  explicitly. Each response is limited to 4 MiB with a ten-second fetch timeout;
+  API metadata changes or inconsistent pages require a retry by the caller.
+- The caller explicitly binds the local checkout to `owner/name`; graph snapshots
+  do not yet encode provider identity. Metadata rereads and local commit/dirty
+  checks reduce races but are not transactional snapshots.
+- Path associations and PR prose do not prove changed symbols, current behavior
+  or merge ancestry in the checkout. PR reports remain private build-time evidence.
+- The complete roadmap has 31 numbered phases (0–30). Six are now complete (0–5),
+  leaving 25 (6–30). Phase 6 — Product Surface Graph is next and has not started.

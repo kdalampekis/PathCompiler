@@ -304,4 +304,153 @@ describe("pathcompiler CLI", () => {
     ])
       await expect(runCli(args, cwd)).rejects.toThrow();
   });
+
+  it("reads mock GitHub PR evidence through the built CLI without replacing source artifacts", async () => {
+    const cwd = await directory();
+    const root = path.join(cwd, "repository");
+    const scan = path.join(root, "apps/demo");
+    await mkdir(path.join(scan, "app"), { recursive: true });
+    await mkdir(path.join(scan, "components"));
+    const git = async (...args: string[]) =>
+      exec("git", [
+        "-C",
+        root,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        ...args,
+      ]);
+    await git("init", "-b", "main");
+    await writeFile(
+      path.join(scan, "app/page.tsx"),
+      'import { AddClientModal } from "../components/AddClientModal"; export default function Page() { return <AddClientModal />; }',
+    );
+    await writeFile(
+      path.join(scan, "components/AddClientModal.tsx"),
+      'export function AddClientModal() { return <button data-pathcompiler="clients.create">Create</button>; }',
+    );
+    await git("add", ".");
+    await git("commit", "-m", "Fixture");
+    const head = (await git("rev-parse", "HEAD")).stdout.trim();
+    const output = path.join(cwd, "evidence");
+    await exec(process.execPath, [binary, "scan", scan, "--out", output], {
+      cwd,
+    });
+    const sourceFile = path.join(output, "graph/source-graph.json");
+    const source = await readFile(sourceFile, "utf8");
+    const metadata = {
+      number: 12,
+      title: "Client creation",
+      body: "PR intent",
+      state: "closed",
+      merged: true,
+      merge_commit_sha: head,
+      updated_at: "2026-01-02T03:04:05Z",
+      commits: 1,
+      changed_files: 1,
+      head: { sha: head },
+      base: { sha: "a".repeat(40), repo: { full_name: "example/product" } },
+    };
+    const mock = path.join(cwd, "github-mock.mjs");
+    await writeFile(
+      mock,
+      `const metadata = ${JSON.stringify(metadata)};
+globalThis.fetch = async (input, init) => {
+  const url = new URL(String(input));
+  if (url.origin !== "https://api.github.com" || init.headers.Authorization !== "Bearer fixture_token") throw new Error("Unexpected request");
+  if (url.pathname.endsWith("/files")) return Response.json([{filename: "apps/demo/components/AddClientModal.tsx", status: "modified"}]);
+  if (url.pathname.endsWith("/commits")) return Response.json([{sha: metadata.head.sha}]);
+  if (url.pathname.includes("/commits/")) return Response.json([{number: 12, base: metadata.base}]);
+  return Response.json(metadata);
+};\n`,
+    );
+    const options = {
+      cwd: scan,
+      env: { ...process.env, GITHUB_TOKEN: "fixture_token" },
+    };
+    const args = [
+      "--import",
+      mock,
+      binary,
+      "github",
+      "inspect",
+      "--repo",
+      "example/product",
+      "--pr",
+      "12",
+      "--out",
+      output,
+    ];
+    expect((await exec(process.execPath, args, options)).stdout).toContain(
+      "Associated PR #12",
+    );
+    const reportFile = path.join(output, "reports/pr-evidence.json");
+    const graphFile = path.join(output, "graph/pr-graph.json");
+    const report = await readFile(reportFile, "utf8");
+    const graph = await readFile(graphFile, "utf8");
+    expect(JSON.parse(report)).toMatchObject({
+      schemaVersion: 1,
+      evidenceOnly: true,
+      repositoryPath: "apps/demo",
+      associatedNodeIds: expect.arrayContaining(["ui:clients.create"]),
+    });
+    expect(graph).not.toContain("fixture_token");
+    await exec(process.execPath, args, options);
+    expect(await readFile(reportFile, "utf8")).toBe(report);
+    expect(await readFile(graphFile, "utf8")).toBe(graph);
+    const lookup = [
+      "--import",
+      mock,
+      binary,
+      "github",
+      "inspect",
+      "--repo",
+      "example/product",
+      "--commit",
+      head,
+      "--out",
+      output,
+    ];
+    expect((await exec(process.execPath, lookup, options)).stdout).toContain(
+      "Associated PR #12",
+    );
+    expect(await readFile(sourceFile, "utf8")).toBe(source);
+    expect((await git("status", "--porcelain")).stdout).toBe("");
+    await expect(
+      exec(process.execPath, args, {
+        ...options,
+        env: { ...process.env, GITHUB_TOKEN: "" },
+      }),
+    ).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining("Set GITHUB_TOKEN"),
+    });
+    for (const invalid of [
+      ["github", "inspect"],
+      ["github", "inspect", "--repo", "example/product"],
+      [
+        "github",
+        "inspect",
+        "--repo",
+        "example/product",
+        "--pr",
+        "12",
+        "--commit",
+        head,
+      ],
+      ["scan", scan, "--pr", "12"],
+    ])
+      await expect(runCli(invalid, cwd)).rejects.toThrow();
+    const excluded = await exec(
+      process.execPath,
+      [...args, "--exclude", "components"],
+      options,
+    );
+    expect(excluded.stdout).toContain("with 0 graph nodes");
+  });
 });

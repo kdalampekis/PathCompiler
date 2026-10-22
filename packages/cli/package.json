@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pathcompiler/adapter-github": "workspace:*",
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/git-intelligence": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
