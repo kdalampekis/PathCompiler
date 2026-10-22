@@ -35,6 +35,59 @@ async function directory() {
 }
 
 describe("pathcompiler CLI", () => {
+  it("validates a fresh candidate and writes actionable failed reports without changing YAML", async () => {
+    const cwd = await directory();
+    await exec(
+      process.execPath,
+      [binary, "workflows", "discover", fixture, "--out", "artifacts"],
+      { cwd },
+    );
+    const yamlPath = path.join(
+      cwd,
+      "artifacts/workflows/candidates/clients.create.yaml",
+    );
+    const yaml = await readFile(yamlPath, "utf8");
+    const args = [
+      binary,
+      "workflows",
+      "validate",
+      "clients.create",
+      fixture,
+      "--out",
+      "artifacts",
+    ];
+    const result = await exec(process.execPath, args, { cwd });
+    expect(result.stdout).toContain("passed static validation");
+    expect(result.stdout).toContain("Browser verification has not run");
+    const reportPath = path.join(
+      cwd,
+      "artifacts/reports/validation/clients.create.json",
+    );
+    const report = await readFile(reportPath, "utf8");
+    expect(JSON.parse(report).valid).toBe(true);
+    await exec(process.execPath, args, { cwd });
+    expect(await readFile(reportPath, "utf8")).toBe(report);
+    expect(await readFile(yamlPath, "utf8")).toBe(yaml);
+    const stale = yaml.replace(
+      "target: clients.create",
+      "target: stale.create",
+    );
+    await writeFile(yamlPath, stale);
+    await expect(exec(process.execPath, args, { cwd })).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining("failed validation"),
+    });
+    const failed = JSON.parse(await readFile(reportPath, "utf8"));
+    expect(failed.valid).toBe(false);
+    expect(failed.errors).toContainEqual(
+      expect.objectContaining({ code: "missing-target", stepId: "step.1" }),
+    );
+    expect(await readFile(yamlPath, "utf8")).toBe(stale);
+    await expect(
+      runCli(["workflows", "validate", "../secret", fixture], cwd),
+    ).rejects.toThrow("Workflow ID");
+  });
+
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];

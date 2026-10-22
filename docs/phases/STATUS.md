@@ -594,3 +594,62 @@ not inspected from this session.
   Old candidate files are not pruned; the current report lists current candidates.
 - Nine phases are complete (0–8), leaving 22 (9–30). Continue automatically through
   the next phases, committing and pushing each completed phase as authorized.
+
+## Phase 9 — Workflow Validation
+
+Complete — verified locally on 2026-10-22.
+
+- Added `workflow-validator` with a pure public API and versioned structured reports.
+  Schema, structure, repository, evidence, test comparison and browser checks each
+  report passed/failed/not-run. Invalid schema never implies later checks ran.
+- Checked explicit transitions, first-step reachability, unreachable steps, missing
+  action targets, shadowed branch guards, terminal graph reachability and cycles.
+  Cycles fail because the IR has no iteration bound. Runtime predicate truth remains
+  outside static validation.
+- Checked current route/target declarations, source provenance and commit binding.
+  Evidence citations must match graph identity/type/location/commit; historical
+  references preserve their own commits. Weak/external/low-confidence support and
+  dirty snapshots remain explicit warnings.
+- Compared supported linear workflows with cited active Playwright traces. Actions,
+  expected assertions and terminal completion must share one continuous segment.
+  Only demonstrated failed form probes can be excluded; repetitions cannot be
+  stitched together. Branch/unsupported comparisons are explicitly partial/not-run.
+- Added `workflows validate <id> [directory]`, fresh rescanning, JSON reports and
+  nonzero failure exits. It preserves candidate YAML and ignores cached validation
+  labels. Browser verification remains not-run as specified.
+- Documented semantics and limits in README and ADR 0011. Phase 8 was committed and
+  pushed as `b410d2e` before this phase began.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 8 baseline lint/typecheck/tests | Passed before edits; 142 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 100 files |
+| `pnpm typecheck` | Passed, including twelve package builds, root tests and fixture |
+| `pnpm test` | 153 tests passed across fifteen suites |
+| All three discovered fixture workflows | Static checks and trace comparison passed |
+| Built CLI validation of `clients.create` | Valid report; five explicit trace/probe warnings |
+| CLI stale target regression | Failed with step/target issue, wrote report, preserved YAML |
+| Repeat validation / input immutability / `git diff --check` | Passed |
+
+Focused regressions cover invalid schema/references, missing evidence, stale
+snapshots, ambiguous targets, missing routes/condition targets, cycles, unreachable
+steps, shadowed guards, weak citations, missing/skipped/soft test evidence and
+action/order/completion contradictions. A reordered workflow regression detected
+and fixed false subsequence matches across repeated operations. No fixture UI
+changed; browser verification starts in Phase 10. Hosted CI was not inspected.
+
+### Scope notes and limitations
+
+- All Phase 9 scope is implemented. The CLI is a small delivery extension.
+- Routes require canonical graph paths/templates. State-only entrypoints, arbitrary
+  dynamic URLs, branch guard truth, wait/explain actions and unsupported assertions
+  are not silently simulated. Static reachability is not observed completion.
+- Reports distinguish errors from review warnings. `valid` does not imply approval,
+  passing browser execution, authorization or verified prerequisites/input bindings.
+  The structure-change workflow retains a weak terminal warning.
+- Ten phases are complete (0–9), leaving 21 (10–30). Phase 10 continues automatically.

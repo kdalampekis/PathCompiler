@@ -10,8 +10,9 @@ This repository implements **Phase 0 — Repository Foundation**,
 **Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets**,
 **Phase 3 — Playwright Test Mining**, **Phase 4 — Git Intelligence**,
 **Phase 5 — GitHub PR Adapter**, **Phase 6 — Product Surface Graph**,
-**Phase 7 — Capability Discovery** and **Phase 8 — Workflow Candidate Discovery**.
-Workflow validation, compilation, SDKs and
+**Phase 7 — Capability Discovery**, **Phase 8 — Workflow Candidate Discovery** and
+**Phase 9 — Workflow Validation**.
+Browser verification, compilation, SDKs and
 runtime guidance are future phases.
 
 ## Development
@@ -445,6 +446,50 @@ are not pruned; the current report lists the current candidates. YAML parsing
 requires one YAML 1.2 document, unique keys, no aliases and a 2 MiB size limit.
 See [ADR 0010](docs/decisions/0010-test-backed-workflow-candidates.md).
 
+## Validate workflows
+
+```sh
+pnpm pathcompiler workflows discover ./fixtures/next-demo
+pnpm pathcompiler workflows validate clients.create ./fixtures/next-demo
+```
+
+Validation reads the candidate under `.pathcompiler` (or `--out`), rescans source
+and tests, and writes `reports/validation/<id>.json`. A failed validation writes
+its report and exits nonzero. It does not change YAML or trust cached validation
+labels. IDs must match the candidate filename. `--exclude` applies to the rescan.
+
+```ts
+import { validateWorkflow } from '@pathcompiler/workflow-validator';
+const report = validateWorkflow(candidate.workflow, {
+  graph: mined.graph,
+  traces: mined.report, // optional; absence is reported as not-run
+});
+```
+
+Reports contain `valid`, `errors`, `warnings` and explicit checks for schema,
+structure, repository, evidence, test comparison and browser verification. Issues
+include a code, actionable message and applicable step/evidence IDs. The validator
+checks first-step reachability, explicit next/branch edges, impossible duplicate
+guards and unbounded cycles. No implicit array-order edges are added. A reachable
+step with no outgoing transition can wait for terminal completion; only the browser
+can prove that completion actually occurs.
+
+Targets must resolve to one source declaration, and their provenance must match
+the current commit. Routes use the graph's canonical paths/templates; arbitrary
+concrete dynamic URLs are not inferred. Evidence references must match their graph
+type, location and snapshot; historical Git/PR refs retain their original commits.
+Weak, low-confidence, dirty, external or runtime-dependent evidence is reported.
+
+For supported linear workflows, static test comparison checks cited action order,
+targets, transition assertions and completion within one continuous segment.
+Failed form probes may be excluded only with an asserted error, correction and
+retry. It cannot combine repetitions or later unrelated assertions. Branch guards,
+wait/explain actions and unsupported conditions yield explicit partial/not-run
+comparison. Missing tests never count as passing tests. Browser validation is
+always `not-run` here. `valid: true` means the applicable static checks passed;
+warnings still require review and it does not grant approval or execution authority.
+See [ADR 0011](docs/decisions/0011-explicit-workflow-validation.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -464,7 +509,8 @@ Analysis packages:
 | `@pathcompiler/evidence` | `collectGraphEvidence`, `sourceProvenance`, evidence bundle/provenance schemas and shared workflow evidence references |
 | `@pathcompiler/capability-engine` | `discoverProductSurfaces`, `discoverCapabilities`, `evaluateCapabilities`, surface/capability/evaluation schemas, `SemanticModel`, classification/summary schemas and output parsers |
 | `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover`, `runCli` |
+| `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover`, `workflows validate`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

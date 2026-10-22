@@ -24,6 +24,7 @@ import {
   parseCandidateYaml,
   serializeCandidateYaml,
 } from "@pathcompiler/workflow-discovery";
+import { validateWorkflow } from "@pathcompiler/workflow-validator";
 
 export const HELP = `PathCompiler — local Next.js source analysis
 
@@ -33,6 +34,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler surfaces discover [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler capabilities discover [directory] [--expect <json-file>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows discover [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler workflows validate <id> [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
@@ -54,6 +56,8 @@ graph/capability-graph.json. --expect supplies evaluation-only capability IDs;
 without ground truth, false positives are reported as not evaluated.
 workflows discover writes workflows/candidates/*.yaml, reports/workflow-candidates.json
 and graph/workflow-graph.json. Candidates require review; browser validation has not run.
+workflows validate reads the candidate under .pathcompiler (or --out), rescans the
+repository, and writes reports/validation/<id>.json. Failed checks exit nonzero.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -269,6 +273,46 @@ export async function runCli(
     throw new Error("--json is only supported by targets suggest.");
   if (
     positionals[0] === "workflows" &&
+    positionals[1] === "validate" &&
+    positionals.length >= 3 &&
+    positionals.length <= 4
+  ) {
+    const id = positionals[2] ?? "";
+    if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*(?:--[a-f0-9]{12})?$/.test(id))
+      throw new Error(
+        "Workflow ID must be a discovered domain.action ID, optionally followed by its variant hash.",
+      );
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const candidate = parseCandidateYaml(
+      await readFile(
+        path.join(output, `workflows/candidates/${id}.yaml`),
+        "utf8",
+      ),
+    );
+    if (candidate.workflow.id !== id)
+      throw new Error("Candidate filename and workflow ID disagree.");
+    const project = await readSourceProject(
+      path.resolve(cwd, positionals[3] ?? "."),
+      { exclude: values.exclude ?? [] },
+    );
+    const source = analyzeNextProject(project);
+    const mined = minePlaywrightTests(project, source.graph);
+    const report = validateWorkflow(candidate.workflow, {
+      graph: mined.graph,
+      traces: mined.report,
+    });
+    const reportPath = `reports/validation/${id}.json`;
+    await writeArtifacts(output, [
+      [reportPath, `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    if (!report.valid)
+      throw new Error(
+        `Workflow ${id} failed validation (${report.errors.length} errors). See ${path.join(output, reportPath)}.`,
+      );
+    return `Workflow ${id} passed static validation (${report.warnings.length} warnings).\nReport: ${path.join(output, reportPath)}\nBrowser verification has not run. Review warnings before approval or execution.\n`;
+  }
+  if (
+    positionals[0] === "workflows" &&
     positionals[1] === "discover" &&
     positionals.length <= 3
   ) {
@@ -396,7 +440,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, or workflows discover. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover, or workflows validate. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],

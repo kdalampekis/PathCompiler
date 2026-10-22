@@ -120,6 +120,9 @@ importers:
       "@pathcompiler/workflow-discovery":
         specifier: workspace:*
         version: link:../workflow-discovery
+      "@pathcompiler/workflow-validator":
+        specifier: workspace:*
+        version: link:../workflow-validator
 
   packages/evidence:
     dependencies:
@@ -219,6 +222,37 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/workflow-validator:
+    dependencies:
+      "@pathcompiler/evidence":
+        specifier: workspace:*
+        version: link:../evidence
+      "@pathcompiler/graph-core":
+        specifier: workspace:*
+        version: link:../graph-core
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
+      "@pathcompiler/workflow-ir":
+        specifier: workspace:*
+        version: link:../workflow-ir
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/workflow-discovery":
+        specifier: workspace:*
+        version: link:../workflow-discovery
 
 packages:
   "@biomejs/biome@2.6.2":
