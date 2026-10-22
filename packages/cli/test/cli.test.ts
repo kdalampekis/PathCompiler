@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { parseCandidateYaml } from "@pathcompiler/workflow-discovery";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../src/index.js";
 
@@ -34,6 +35,79 @@ async function directory() {
 }
 
 describe("pathcompiler CLI", () => {
+  it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
+    const cwd = await directory();
+    const args = [binary, "workflows", "discover", fixture];
+    const first = await exec(process.execPath, args, { cwd });
+    expect(first.stdout).toContain("Discovered 3 workflow candidates");
+    expect(first.stderr).toBe("");
+    const base = path.join(cwd, ".pathcompiler");
+    const reportPath = path.join(base, "reports/workflow-candidates.json");
+    const yamlPath = path.join(
+      base,
+      "workflows/candidates/clients.create.yaml",
+    );
+    const report = await readFile(reportPath, "utf8");
+    const yaml = await readFile(yamlPath, "utf8");
+    expect(parseCandidateYaml(yaml).workflow.id).toBe("clients.create");
+    expect(await readdir(path.join(base, "workflows/candidates"))).toHaveLength(
+      3,
+    );
+    await writeFile(
+      path.join(base, "graph/source-graph.json"),
+      "preserve prior artifact",
+    );
+    await exec(process.execPath, args, { cwd });
+    expect(await readFile(reportPath, "utf8")).toBe(report);
+    expect(await readFile(yamlPath, "utf8")).toBe(yaml);
+    expect(
+      await readFile(path.join(base, "graph/source-graph.json"), "utf8"),
+    ).toBe("preserve prior artifact");
+    const protectedPath = path.join(
+      base,
+      "workflows/candidates/plans.create.yaml",
+    );
+    const approved = (await readFile(protectedPath, "utf8")).replace(
+      "status: candidate",
+      "status: approved",
+    );
+    await writeFile(protectedPath, approved);
+    await writeFile(yamlPath, `${yaml}# preserve on preflight failure\n`);
+    await expect(
+      runCli(["workflows", "discover", fixture], cwd),
+    ).rejects.toThrow("Refusing to replace");
+    expect(await readFile(protectedPath, "utf8")).toBe(approved);
+    expect(await readFile(yamlPath, "utf8")).toBe(
+      `${yaml}# preserve on preflight failure\n`,
+    );
+    await runCli(
+      [
+        "workflows",
+        "discover",
+        fixture,
+        "--out",
+        "no-tests",
+        "--exclude",
+        "tests",
+      ],
+      cwd,
+    );
+    expect(
+      JSON.parse(
+        await readFile(
+          path.join(cwd, "no-tests/reports/workflow-candidates.json"),
+          "utf8",
+        ),
+      ).candidates,
+    ).toEqual([]);
+    for (const invalid of [
+      ["workflows", "discover", fixture, "--json"],
+      ["workflows", "discover", fixture, "--expect", "file"],
+      ["workflows", "discover", fixture, "extra"],
+    ])
+      await expect(runCli(invalid, cwd)).rejects.toThrow();
+  });
+
   it("writes the specified artifacts from the built binary with repeatable bytes", async () => {
     const cwd = await directory();
     const first = await exec(process.execPath, [binary, "scan", fixture], {

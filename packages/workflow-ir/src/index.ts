@@ -35,6 +35,17 @@ export const WorkflowConditionSchema = z.discriminatedUnion("type", [
     }, "Route pattern must be a valid regular expression"),
   }),
   z.strictObject({ type: z.literal("target_appears"), target: text }),
+  z.strictObject({
+    type: z.literal("element_text"),
+    target: text,
+    text,
+    match: z.enum(["exact", "contains"]),
+  }),
+  z.strictObject({
+    type: z.literal("element_count"),
+    target: text,
+    count: z.number().int().nonnegative(),
+  }),
   z.strictObject({ type: z.literal("event_emitted"), event: text }),
   z.strictObject({ type: z.literal("url_changed"), url: text.optional() }),
   z.strictObject({

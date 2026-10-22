@@ -9,9 +9,9 @@ is a build-time representation; approved workflows are the runtime source of tru
 This repository implements **Phase 0 — Repository Foundation**,
 **Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets**,
 **Phase 3 — Playwright Test Mining**, **Phase 4 — Git Intelligence**,
-**Phase 5 — GitHub PR Adapter**, **Phase 6 — Product Surface Graph** and
-**Phase 7 — Capability Discovery**.
-Workflow discovery, compilation, SDKs and
+**Phase 5 — GitHub PR Adapter**, **Phase 6 — Product Surface Graph**,
+**Phase 7 — Capability Discovery** and **Phase 8 — Workflow Candidate Discovery**.
+Workflow validation, compilation, SDKs and
 runtime guidance are future phases.
 
 ## Development
@@ -396,6 +396,55 @@ graphs must be rebuilt from technical evidence. Capability reports remain privat
 build-time artifacts. Workflow sequencing and compilation start in Phase 8.
 See [capability identity, evidence and evaluation](docs/decisions/0009-capability-discovery.md).
 
+## Discover candidate workflows
+
+```sh
+pnpm pathcompiler workflows discover ./fixtures/next-demo
+# Supports --out <directory> and repeated --exclude <relative-path>.
+```
+
+Writes `workflows/candidates/*.yaml`, `reports/workflow-candidates.json` and
+`graph/workflow-graph.json` under `.pathcompiler` or `--out`. The fixture produces
+`clients.create`, `plans.create` and `plans.change_structure`. Edit/deactivate
+remain explicitly skipped because their completion assertions cannot yet be
+resolved to semantic observation targets.
+
+Each YAML document is a versioned candidate envelope containing a Workflow V1,
+confidence, evidence, commit, observed test segments, unresolved ambiguities and
+individual validation statuses. Only schema validation has passed at discovery;
+repository, evidence, test comparison and browser checks remain `not-run`.
+
+```ts
+import { discoverWorkflows, serializeCandidateYaml } from '@pathcompiler/workflow-discovery';
+const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+const capabilities = discoverCapabilities(mined.graph);
+const result = discoverWorkflows(capabilities.graph, capabilities.report, mined.report);
+for (const candidate of result.report.candidates) {
+  const yaml = serializeCandidateYaml(candidate);
+}
+```
+
+Discovery uses ordered, nonconditional test-body segments whose click/fill/select
+actions resolve to semantic targets. It preserves text/count assertions rather
+than inventing application events. A repeated failed form submission followed by
+an asserted error, corrected input and retry is omitted with a diagnostic.
+Cancellation, cross-page behavior, unsupported actions and scoped locators stop a
+segment. Identical paths merge evidence; different paths receive stable variants.
+No branch guards, authorization rules or input defaults are inferred. Callers must
+bind input values and establish prerequisites before future execution.
+
+Shared-container disappearance is a weaker completion signal and is flagged for
+review. Static annotations are not approvals; no approval registry exists yet.
+API/history/PR evidence can support graph provenance but cannot invent missing
+steps or completion. No model or browser is invoked. A committed snapshot is
+required; dirty source is explicitly flagged. These are private build artifacts.
+
+Rediscovery replaces valid candidate files only and preflights every destination
+before writing. Approved or malformed files cause an actionable error. Old files
+are not pruned; the current report lists the current candidates. YAML parsing
+requires one YAML 1.2 document, unique keys, no aliases and a 2 MiB size limit.
+See [ADR 0010](docs/decisions/0010-test-backed-workflow-candidates.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -414,7 +463,8 @@ Analysis packages:
 | `@pathcompiler/adapter-github` | `createGitHubProvider`, `GitHubProviderOptions`, `GITHUB_API_VERSION` |
 | `@pathcompiler/evidence` | `collectGraphEvidence`, `sourceProvenance`, evidence bundle/provenance schemas and shared workflow evidence references |
 | `@pathcompiler/capability-engine` | `discoverProductSurfaces`, `discoverCapabilities`, `evaluateCapabilities`, surface/capability/evaluation schemas, `SemanticModel`, classification/summary schemas and output parsers |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `runCli` |
+| `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

@@ -531,5 +531,66 @@ did not change; browser execution was not repeated. Hosted CI was not inspected.
   subject to review and private build-time artifacts.
 - Error counts are measured against the supplied reference list. The fixture's
   zero-error result is not a general accuracy guarantee.
-- Eight phases are complete (0–7), leaving 23 (8–30). Phase 8 — Workflow Candidate
-  Discovery is next and has not started.
+- At Phase 7 delivery, eight phases were complete (0–7), leaving 23 (8–30).
+  Phase 8 is delivered below.
+
+## Phase 8 — Workflow Candidate Discovery
+
+Complete — verified locally on 2026-10-22.
+
+- Added `workflow-discovery` with deterministic test-backed candidate extraction,
+  validated envelopes/reports and bounded YAML parsing/serialization. Each candidate
+  retains commit, source/test evidence, confidence, ambiguities, observations and
+  separate validation statuses. Only schema validation runs during discovery.
+- Extracted capability action segments using resolved semantic targets, ordered
+  click/fill/select actions, route context and positive completion assertions.
+  Failed form probes require an asserted error, input correction and retry before
+  exclusion. Cancellation, unsupported/scoped/conditional/cross-page operations
+  stop extraction. Identical paths merge evidence; distinct paths stay separate.
+- Extended Workflow V1 with text/count conditions to preserve observed assertions.
+  Test values do not become runtime defaults, observed roles do not become policy,
+  and static target annotations do not imply approval. No model/browser runs.
+- Added `workflows discover` and required candidate YAML artifacts, a discovery
+  report and enriched graph. Preflight refuses approved/malformed destination files
+  before replacing any artifacts. Existing unrelated artifacts remain preserved.
+- Documented decisions and supported limits in README and ADR 0010. Phase 7 was
+  committed and pushed as `f8e5282` before this phase began.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 7 baseline lint/typecheck/tests | Passed before edits; 129 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 95 files |
+| `pnpm typecheck` | Passed, including eleven package builds, root tests and fixture |
+| `pnpm test` | 142 tests passed across fourteen suites |
+| Built CLI fixture discovery | Three structurally valid candidate workflows |
+| Candidate YAML round trip / repeat artifacts / reordered input | Passed; deterministic output |
+| Approved artifact preflight | Refused replacement without changing any candidate/report |
+| `git diff --check` | Passed |
+
+Fixture major steps are verified for Create Client, Create Plan and Change Plan
+Structure. Tests also cover negative/soft/conditional/skipped/scoped evidence,
+unsupported actions, alternative paths, merged observations, source immutability,
+stale snapshots, malformed YAML, aliases, limits and CLI exclusions/arguments.
+The fixture UI did not change; browser execution remains Phase 10. Hosted CI was
+not inspected from this session.
+
+### Scope notes and limitations
+
+- All Phase 8 acceptance criteria are implemented. The CLI is a delivery extension;
+  additive IR text/count conditions are necessary to preserve real assertions.
+- Edit/deactivate completion targets are unresolved and explicitly skipped. Change
+  Plan Structure currently uses the simple-to-weekly path and a weak container
+  disappearance terminal; confirmation/back paths are not flattened into it.
+- Approval priority becomes applicable with the later registry. API/history/PR
+  evidence supports provenance, not inferred missing UI order. Navigation and state
+  transitions are limited to preceding routes and supported assertion conditions.
+- Runtime input/row bindings, prerequisites, branches and arbitrary locator chains
+  require later work/review. Confidence is rule strength, not execution success.
+  Old candidate files are not pruned; the current report lists current candidates.
+- Nine phases are complete (0–8), leaving 22 (9–30). Continue automatically through
+  the next phases, committing and pushing each completed phase as authorized.

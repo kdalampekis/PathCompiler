@@ -137,6 +137,13 @@ describe("Workflow IR v1", () => {
   it.each([
     { type: "route_matches", pattern: "^/clients/[^/]+$" },
     { type: "target_appears", target: "client.form" },
+    {
+      type: "element_text",
+      target: "clients.feedback",
+      text: "Client created",
+      match: "exact",
+    },
+    { type: "element_count", target: "dialog.container", count: 0 },
     { type: "event_emitted", event: "client.created" },
     { type: "url_changed" },
     { type: "element_state", target: "client.form.submit", state: "enabled" },

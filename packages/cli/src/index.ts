@@ -19,6 +19,11 @@ import {
 } from "@pathcompiler/git-intelligence";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
+import {
+  discoverWorkflows,
+  parseCandidateYaml,
+  serializeCandidateYaml,
+} from "@pathcompiler/workflow-discovery";
 
 export const HELP = `PathCompiler — local Next.js source analysis
 
@@ -27,6 +32,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler tests mine [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler surfaces discover [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler capabilities discover [directory] [--expect <json-file>] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler workflows discover [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
@@ -46,6 +52,8 @@ Surfaces are static candidates requiring review, not approved capabilities or wo
 capabilities discover mines source/test evidence into reports/capabilities.json and
 graph/capability-graph.json. --expect supplies evaluation-only capability IDs;
 without ground truth, false positives are reported as not evaluated.
+workflows discover writes workflows/candidates/*.yaml, reports/workflow-candidates.json
+and graph/workflow-graph.json. Candidates require review; browser validation has not run.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -260,6 +268,59 @@ export async function runCli(
   if (values.json)
     throw new Error("--json is only supported by targets suggest.");
   if (
+    positionals[0] === "workflows" &&
+    positionals[1] === "discover" &&
+    positionals.length <= 3
+  ) {
+    const project = await readSourceProject(
+      path.resolve(cwd, positionals[2] ?? "."),
+      { exclude: values.exclude ?? [] },
+    );
+    const source = analyzeNextProject(project);
+    const mined = minePlaywrightTests(project, source.graph);
+    const capabilities = discoverCapabilities(mined.graph);
+    const result = discoverWorkflows(
+      capabilities.graph,
+      capabilities.report,
+      mined.report,
+    );
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const candidates = result.report.candidates.map(
+      (candidate) =>
+        [
+          `workflows/candidates/${candidate.workflow.id}.yaml`,
+          serializeCandidateYaml(candidate),
+        ] as const,
+    );
+    // Preflight every destination before replacing any candidate or report.
+    for (const [relative] of candidates) {
+      let existing: string;
+      try {
+        existing = await readFile(path.join(output, relative), "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      try {
+        parseCandidateYaml(existing);
+      } catch (error) {
+        throw new Error(
+          `Refusing to replace ${relative}: it is not a valid unapproved candidate. Choose a new --out directory or move the existing artifact.`,
+          { cause: error },
+        );
+      }
+    }
+    await writeArtifacts(output, [
+      ...candidates,
+      [
+        "reports/workflow-candidates.json",
+        `${JSON.stringify(result.report, null, 2)}\n`,
+      ],
+      ["graph/workflow-graph.json", `${result.graph.serialize()}\n`],
+    ]);
+    return `Discovered ${result.report.candidates.length} workflow candidates; ${result.report.skipped.length} capabilities need more evidence.\nArtifacts: ${output}\nAll candidates require review. Schema passed; repository, evidence, test comparison and browser validation have not run.\n`;
+  }
+  if (
     positionals[0] === "capabilities" &&
     positionals[1] === "discover" &&
     positionals.length <= 3
@@ -335,7 +396,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, or capabilities discover. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, or workflows discover. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],

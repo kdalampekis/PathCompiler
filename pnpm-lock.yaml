@@ -18,7 +18,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 5.0.5
-        version: 5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5))
+        version: 5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(yaml@2.9.1))
 
   fixtures/next-demo:
     dependencies:
@@ -117,6 +117,9 @@ importers:
       "@pathcompiler/test-miner-playwright":
         specifier: workspace:*
         version: link:../test-miner-playwright
+      "@pathcompiler/workflow-discovery":
+        specifier: workspace:*
+        version: link:../workflow-discovery
 
   packages/evidence:
     dependencies:
@@ -172,6 +175,37 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+
+  packages/workflow-discovery:
+    dependencies:
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/evidence":
+        specifier: workspace:*
+        version: link:../evidence
+      "@pathcompiler/graph-core":
+        specifier: workspace:*
+        version: link:../graph-core
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
+      "@pathcompiler/workflow-ir":
+        specifier: workspace:*
+        version: link:../workflow-ir
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -1371,6 +1405,14 @@ packages:
     engines: { node: ">=20.11" }
     hasBin: true
 
+  yaml@2.9.1:
+    resolution:
+      {
+        integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==,
+      }
+    engines: { node: ">= 14.6" }
+    hasBin: true
+
   zod@4.6.7:
     resolution:
       {
@@ -1646,14 +1688,14 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  "@vitest/mocker@5.0.5(vite@8.3.5(@types/node@22.20.5))":
+  "@vitest/mocker@5.0.5(vite@8.3.5(@types/node@22.20.5)(yaml@2.9.1))":
     dependencies:
       "@jridgewell/trace-mapping": 0.3.31
       "@vitest/spy": 5.0.5
       estree-walker: 3.0.3
       magic-string: 1.4.3
     optionalDependencies:
-      vite: 8.3.5(@types/node@22.20.5)
+      vite: 8.3.5(@types/node@22.20.5)(yaml@2.9.1)
 
   "@vitest/spy@5.0.5": {}
 
@@ -1884,7 +1926,7 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  vite@8.3.5(@types/node@22.20.5):
+  vite@8.3.5(@types/node@22.20.5)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -1894,11 +1936,12 @@ snapshots:
     optionalDependencies:
       "@types/node": 22.20.5
       fsevents: 2.3.3
+      yaml: 2.9.1
 
-  vitest@5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)):
+  vitest@5.0.5(@types/node@22.20.5)(vite@8.3.5(@types/node@22.20.5)(yaml@2.9.1)):
     dependencies:
       "@types/chai": 5.2.3
-      "@vitest/mocker": 5.0.5(vite@8.3.5(@types/node@22.20.5))
+      "@vitest/mocker": 5.0.5(vite@8.3.5(@types/node@22.20.5)(yaml@2.9.1))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -1909,7 +1952,7 @@ snapshots:
       tinybench: 6.2.2
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 8.3.5(@types/node@22.20.5)
+      vite: 8.3.5(@types/node@22.20.5)(yaml@2.9.1)
       why-is-node-running: 3.2.1
     optionalDependencies:
       "@types/node": 22.20.5
@@ -1917,5 +1960,7 @@ snapshots:
       - msw
 
   why-is-node-running@3.2.1: {}
+
+  yaml@2.9.1: {}
 
   zod@4.6.7: {}
