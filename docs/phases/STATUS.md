@@ -174,4 +174,75 @@ Hosted CI was not inspected from this session.
 
 ## Phase 3 — Playwright Test Mining
 
+Complete — verified locally on 2026-10-21.
+
+- Added `@pathcompiler/test-miner-playwright` with a source-only TypeScript parser
+  and validated, versioned trace/action/assertion/target/provenance schemas.
+- Extracts literal test declarations, import aliases, nested suite names/modes,
+  beforeEach/afterEach phases, straight-line Playwright actions and assertions,
+  simple locator aliases and bounded same-file helper calls with argument/default
+  binding and call-site evidence.
+- Preserves action/assertion ordering, initial route, locator scopes/hints,
+  negative/soft assertions, API requests, terminal assertions and explicit gaps.
+  Dynamic values are not guessed. Request bodies are not retained.
+- Maps exact semantic targets, test IDs, static role/name or labels and local
+  routes to source graph nodes. Ambiguous candidates remain unresolved as edges.
+  Adds Test nodes and uniquely mapped `TESTED_BY` edges without mutating the input
+  graph or generating approved workflows.
+- Added `pathcompiler tests mine [directory]` with existing output/exclusion
+  conventions. Writes a trace report and separate test-evidence graph, preserving
+  source-scan artifacts. No test runner, config or target code is executed.
+- The fixture yields seven traces, 121 actions (including explicit unsupported
+  events), 70 assertions and 70 `TESTED_BY` edges. The create-client helper exposes
+  the route, create/name/email/save target sequence and successful feedback
+  assertion needed to reconstruct `clients.create` from test evidence.
+- Added CLI/package regression coverage and documented contracts and limits in
+  README and ADR 0005. No new external dependency versions were introduced.
+- Phase 2 was committed and pushed as `f7b5737` before Phase 3 began.
+
+### Verification
+
+All checks below passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 2 baseline lint/typecheck/tests | Passed; 66 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed, including six package builds, root tests and fixture |
+| `pnpm test` | 79 tests passed across seven suites |
+| `pnpm pathcompiler tests mine ./fixtures/next-demo` | Seven traces; two fully extracted and five explicitly partial |
+| Fixture trace acceptance | All seven have terminal assertions; UI traces have starting routes |
+| Repeat reports/graphs and reversed source input | Deterministic output |
+| Built CLI output/exclusion regression | Separate artifacts, valid JSON, exclusion and argument checks passed |
+| `git diff --check` | Passed |
+
+Tests also verify helpers/defaults/call-site provenance, source graph immutability,
+aliased/shadowed imports, setup/teardown separation, skipped modes, direct API
+shortcuts, negative assertions, recursion/control-flow limits, ambiguous/dynamic
+locators, scoped semantic mappings, stale-value avoidance, absent terminal
+assertions after later actions, malformed input and snapshot mismatch rejection.
+
+The fixture application and its seven browser tests were unchanged; their Phase 2
+browser results remain applicable and the tests were consumed as parser input in
+this phase. Browser execution was not repeated. Hosted CI was not inspected.
+
+### Scope notes and limitations
+
+- All Phase 3 acceptance scope is implemented for the specified straightforward
+  syntax. The added CLI is a small delivery extension for inspecting the evidence.
+- Five fixture traces are deliberately partial because setup/data-processing calls,
+  loops or try/finally exceed the supported subset. Their extracted events and
+  gaps remain visible. The API-only test has a null browser start route.
+- Imported/page-object helpers, custom test.extend fixtures, generated tests,
+  concurrent calls and general JavaScript/control-flow interpretation are deferred.
+  Config/project expansion is not executed; test-ID mapping assumes data-testid.
+- Static target matches identify declarations, not live DOM uniqueness. Reports
+  contain build-time provenance and literal test data and are not runtime manifests.
+- Test traces are evidence only, with execution marked not-run. Negative cases,
+  setup shortcuts and terminal assertions do not automatically become workflows
+  or establish that the tests passed. Workflow compilation remains a later phase.
+
+## Phase 4 — Git Intelligence
+
 Not started.

@@ -127,6 +127,46 @@ describe("pathcompiler CLI", () => {
     }
   });
 
+  it("mines fixture test evidence into separate repeatable artifacts through the built CLI", async () => {
+    const cwd = await directory();
+    const args = [binary, "tests", "mine", fixture, "--out", "evidence"];
+    const first = await exec(process.execPath, args, { cwd });
+    expect(first.stdout).toContain("Mined 7 Playwright tests");
+    const traceFile = path.join(cwd, "evidence/reports/test-traces.json");
+    const graphFile = path.join(cwd, "evidence/graph/test-graph.json");
+    const traces = await readFile(traceFile, "utf8");
+    const graph = await readFile(graphFile, "utf8");
+    expect(JSON.parse(traces)).toMatchObject({
+      schemaVersion: 1,
+      evidenceOnly: true,
+      execution: "not-run",
+      traces: expect.any(Array),
+    });
+    expect(
+      JSON.parse(graph).nodes.filter(
+        (node: { type: string }) => node.type === "Test",
+      ),
+    ).toHaveLength(7);
+    await exec(process.execPath, args, { cwd });
+    expect(await readFile(traceFile, "utf8")).toBe(traces);
+    expect(await readFile(graphFile, "utf8")).toBe(graph);
+    expect(await readdir(path.join(cwd, "evidence/graph"))).toEqual([
+      "test-graph.json",
+    ]);
+    expect(
+      await runCli(
+        ["tests", "mine", fixture, "--out", "excluded", "--exclude", "tests"],
+        cwd,
+      ),
+    ).toContain("Mined 0 Playwright tests");
+    for (const args of [
+      ["tests", "mine", fixture, "extra"],
+      ["tests", "mine", fixture, "--json"],
+      ["tests", "unknown"],
+    ])
+      await expect(runCli(args, cwd)).rejects.toThrow();
+  });
+
   it("prints help and fails nonzero for invalid arguments or source syntax", async () => {
     expect(await runCli(["--help"])).toContain("Usage: pathcompiler scan");
     for (const args of [

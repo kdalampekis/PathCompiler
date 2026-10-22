@@ -7,7 +7,8 @@ and compile reviewed workflows into versioned headless artifacts. The product gr
 is a build-time representation; approved workflows are the runtime source of truth.
 
 This repository implements **Phase 0 — Repository Foundation**,
-**Phase 1 — Static Next.js Analyzer** and **Phase 2 — Semantic Targets**. Workflow discovery, compilation, SDKs and
+**Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets** and
+**Phase 3 — Playwright Test Mining**. Workflow discovery, compilation, SDKs and
 runtime guidance are future phases.
 
 ## Development
@@ -125,6 +126,39 @@ to the selected row before resolving it; the fixture uses `clients.row` with
 `data-client-id` and `plans.row` with `data-plan-id`. Static confidence does not
 prove DOM uniqueness or availability. See the [target contract and limits](docs/decisions/0004-semantic-target-contract.md).
 
+## Mine Playwright evidence
+
+```sh
+pnpm build:packages
+pnpm pathcompiler tests mine ./fixtures/next-demo
+```
+
+This command statically reads tests and source together, producing:
+
+```text
+.pathcompiler/reports/test-traces.json
+.pathcompiler/graph/test-graph.json
+```
+
+Use `--out` and `--exclude` as with `scan`; the directory defaults to the current
+working directory. Source scan artifacts are preserved. Mining does not run tests,
+load repository configuration or launch a browser.
+
+Each trace has a start route, ordered actions/assertions, target hints, provenance
+and a terminal assertion when the last extracted test-body event is an assertion.
+The shared `order` field interleaves actions and assertions. Setup and teardown are
+marked separately. Same-file helpers such as `createClient` are expanded with
+call-site evidence. Direct API calls remain request actions, and negative/soft
+assertions retain their meaning. Unique source-target matches add `TESTED_BY`
+edges; ambiguous matches remain candidates.
+
+The fixture produces seven traces. Two workflow tests are fully extracted; five
+are partial because some setup/data-processing/control-flow code is unsupported.
+The API-only test has a null start route. All seven retain terminal assertions,
+and the client creation sequence is recoverable from semantic targets and its
+feedback assertion. These are test observations, not approved workflows or test
+pass results. See [mining boundaries](docs/decisions/0005-static-playwright-evidence.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -132,13 +166,14 @@ prove DOM uniqueness or availability. See the [target contract and limits](docs/
 | `@pathcompiler/workflow-ir` | Zod schemas, inferred types, `parseWorkflow(unknown)`                             |
 | `@pathcompiler/graph-core`  | `ProductGraph`, graph schemas/types, `createNodeId`, `createEdgeId`, `diffGraphs` |
 
-Additional Phase 1 packages:
+Analysis packages:
 
 | Package | Public API |
 | --- | --- |
 | `@pathcompiler/source-model` | `readSourceProject`, source/diagnostic schemas and exclusion defaults |
 | `@pathcompiler/adapter-nextjs` | `analyzeNextProject`, `scanNextRepository`, `discoverRoute`, `suggestTargets`, scan/target schemas and types |
-| `@pathcompiler/cli` | `pathcompiler scan`, `pathcompiler targets suggest`, `runCli` |
+| `@pathcompiler/test-miner-playwright` | `minePlaywrightTests`, trace/action/assertion/target schemas and types |
+| `@pathcompiler/cli` | `pathcompiler scan`, `pathcompiler targets suggest`, `pathcompiler tests mine`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

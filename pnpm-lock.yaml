@@ -68,6 +68,12 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
 
   packages/graph-core:
     dependencies:
@@ -80,6 +86,25 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/test-miner-playwright:
+    dependencies:
+      "@pathcompiler/graph-core":
+        specifier: workspace:*
+        version: link:../graph-core
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
 
   packages/workflow-ir:
     dependencies:

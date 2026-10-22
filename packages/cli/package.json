@@ -20,6 +20,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pathcompiler/adapter-nextjs": "workspace:*"
+    "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/source-model": "workspace:*",
+    "@pathcompiler/test-miner-playwright": "workspace:*"
   }
 }
