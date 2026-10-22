@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/git-intelligence": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*"
   }

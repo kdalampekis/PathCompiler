@@ -7,8 +7,9 @@ and compile reviewed workflows into versioned headless artifacts. The product gr
 is a build-time representation; approved workflows are the runtime source of truth.
 
 This repository implements **Phase 0 — Repository Foundation**,
-**Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets** and
-**Phase 3 — Playwright Test Mining**. Workflow discovery, compilation, SDKs and
+**Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets**,
+**Phase 3 — Playwright Test Mining** and **Phase 4 — Git Intelligence**.
+Workflow discovery, compilation, SDKs and
 runtime guidance are future phases.
 
 ## Development
@@ -159,6 +160,61 @@ and the client creation sequence is recoverable from semantic targets and its
 feedback assertion. These are test observations, not approved workflows or test
 pass results. See [mining boundaries](docs/decisions/0005-static-playwright-evidence.md).
 
+## Inspect local Git evidence
+
+```sh
+pnpm build:packages
+pnpm pathcompiler git inspect ./fixtures/next-demo --node ui:clients.create
+```
+
+The command scans current source, follows the selected node's provenance files,
+and reads up to 20 commits per file. It writes:
+
+```text
+.pathcompiler/reports/git-evidence.json
+.pathcompiler/graph/history-graph.json
+```
+
+Use graph IDs from `scan` or `targets suggest --json`. The directory defaults to
+the current directory; `--limit <1-100>`, `--out` and `--exclude` are supported.
+Existing scan/test artifacts are preserved. Git must support `--no-lazy-fetch`
+(verified with Git 2.55.0), and the working tree must have an initial commit.
+No remote is contacted.
+
+The report contains commit SHAs, full messages, UTC author dates, parent SHAs,
+selected changed paths, structured unified diff hunks and truncation/shallow
+diagnostics. Messages describe intent, not verified behavior. `CHANGED_BY` edges
+confirm changed files; links to current components, symbols and actions are
+explicit file associations with heuristic confidence 0.5. They do not establish
+that the historical commit changed that particular declaration.
+
+The package also supports direct queries:
+
+```ts
+import { openGitRepository } from "@pathcompiler/git-intelligence";
+
+const git = await openGitRepository("./fixtures/next-demo");
+const head = await git.getCurrentCommit();
+const defaultBranch = await git.getDefaultBranch();
+const history = await git.getCommitsForPath("components/clients.tsx", { limit: 10 });
+const blame = await git.getBlame("components/clients.tsx", { startLine: 1, limit: 50 });
+// git.getDiff(base, head, { paths: [...] }); git.getCommitMessage(sha);
+```
+
+Paths are relative to the opened directory, including nested projects. Blame reads
+committed lines, returns line/SHA attribution without source content, and marks
+partial ranges and shallow history. Default branch resolution uses cached
+`origin/HEAD`, then existing `main`/`master` branches marked as convention guesses.
+It returns null when unresolved. Queries fail on resource limits instead of
+silently returning partial data; bounded history/range results have explicit flags.
+
+History uses exact paths without rename following; renames appear as delete/add
+changes. Evidence diffs compare each commit to its first parent. A missing shallow
+parent produces a null diff and diagnostic. Dirty working trees are marked, and
+source/Git commit and dirty-state mismatches are rejected. Reports include private
+messages and source patches and must stay out of browser runtime manifests.
+See [Git evidence decisions and limits](docs/decisions/0006-local-git-evidence.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -173,7 +229,8 @@ Analysis packages:
 | `@pathcompiler/source-model` | `readSourceProject`, source/diagnostic schemas and exclusion defaults |
 | `@pathcompiler/adapter-nextjs` | `analyzeNextProject`, `scanNextRepository`, `discoverRoute`, `suggestTargets`, scan/target schemas and types |
 | `@pathcompiler/test-miner-playwright` | `minePlaywrightTests`, trace/action/assertion/target schemas and types |
-| `@pathcompiler/cli` | `pathcompiler scan`, `pathcompiler targets suggest`, `pathcompiler tests mine`, `runCli` |
+| `@pathcompiler/git-intelligence` | `openGitRepository`, `enrichNodeHistory`, commit/diff/history/blame/report schemas and types |
+| `@pathcompiler/cli` | `pathcompiler scan`, `pathcompiler targets suggest`, `pathcompiler tests mine`, `pathcompiler git inspect`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

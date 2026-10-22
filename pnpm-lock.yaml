@@ -68,12 +68,31 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+      "@pathcompiler/git-intelligence":
+        specifier: workspace:*
+        version: link:../git-intelligence
       "@pathcompiler/source-model":
         specifier: workspace:*
         version: link:../source-model
       "@pathcompiler/test-miner-playwright":
         specifier: workspace:*
         version: link:../test-miner-playwright
+
+  packages/git-intelligence:
+    dependencies:
+      "@pathcompiler/graph-core":
+        specifier: workspace:*
+        version: link:../graph-core
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
 
   packages/graph-core:
     dependencies:

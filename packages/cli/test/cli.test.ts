@@ -198,4 +198,110 @@ describe("pathcompiler CLI", () => {
       readFile(path.join(cwd, ".pathcompiler/graph/source-graph.json")),
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("inspects bounded node history through the built CLI and preserves existing artifacts", async () => {
+    const cwd = await directory();
+    const sourceDirectory = path.join(cwd, "source");
+    await mkdir(path.join(sourceDirectory, "app"), { recursive: true });
+    const git = async (...args: string[]) =>
+      exec("git", [
+        "-C",
+        sourceDirectory,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        ...args,
+      ]);
+    await git("init", "-b", "main");
+    const file = path.join(sourceDirectory, "app/page.tsx");
+    const source =
+      'export default function Page() { return <button data-pathcompiler="clients.create">Create</button>; }';
+    await writeFile(file, source);
+    await git("add", ".");
+    await git("commit", "-m", "Add client action");
+    await writeFile(file, source.replace("Create</", "Add client</"));
+    await git("add", ".");
+    await git("commit", "-m", "Clarify label");
+    const marker = path.join(sourceDirectory, "EXECUTED");
+    await git("config", "core.fsmonitor", `touch '${marker}'`);
+    await runCli(["scan", sourceDirectory, "--out", "evidence"], cwd);
+    const scanPath = path.join(cwd, "evidence/graph/source-graph.json");
+    const scan = await readFile(scanPath, "utf8");
+    const args = [
+      binary,
+      "git",
+      "inspect",
+      sourceDirectory,
+      "--node",
+      "ui:clients.create",
+      "--limit",
+      "1",
+      "--out",
+      "evidence",
+    ];
+    expect((await exec(process.execPath, args, { cwd })).stdout).toContain(
+      "Inspected 1 local commits",
+    );
+    const reportPath = path.join(cwd, "evidence/reports/git-evidence.json");
+    const graphPath = path.join(cwd, "evidence/graph/history-graph.json");
+    const report = await readFile(reportPath, "utf8");
+    const graph = await readFile(graphPath, "utf8");
+    expect(JSON.parse(report)).toMatchObject({
+      schemaVersion: 1,
+      evidenceOnly: true,
+      nodeId: "ui:clients.create",
+      histories: [expect.objectContaining({ limited: true })],
+    });
+    expect(JSON.parse(graph).edges).toContainEqual(
+      expect.objectContaining({
+        source: "ui:clients.create",
+        type: "CHANGED_BY",
+      }),
+    );
+    await exec(process.execPath, args, { cwd });
+    expect(await readFile(reportPath, "utf8")).toBe(report);
+    expect(await readFile(graphPath, "utf8")).toBe(graph);
+    expect(await readFile(scanPath, "utf8")).toBe(scan);
+    await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(
+      (await git("-c", "core.fsmonitor=false", "status", "--porcelain")).stdout,
+    ).toBe("");
+    for (const args of [
+      ["git", "inspect", sourceDirectory],
+      ["git", "inspect", sourceDirectory, "--node", "missing"],
+      [
+        "git",
+        "inspect",
+        sourceDirectory,
+        "--node",
+        "ui:clients.create",
+        "--exclude",
+        "app",
+      ],
+      [
+        "git",
+        "inspect",
+        sourceDirectory,
+        "--node",
+        "ui:clients.create",
+        "--limit",
+        "101",
+      ],
+      [
+        "git",
+        "inspect",
+        sourceDirectory,
+        "--node",
+        "ui:clients.create",
+        "--json",
+      ],
+      ["scan", sourceDirectory, "--limit", "1"],
+    ])
+      await expect(runCli(args, cwd)).rejects.toThrow();
+  });
 });

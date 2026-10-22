@@ -245,4 +245,74 @@ this phase. Browser execution was not repeated. Hosted CI was not inspected.
 
 ## Phase 4 — Git Intelligence
 
-Not started.
+Complete — verified locally on 2026-10-21.
+
+- Added `@pathcompiler/git-intelligence` with local Git methods for current commit,
+  default branch, diffs, path history, blame and full commit messages. Structured
+  schemas preserve SHAs, raw parent identities, UTC author dates, selected changed
+  paths, binary markers and unified diff hunks.
+- Implemented current-node-first enrichment: provenance files → bounded path
+  history → relevant commit metadata/diffs → Commit nodes and `CHANGED_BY` edges.
+  The source graph is unchanged. Confirmed file changes and heuristic associations
+  to current components/actions are distinguished explicitly.
+- Added `pathcompiler git inspect [directory] --node <node-id>`, with history
+  limits, output and source exclusions. Writes separate Git evidence and history
+  graph artifacts while preserving existing scan/test outputs.
+- Supports nested scan directories, detached/unborn repositories, cached default
+  branch evidence, shallow boundaries, literal special paths, binary/empty files,
+  deletions, type changes, root diffs and first-parent merge comparisons.
+- Queries are local, read-only and bounded by process time/output, commit counts,
+  selected paths and blame ranges. External diff/text conversion/fsmonitor commands
+  and lazy fetches are disabled. Source ingestion also disables fsmonitor so the
+  complete CLI scan/history path preserves its no-target-code-execution contract.
+- Documented public contracts, confidence, rename/merge/shallow behavior and
+  snapshot limits in README and ADR 0006. No new external dependency versions.
+- Phase 3 was committed and pushed as `b288e38` before Phase 4 began.
+
+### Verification
+
+All checks passed with Node 22.23.3, pnpm 10.34.7 and Git 2.55.0:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 3 baseline lint/typecheck/tests | Passed; 79 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 68 files |
+| `pnpm typecheck` | Passed, including seven package builds, root tests and fixture |
+| `pnpm test` | 89 tests passed across eight suites |
+| `pnpm pathcompiler git inspect ./fixtures/next-demo --node ui:clients.create` | Two relevant local commits; scoped to `components/clients.tsx` |
+| AddClientModal acceptance fixture | Changed commit linked to File, Component and UIAction nodes; unrelated files unlinked |
+| Repeat graph/report and built-CLI artifacts | Deterministic output; original graph/source/artifacts preserved |
+| `git diff --check` | Passed |
+
+Focused tests cover metadata and author-date normalization, bounded history,
+explicit revisions/date filters, blame ranges, unusual Unicode/newline/glob-like
+paths, missing final newlines, binary/empty files, file limits, rename/delete/type
+changes, merge parents, default branch fallback, detached/unborn/nonrepositories,
+shallow missing parents, dirty/stale graph rejection, input validation and disabled
+external diff/textconv/fsmonitor execution. Temporary repositories provide actual
+Git history without changing this repository's history for tests.
+
+The fixture application and its seven browser tests were unchanged. Browser
+execution was not repeated; hosted CI was not inspected from this session.
+
+### Scope notes and limitations
+
+- All Phase 4 acceptance scope is implemented. The inspection CLI is a small
+  delivery extension. The single source-model Git option is necessary to keep
+  source ingestion read-only when used by that command.
+- File associations do not prove historical symbol/action changes. Commit messages
+  remain intent evidence. No model inference, workflow approval or runtime artifact
+  generation was added.
+- History uses exact paths and normal Git path simplification; it does not follow
+  renames. Diffs represent renames as delete/add and compare commits to their first
+  parent. Shallow missing parents produce null diffs and diagnostics. Native blame
+  may follow whole-file renames; original line numbers are not historical locators.
+- Default branches use cached origin metadata or explicitly labeled main/master
+  conventions. No remote fetch occurs. Git must support `--no-lazy-fetch`.
+- Process limits are 10 seconds/8 MiB; large queries fail actionably. Blame reads a
+  bounded committed blob, not the working tree. Non-UTF-8 declared commit message
+  encodings are rejected. Commit/dirty checks are not atomic filesystem snapshots.
+- Evidence reports contain private patches/messages and stay build-time only.
+  The existing inherited-tsconfig diagnostic remains. GitHub PR integration is
+  Phase 5 and has not been started.

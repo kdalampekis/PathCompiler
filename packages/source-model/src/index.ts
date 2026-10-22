@@ -86,7 +86,7 @@ export async function readSourceProject(
   let dirty: boolean | null = null;
   let allowed: Set<string> | undefined;
   const git = (args: string[]) =>
-    exec("git", ["-C", root, ...args], {
+    exec("git", ["-C", root, "-c", "core.fsmonitor=false", ...args], {
       maxBuffer: 32 * 1024 * 1024,
       env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     });
