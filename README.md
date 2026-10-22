@@ -490,6 +490,37 @@ always `not-run` here. `valid: true` means the applicable static checks passed;
 warnings still require review and it does not grant approval or execution authority.
 See [ADR 0011](docs/decisions/0011-explicit-workflow-validation.md).
 
+## Verify in the browser
+
+```sh
+pnpm test:e2e
+```
+
+`@pathcompiler/workflow-validator/browser` exports `verifyFixtureWorkflow`, a
+deliberately narrow Playwright runner for the fixture's `clients.create` path. The
+caller supplies the candidate, a loopback fixture URL, a `Page` carrying the
+intended test session and explicit input values; values are never read from
+evidence and never written to the report.
+
+```ts
+import { verifyFixtureWorkflow } from '@pathcompiler/workflow-validator/browser';
+const evidence = await verifyFixtureWorkflow(candidate.workflow, {
+  page,
+  baseURL: 'http://127.0.0.1:3101',
+  inputs: { 'client.form.name': 'Ada', 'client.form.email': 'ada@example.test' },
+});
+```
+
+The runner refuses non-loopback origins, unsupported workflows, changed step
+targets/order, branches, preconditions and unsupported conditions before opening
+the app. It then opens `/clients`, requires each semantic target to resolve to
+exactly one rendered element, performs only the allowed click/fill actions, checks
+each expected transition and the terminal assertion, and stops on navigation away
+from the fixture. The versioned report records per-step action/expectation status
+and a structured failure (`target-not-found`, `ambiguous-target`, stage and step).
+It is not a general browser automation engine.
+See [ADR 0012](docs/decisions/0012-fixture-browser-verification.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -509,7 +540,7 @@ Analysis packages:
 | `@pathcompiler/evidence` | `collectGraphEvidence`, `sourceProvenance`, evidence bundle/provenance schemas and shared workflow evidence references |
 | `@pathcompiler/capability-engine` | `discoverProductSurfaces`, `discoverCapabilities`, `evaluateCapabilities`, surface/capability/evaluation schemas, `SemanticModel`, classification/summary schemas and output parsers |
 | `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
-| `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types |
+| `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types; `./browser`: `verifyFixtureWorkflow`, browser verification report schema |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover`, `workflows validate`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after

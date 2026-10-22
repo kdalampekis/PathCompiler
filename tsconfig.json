@@ -1,5 +1,13 @@
 {
   "extends": "./tsconfig.base.json",
-  "compilerOptions": { "noEmit": true },
-  "include": ["vitest.config.ts", "packages/*/test/**/*.ts"]
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "vitest.config.ts",
+    "packages/*/test/**/*.ts",
+    "packages/*/browser-test/**/*.ts",
+    "packages/*/playwright.config.ts"
+  ]
 }

@@ -653,3 +653,58 @@ changed; browser verification starts in Phase 10. Hosted CI was not inspected.
   passing browser execution, authorization or verified prerequisites/input bindings.
   The structure-change workflow retains a weak terminal warning.
 - Ten phases are complete (0–9), leaving 21 (10–30). Phase 10 continues automatically.
+
+## Phase 10 — Browser Verification
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/workflow-validator/browser` with `verifyFixtureWorkflow`, a
+  Playwright runner limited to the fixture's four-step `clients.create` path.
+  Playwright is an optional peer dependency; the static validator entry is unchanged.
+- Inputs are the candidate workflow, a loopback fixture origin, a caller-owned `Page`
+  carrying the test user/session and explicit name/email values. Values are never
+  read from evidence or written to reports.
+- Preflight rejects remote origins, invalid options, unsupported workflow IDs,
+  changed targets/actions/order, branches, optional steps, preconditions and
+  unsupported conditions before navigation.
+- The runner opens `/clients`, resolves each semantic target to exactly one rendered
+  element, performs only allowed click/fill actions, checks expected transitions and
+  the terminal assertion, and aborts if the browser leaves the fixture route.
+- Output is a versioned, schema-validated browser evidence report with per-step
+  action/expectation status, terminal status and one structured failure.
+- Added `test:browser` to the validator, chained it into `pnpm test:e2e` and CI
+  artifact upload. Documented in README and ADR 0012.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 9 baseline lint/typecheck/tests | Passed before completion; 153 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 103 files |
+| `pnpm typecheck` | Passed, including browser tests and Playwright config |
+| `pnpm test` | 153 tests passed across fifteen suites |
+| `pnpm test:e2e` | 7 fixture Chromium tests and 6 verification tests passed |
+| `git diff --check` | Passed |
+
+Browser coverage: automatically discovered and statically valid `clients.create`
+passes end to end and persists across reload; evidence omits input values. A
+removed target fails at `resolve` with `target-not-found` and a stale-annotation
+hint; duplicated targets fail as `ambiguous-target` before clicking; a viewer
+session stops before the hidden create control; failed expected transitions and
+terminal assertions are reported separately; remote URLs, stale plans and missing
+bindings are refused without opening the app.
+
+### Scope notes and limitations
+
+- All Phase 10 scope is implemented. The runner intentionally supports only
+  `clients.create`; other workflows report unsupported rather than passing.
+- `validateWorkflow` still reports browser verification as `not-run`; browser
+  evidence is a separate report the caller attaches. Merging the two is left to the
+  review/compiler phases if needed.
+- The Codex session ended mid-phase; this phase was finished in Claude Code. The
+  viewer-session test expectation was corrected (`resolve`, not `action`) because
+  the fixture does not render the create control for viewers.
+- Eleven phases are complete (0–10), leaving 20 (11–30).

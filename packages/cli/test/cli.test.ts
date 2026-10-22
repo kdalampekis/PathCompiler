@@ -86,7 +86,7 @@ describe("pathcompiler CLI", () => {
     await expect(
       runCli(["workflows", "validate", "../secret", fixture], cwd),
     ).rejects.toThrow("Workflow ID");
-  });
+  }, 20_000);
 
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();

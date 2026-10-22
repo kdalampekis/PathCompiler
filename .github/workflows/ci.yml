@@ -25,5 +25,7 @@ jobs:
         if: failure()
         with:
           name: browser-test-results
-          path: fixtures/next-demo/test-results/
+          path: |
+            fixtures/next-demo/test-results/
+            packages/workflow-validator/test-results/
           if-no-files-found: ignore

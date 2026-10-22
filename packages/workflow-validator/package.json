@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
     }
   },
   "files": [
@@ -14,7 +18,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@pathcompiler/evidence": "workspace:*",
@@ -24,7 +29,16 @@
     "@pathcompiler/workflow-ir": "workspace:*",
     "zod": "4.6.7"
   },
+  "peerDependencies": {
+    "@playwright/test": "1.64.1"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/workflow-discovery": "workspace:*"
