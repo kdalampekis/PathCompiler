@@ -6,8 +6,8 @@ PathCompiler will analyze source code, tests and Git history, discover workflows
 and compile reviewed workflows into versioned headless artifacts. The product graph
 is a build-time representation; approved workflows are the runtime source of truth.
 
-This repository implements **Phase 0 — Repository Foundation** and
-**Phase 1 — Static Next.js Analyzer**. Workflow discovery, compilation, SDKs and
+This repository implements **Phase 0 — Repository Foundation**,
+**Phase 1 — Static Next.js Analyzer** and **Phase 2 — Semantic Targets**. Workflow discovery, compilation, SDKs and
 runtime guidance are future phases.
 
 ## Development
@@ -87,6 +87,44 @@ arbitrary wrappers are not fully analyzed; see [analysis boundaries](docs/decisi
 Heuristic relationships carry confidence and provenance. They are not approved
 workflows or authoritative permission rules.
 
+## Semantic targets
+
+Give each source declaration a stable product ID:
+
+```tsx
+<button data-pathcompiler="clients.create" onClick={openCreateClient}>
+  Create Client
+</button>
+```
+
+The analyzer uses `ui:clients.create` as the graph identity, preserving it across
+file moves and label changes. Source location and commit remain in provenance.
+Explicit annotations have target confidence 1.0; literal `data-testid` (0.8) and
+static accessible role/name (0.6) provide fallback evidence. CSS structure is never
+a suggested semantic target.
+
+```sh
+pnpm build:packages
+pnpm pathcompiler targets suggest ./fixtures/next-demo
+pnpm pathcompiler targets suggest ./fixtures/next-demo --json
+```
+
+`targets suggest` defaults to the current directory, supports `--exclude`, and
+prints annotated targets, reviewable suggestions and diagnostics without writing
+files. JSON reports include `schemaVersion`, repository metadata and `targets`
+with source provenance, target evidence and nullable `suggestedTarget`. No model
+calls or automatic source edits are made. `targets apply` is not implemented.
+
+Use literal IDs starting with a letter, followed by letters, digits, `_`, `.`, `:`
+or `-`. Different source declarations must use different IDs. Dynamic annotations,
+conflicting IDs and unverified component forwarding are reported for review.
+Place attributes on native elements (or Next `Link`), after spread props.
+
+Repeated rows may share an action ID from a single declaration. Scope the action
+to the selected row before resolving it; the fixture uses `clients.row` with
+`data-client-id` and `plans.row` with `data-plan-id`. Static confidence does not
+prove DOM uniqueness or availability. See the [target contract and limits](docs/decisions/0004-semantic-target-contract.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -99,8 +137,8 @@ Additional Phase 1 packages:
 | Package | Public API |
 | --- | --- |
 | `@pathcompiler/source-model` | `readSourceProject`, source/diagnostic schemas and exclusion defaults |
-| `@pathcompiler/adapter-nextjs` | `analyzeNextProject`, `scanNextRepository`, `discoverRoute`, scan summary schema |
-| `@pathcompiler/cli` | `pathcompiler scan`, `runCli` |
+| `@pathcompiler/adapter-nextjs` | `analyzeNextProject`, `scanNextRepository`, `discoverRoute`, `suggestTargets`, scan/target schemas and types |
+| `@pathcompiler/cli` | `pathcompiler scan`, `pathcompiler targets suggest`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

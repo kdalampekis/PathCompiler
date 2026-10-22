@@ -69,6 +69,7 @@ export function Clients({ session }: { session: DemoSession }) {
         </div>
         {canEdit && (
           <button
+            data-pathcompiler="clients.create"
             type="button"
             onClick={() => {
               setNotice("");
@@ -84,7 +85,9 @@ export function Clients({ session }: { session: DemoSession }) {
           Viewer access. Switch to Editor to make changes.
         </p>
       )}
-      <p role="status">{notice}</p>
+      <p data-pathcompiler="clients.feedback" role="status">
+        {notice}
+      </p>
       {session.clients.length === 0 ? (
         <div className="empty">
           <h2>No clients yet</h2>
@@ -93,7 +96,12 @@ export function Clients({ session }: { session: DemoSession }) {
       ) : (
         <ul className="cards">
           {session.clients.map((client) => (
-            <li key={client.id} className="card">
+            <li
+              key={client.id}
+              data-pathcompiler="clients.row"
+              data-client-id={client.id}
+              className="card"
+            >
               <div>
                 <h2>{client.name}</h2>
                 <p>{client.email}</p>
@@ -104,6 +112,7 @@ export function Clients({ session }: { session: DemoSession }) {
               {canEdit && (
                 <div className="actions">
                   <button
+                    data-pathcompiler="clients.edit"
                     type="button"
                     className="secondary"
                     onClick={() => {
@@ -115,6 +124,7 @@ export function Clients({ session }: { session: DemoSession }) {
                   </button>
                   {client.active && (
                     <button
+                      data-pathcompiler="clients.deactivate"
                       type="button"
                       className="secondary"
                       onClick={() => {
@@ -136,10 +146,11 @@ export function Clients({ session }: { session: DemoSession }) {
           title={editing === "new" ? "Create Client" : "Edit Client"}
           onClose={close}
         >
-          <form onSubmit={submit} noValidate>
+          <form data-pathcompiler="client.form" onSubmit={submit} noValidate>
             <label>
               Name
               <input
+                data-pathcompiler="client.form.name"
                 name="name"
                 required
                 minLength={2}
@@ -150,6 +161,7 @@ export function Clients({ session }: { session: DemoSession }) {
             <label>
               Email
               <input
+                data-pathcompiler="client.form.email"
                 name="email"
                 type="email"
                 required
@@ -157,8 +169,16 @@ export function Clients({ session }: { session: DemoSession }) {
                 defaultValue={editing === "new" ? "" : editing.email}
               />
             </label>
-            {error && <p role="alert">{error}</p>}
-            <button disabled={busy} type="submit">
+            {error && (
+              <p data-pathcompiler="client.form.error" role="alert">
+                {error}
+              </p>
+            )}
+            <button
+              data-pathcompiler="client.form.submit"
+              disabled={busy}
+              type="submit"
+            >
               {busy ? "Saving…" : "Save Client"}
             </button>
           </form>
@@ -169,8 +189,13 @@ export function Clients({ session }: { session: DemoSession }) {
           <p>
             Deactivate {deactivating.name}? Existing plans will stay available.
           </p>
-          {error && <p role="alert">{error}</p>}
+          {error && (
+            <p data-pathcompiler="client.deactivate.error" role="alert">
+              {error}
+            </p>
+          )}
           <button
+            data-pathcompiler="client.deactivate.confirm"
             type="button"
             disabled={busy}
             onClick={() => void deactivate()}

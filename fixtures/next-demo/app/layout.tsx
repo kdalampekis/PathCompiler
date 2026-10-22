@@ -20,12 +20,16 @@ export default async function RootLayout({
     <html lang="en">
       <body>
         <header>
-          <Link href="/clients" className="brand">
+          <Link data-pathcompiler="nav.home" href="/clients" className="brand">
             PathCompiler <span> / demo</span>
           </Link>
           <nav aria-label="Main navigation">
-            <Link href="/clients">Clients</Link>
-            <Link href="/plans">Plans</Link>
+            <Link data-pathcompiler="nav.clients" href="/clients">
+              Clients
+            </Link>
+            <Link data-pathcompiler="nav.plans" href="/plans">
+              Plans
+            </Link>
           </nav>
         </header>
         <DemoControls

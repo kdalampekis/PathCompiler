@@ -79,6 +79,7 @@ export function Plans({ session }: { session: DemoSession }) {
         </div>
         {canEdit && (
           <button
+            data-pathcompiler="plans.create"
             type="button"
             disabled={activeClients.length === 0}
             onClick={() => {
@@ -98,7 +99,9 @@ export function Plans({ session }: { session: DemoSession }) {
       {!session.featureFlags.planStructure && (
         <p className="callout">Plan structure changes are disabled.</p>
       )}
-      <p role="status">{notice}</p>
+      <p data-pathcompiler="plans.feedback" role="status">
+        {notice}
+      </p>
       {session.plans.length === 0 ? (
         <div className="empty">
           <h2>No plans yet</h2>
@@ -107,7 +110,12 @@ export function Plans({ session }: { session: DemoSession }) {
       ) : (
         <ul className="cards">
           {session.plans.map((plan) => (
-            <li key={plan.id} className="card">
+            <li
+              key={plan.id}
+              data-pathcompiler="plans.row"
+              data-plan-id={plan.id}
+              className="card"
+            >
               <div>
                 <h2>{plan.title}</h2>
                 <p>
@@ -123,6 +131,7 @@ export function Plans({ session }: { session: DemoSession }) {
               </div>
               {canEdit && session.featureFlags.planStructure && (
                 <button
+                  data-pathcompiler="plans.change_structure"
                   type="button"
                   className="secondary"
                   onClick={() => {
@@ -140,14 +149,25 @@ export function Plans({ session }: { session: DemoSession }) {
       )}
       {creating && (
         <Modal title="Create Plan" onClose={close}>
-          <form onSubmit={create} noValidate>
+          <form data-pathcompiler="plan.form" onSubmit={create} noValidate>
             <label>
               Title
-              <input name="title" required minLength={2} maxLength={80} />
+              <input
+                data-pathcompiler="plan.form.title"
+                name="title"
+                required
+                minLength={2}
+                maxLength={80}
+              />
             </label>
             <label>
               Client
-              <select aria-label="Client" name="clientId" required>
+              <select
+                data-pathcompiler="plan.form.client"
+                aria-label="Client"
+                name="clientId"
+                required
+              >
                 {activeClients.map((client) => (
                   <option key={client.id} value={client.id}>
                     {client.name}
@@ -155,8 +175,16 @@ export function Plans({ session }: { session: DemoSession }) {
                 ))}
               </select>
             </label>
-            {error && <p role="alert">{error}</p>}
-            <button type="submit" disabled={busy}>
+            {error && (
+              <p data-pathcompiler="plan.form.error" role="alert">
+                {error}
+              </p>
+            )}
+            <button
+              data-pathcompiler="plan.form.submit"
+              type="submit"
+              disabled={busy}
+            >
               Save Plan
             </button>
           </form>
@@ -173,6 +201,7 @@ export function Plans({ session }: { session: DemoSession }) {
               <button
                 type="button"
                 disabled={busy}
+                data-pathcompiler="plan.structure.confirm"
                 onClick={() => void changeStructure(true)}
               >
                 Confirm Simplification
@@ -181,6 +210,7 @@ export function Plans({ session }: { session: DemoSession }) {
                 type="button"
                 className="secondary"
                 disabled={busy}
+                data-pathcompiler="plan.structure.back"
                 onClick={() => setConfirming(false)}
               >
                 Back
@@ -188,6 +218,7 @@ export function Plans({ session }: { session: DemoSession }) {
             </>
           ) : (
             <form
+              data-pathcompiler="plan.structure.form"
               onSubmit={(event) => {
                 event.preventDefault();
                 void changeStructure();
@@ -196,6 +227,7 @@ export function Plans({ session }: { session: DemoSession }) {
               <label>
                 Structure
                 <select
+                  data-pathcompiler="plan.structure.selector"
                   aria-label="Structure"
                   value={structure}
                   onChange={(event) =>
@@ -208,12 +240,20 @@ export function Plans({ session }: { session: DemoSession }) {
                   <option value="weekly">Weekly</option>
                 </select>
               </label>
-              <button type="submit" disabled={busy}>
+              <button
+                data-pathcompiler="plan.structure.submit"
+                type="submit"
+                disabled={busy}
+              >
                 Save Structure
               </button>
             </form>
           )}
-          {error && <p role="alert">{error}</p>}
+          {error && (
+            <p data-pathcompiler="plan.structure.error" role="alert">
+              {error}
+            </p>
+          )}
         </Modal>
       )}
     </>

@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,6 +73,58 @@ describe("pathcompiler CLI", () => {
         "utf8",
       ),
     ).not.toContain("private/invalid.ts");
+  });
+
+  it("suggests targets with readable and versioned JSON output without writing files", async () => {
+    const cwd = await directory();
+    await mkdir(path.join(cwd, "app"));
+    const source =
+      'export default function Page() { return <><button data-pathcompiler="clients.create">Create</button><button data-testid="save">Save</button></>; }';
+    await writeFile(path.join(cwd, "app/page.tsx"), source);
+    const first = await exec(
+      process.execPath,
+      [binary, "targets", "suggest", "--json"],
+      { cwd },
+    );
+    const second = await exec(
+      process.execPath,
+      [binary, "targets", "suggest", ".", "--json"],
+      { cwd },
+    );
+    expect(first.stdout).toBe(second.stdout);
+    const report = JSON.parse(first.stdout);
+    expect(report).toMatchObject({
+      schemaVersion: 1,
+      targets: expect.arrayContaining([
+        expect.objectContaining({
+          suggestedTarget: "page.save",
+          file: "app/page.tsx",
+          target: expect.objectContaining({ confidence: 0.8 }),
+        }),
+        expect.objectContaining({
+          nodeId: "ui:clients.create",
+          target: expect.objectContaining({ confidence: 1 }),
+        }),
+      ]),
+    });
+    expect(await runCli(["targets", "suggest"], cwd)).toContain(
+      "Suggested target: page.save",
+    );
+    expect(await readdir(cwd)).toEqual(["app"]);
+    expect(await readFile(path.join(cwd, "app/page.tsx"), "utf8")).toBe(source);
+    await mkdir(path.join(cwd, "excluded"));
+    await writeFile(path.join(cwd, "excluded/bad.ts"), "invalid %%%");
+    expect(
+      await runCli(["targets", "suggest", ".", "--exclude", "excluded"], cwd),
+    ).toContain("No files changed");
+    for (const args of [
+      ["targets", "apply"],
+      ["targets", "suggest", "--out", "x"],
+      ["targets", "suggest", ".", "extra"],
+      ["scan", ".", "--json"],
+    ]) {
+      await expect(runCli(args, cwd)).rejects.toThrow();
+    }
   });
 
   it("prints help and fails nonzero for invalid arguments or source syntax", async () => {

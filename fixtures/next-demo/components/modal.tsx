@@ -16,13 +16,19 @@ export function Modal({
     dialog.current?.showModal();
   }, []);
   return (
-    <dialog ref={dialog} aria-label={title} onCancel={onClose}>
+    <dialog
+      data-pathcompiler="dialog.container"
+      ref={dialog}
+      aria-label={title}
+      onCancel={onClose}
+    >
       <div className="row">
         <h2>{title}</h2>
         <button
           type="button"
           className="secondary"
           onClick={onClose}
+          data-pathcompiler="dialog.close"
           aria-label="Close dialog"
         >
           ×

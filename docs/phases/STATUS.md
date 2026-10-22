@@ -112,5 +112,66 @@ inspected from this session.
 
 ## Phase 2 — Semantic Targets
 
-Not started. Next planned phase introduces explicit semantic target annotations
-and target suggestions.
+Complete — verified locally on 2026-10-21.
+
+- Added literal `data-pathcompiler` support to the Next.js adapter. Supported,
+  unique annotations use stable `ui:<semantic-id>` identities while retaining
+  file/structural-locator/commit provenance and existing graph relationships.
+- Added ranked target evidence: explicit annotations, existing test IDs, static
+  accessible role/name, or unresolved. Noninteractive observation anchors are
+  represented alongside actions. No structural CSS selectors are generated.
+- Added diagnostics for duplicate/invalid/dynamic annotations, possible spread
+  overrides and custom components whose attribute forwarding is unverified.
+- Added `pathcompiler targets suggest [directory]`, including readable and
+  versioned JSON reports. Suggestions are deterministic, avoid existing IDs and
+  do not modify source or write artifacts. `--exclude` is supported.
+- Added 34 explicit fixture targets covering all five workflows, their inputs,
+  confirmations, feedback, navigation, row scopes and shared dialog controls.
+- Updated browser tests to drive workflows through semantic annotations and added
+  a two-client/two-plan case proving actions resolve within the selected row.
+- Documented the public API, CLI and confidence/scoping boundaries in README and
+  ADR 0004. No new package or dependency was needed.
+- Phase 1 was committed and pushed as `6160bd9` before Phase 2 began.
+
+### Verification
+
+All checks below passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 1 baseline lint/typecheck/tests | Passed immediately before phase work; 56 tests |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed, including package builds, root tests and fixture |
+| `pnpm test` | 66 tests passed across six suites |
+| `pnpm test:e2e` | Fresh production fixture build; seven Chromium tests passed |
+| `pnpm pathcompiler scan ./fixtures/next-demo` | 19 files, 108 nodes, 215 edges |
+| Built CLI `targets suggest ... --json` | 40 target records, 34 annotated, no annotation issues |
+| Repeat target reports | Byte-identical output |
+| CLI read-only regression | Source contents and directory entries unchanged |
+| `git diff --check` | Passed |
+
+Focused tests cover identity stability after file/owner/label/order changes,
+handler/navigation edges, evidence precedence, accessible labels, ambiguity,
+annotation conflicts, dynamic/spread/custom-component boundaries, deterministic
+suggestion collisions and fixture anchor coverage. Existing role, feature-flag,
+validation, cancellation and session-isolation browser coverage continues to pass.
+Hosted CI was not inspected from this session.
+
+### Scope notes and limitations
+
+- All Phase 2 acceptance scope is implemented. The optional React wrapper and
+  explicitly deferred `targets apply` command remain unimplemented as specified.
+- Accessible evidence is a conservative static subset, not the full browser
+  accessibility tree. Scores rank evidence and do not establish live DOM
+  uniqueness, visibility or authorization. The six unannotated fixture records
+  are unresolved custom-component props and demo error feedback.
+- One declaration may render many instances. Browser guidance must scope repeated
+  actions to a selected row; distinct source declarations cannot reuse an ID.
+- Target reports are private build-time analysis, not runtime manifests. Runtime
+  guidance, Playwright mining and workflow compilation remain future phases.
+- The inherited-tsconfig diagnostic from Phase 1 remains; the fixture's actual
+  local imports resolve. No new scan diagnostic is emitted by its annotations.
+
+## Phase 3 — Playwright Test Mining
+
+Not started.

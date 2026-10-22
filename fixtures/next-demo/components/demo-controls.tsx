@@ -43,6 +43,7 @@ export function DemoControls({
       <label>
         Role{" "}
         <select
+          data-pathcompiler="demo.role"
           aria-label="Role"
           value={settings.role}
           disabled={busy || refreshing}
@@ -59,6 +60,7 @@ export function DemoControls({
       </label>
       <label className="checkbox">
         <input
+          data-pathcompiler="demo.plan_structure"
           type="checkbox"
           checked={settings.planStructure}
           disabled={busy || refreshing}

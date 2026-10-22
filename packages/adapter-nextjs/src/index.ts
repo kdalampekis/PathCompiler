@@ -27,8 +27,17 @@ import {
 } from "./ast.js";
 import { createSourceProgram } from "./program.js";
 import { discoverRoute, matchesRoute } from "./routes.js";
+import { createTargetAnalyzer } from "./targets.js";
 
 export { discoverRoute } from "./routes.js";
+export {
+  SemanticTargetIdSchema,
+  suggestTargets,
+  type TargetEvidence,
+  TargetEvidenceSchema,
+  type TargetReport,
+  TargetReportSchema,
+} from "./targets.js";
 
 export const ScanSummarySchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -94,6 +103,7 @@ export function analyzeNextProject(input: unknown): ScanResult {
         .find((source) => relative(source.fileName) === file.path),
     )
     .filter((file): file is ts.SourceFile => file !== undefined);
+  const analyzeTarget = createTargetAnalyzer(sourceFiles);
   const nodes = new Map<string, GraphNode>();
   const edges = new Map<string, GraphEdge>();
   const records: FunctionRecord[] = [];
@@ -523,36 +533,45 @@ export function analyzeNextProject(input: unknown): ScanResult {
         if (
           ["button", "form", "input", "select", "textarea"].includes(tag) ||
           link ||
-          events.length
+          events.length ||
+          attribute(node, "role") ||
+          node.attributes.properties.some(
+            (prop) =>
+              ts.isJsxAttribute(prop) &&
+              ["data-pathcompiler", "data-testid"].includes(
+                prop.name.getText(),
+              ),
+          )
         ) {
           const base = `${current?.name ?? "module"}:${tag}`;
           const index = (occurrences.get(base) ?? 0) + 1;
           occurrences.set(base, index);
           const locator = `${file}#${base}[${index}]`;
-          const childText =
-            ts.isJsxOpeningElement(node) && ts.isJsxElement(node.parent)
-              ? node.parent.children
-                  .filter(ts.isJsxText)
-                  .map((child) => child.text)
-                  .join(" ")
-                  .replace(/\s+/g, " ")
-                  .trim()
-              : "";
-          const label = strings(attribute(node, "aria-label"))[0] ?? childText;
-          const action = addNode("UIAction", locator, {
-            tag,
-            events,
-            kind: link
-              ? "navigate"
-              : tag === "form"
-                ? "submit"
-                : ["input", "select", "textarea"].includes(tag)
-                  ? "input"
-                  : "click",
-            ...(label ? { label } : {}),
-            evidence: [evidence(file, locator)],
-            confidence: 1,
-          });
+          const targetEvidence = analyzeTarget(node, link);
+          for (const issue of targetEvidence.issues)
+            warn("semantic-target", file, `${locator}: ${issue}`);
+          const label = targetEvidence.name;
+          const action = addNode(
+            "UIAction",
+            targetEvidence.semanticId ?? locator,
+            {
+              target: z.json().parse(targetEvidence),
+              tag,
+              events,
+              kind: link
+                ? "navigate"
+                : tag === "form"
+                  ? "submit"
+                  : ["input", "select", "textarea"].includes(tag)
+                    ? "input"
+                    : tag === "button" || events.length
+                      ? "click"
+                      : "observe",
+              ...(label ? { label } : {}),
+              evidence: [evidence(file, locator)],
+              confidence: 1,
+            },
+          );
           edge("EXPOSES_ACTION", ownerId, action, file);
           for (const event of events) {
             const expression = attribute(node, event);
