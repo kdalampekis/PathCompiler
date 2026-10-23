@@ -116,14 +116,18 @@ const evidenceFile = (ref: EvidenceRef) => {
 export async function analyzeSemanticChange(
   input: { delta: GraphDelta; base: CommitAnalysis; head: CommitAnalysis },
   solver: SolverProvider,
-  options: ComparisonOptions = {},
+  options: ComparisonOptions & {
+    /** Prebuilt models of `base` and `head`, to avoid extracting twice. */
+    models?: { base: FormalAbstraction; head: FormalAbstraction };
+  } = {},
 ): Promise<SemanticChangeReport> {
-  const base = buildCommitModel(input.base);
-  const head = buildCommitModel(input.head);
+  const { models, ...comparisonOptions } = options;
+  const base = models?.base ?? buildCommitModel(input.base);
+  const head = models?.head ?? buildCommitModel(input.head);
   const comparison = await createProductReasoner(solver).compareModels(
     base.model,
     head.model,
-    options,
+    comparisonOptions,
   );
   const changed = new Set(input.delta.summary.files.map((file) => file.path));
   const removedReachability = comparison.removedReachability.map((change) => {

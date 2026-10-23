@@ -22,6 +22,7 @@
   "dependencies": {
     "@pathcompiler/adapter-github": "workspace:*",
     "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/candidate-evaluator": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/formal-abstraction": "workspace:*",
     "@pathcompiler/formal-model": "workspace:*",

@@ -17,6 +17,12 @@ import {
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
 import {
+  type CandidateEvaluation,
+  evaluateCandidate,
+  TestRunSchema,
+  testRunFromPlaywrightJson,
+} from "@pathcompiler/candidate-evaluator";
+import {
   CapabilityExpectationsSchema,
   discoverCapabilities,
   discoverProductSurfaces,
@@ -141,6 +147,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason reachable|plan|why-not <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -200,6 +207,12 @@ model coverage and uncertainties it reports. reason plan returns the shortest pl
 approved workflow exists, writing reports/reasoning/plans/<goal>.json. reason why-not explains an
 unreachable goal with a minimal set of product constraints (context, preconditions, initial
 state) and their source evidence, writing reports/reasoning/why-not/<goal>.json.
+evaluate independently evaluates a candidate commit (a human PR or harness output) against its
+base: intended vs. observed semantic change (--criteria: expectedChanges, protectedProperties,
+recommendationId, mutation), invariant and protected-property checks on both commits, approved
+workflow impact, and business-level tests (--tests: Playwright JSON reporter output or
+{ tests: [{ name, status }] }). It writes reports/evaluation/<candidate>.json and exits nonzero
+when the candidate fails. Claims in the criteria never change the outcome.
 reason verify checks the model's invariants and any properties in --property (kinds:
 never, always, invariant, via) by bounded model checking, writing
 reports/reasoning/verification.json. A violation prints a counterexample and exits nonzero (also with --json).
@@ -238,6 +251,8 @@ const CLI_OPTIONS = {
   model: { type: "string" },
   reasoning: { type: "boolean" },
   property: { type: "string" },
+  criteria: { type: "string" },
+  tests: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -294,6 +309,13 @@ export async function runCli(
       "--reasoning is only supported by impact and proposals generate.",
     );
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
+  if (
+    (values.criteria !== undefined || values.tests !== undefined) &&
+    positionals[0] !== "evaluate"
+  )
+    throw new Error("--criteria and --tests are only supported by evaluate.");
+  if (positionals[0] === "evaluate")
+    return runEvaluate(positionals, values, cwd);
   if (positionals[0] === "reason" && positionals[1] === "diff")
     return runSemanticDiff(positionals, values, cwd);
   if (positionals[0] === "reason" && positionals[1] === "verify")
@@ -1432,6 +1454,81 @@ async function runVerify(
   if (count("violated") > 0)
     throw new Error(`Property violations found.\n${text}`);
   return values.json ? `${JSON.stringify(report, null, 2)}\n` : text;
+}
+
+async function readJsonFile(cwd: string, file: string, what: string) {
+  try {
+    return JSON.parse(
+      await readFile(path.resolve(cwd, file), "utf8"),
+    ) as unknown;
+  } catch (error) {
+    throw new Error(`Cannot read ${what} from ${file}; provide a JSON file.`, {
+      cause: error,
+    });
+  }
+}
+
+async function runEvaluate(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length < 3 || positionals.length > 4)
+    throw new Error(
+      "Expected: pathcompiler evaluate <base> <candidate> [directory]. Use --help for options.",
+    );
+  const criteria =
+    values.criteria === undefined
+      ? undefined
+      : await readJsonFile(cwd, values.criteria, "evaluation criteria");
+  const rawTests =
+    values.tests === undefined
+      ? undefined
+      : await readJsonFile(cwd, values.tests, "test results");
+  const tests =
+    rawTests === undefined
+      ? undefined
+      : rawTests && typeof rawTests === "object" && "suites" in rawTests
+        ? testRunFromPlaywrightJson(rawTests)
+        : TestRunSchema.parse(rawTests);
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const approved = await readApproved(output);
+  const range = await analyzeCommitRangeDetailed({
+    directory: path.resolve(cwd, positionals[3] ?? "."),
+    base: positionals[1] ?? "",
+    head: positionals[2] ?? "",
+    exclude: values.exclude ?? [],
+  });
+  const solver = await createZ3SolverProvider();
+  let evaluation: CandidateEvaluation;
+  try {
+    evaluation = await evaluateCandidate(range, solver, {
+      ...(criteria === undefined ? {} : { criteria }),
+      ...(tests === undefined ? {} : { tests }),
+      approved,
+    });
+  } finally {
+    await solver.close();
+  }
+  const file = `reports/evaluation/${evaluation.candidate}.json`;
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(evaluation, null, 2)}\n`],
+  ]);
+  const { formalResults: formal, testResults: testing } = evaluation;
+  const text = `${[
+    `Candidate ${evaluation.candidate.slice(0, 12)} against ${evaluation.base.slice(0, 12)}: ${evaluation.status.toUpperCase()} → ${evaluation.recommendedNextStep}${evaluation.eligibleForExperiment ? " (eligible for an experiment)" : ""}`,
+    `Intended change: ${evaluation.intendedChange.declared ? `${evaluation.intendedChange.expected.filter((item) => item.met).length}/${evaluation.intendedChange.expected.length} expected changes met` : "no declared intent"}; ${evaluation.intendedChange.observed.length} reachability changes observed.`,
+    `Properties: ${formal.holds}/${formal.checked} hold, ${formal.violated} violated, ${formal.unknown} unknown.`,
+    `Workflows needing review: ${evaluation.workflowRegression.reviewRequired.map((item) => item.workflowId).join(", ") || "none"}.`,
+    `Tests: ${testing.executed ? `${testing.passed} passed, ${testing.failed} failed, ${testing.skipped} skipped` : "not supplied (static coverage only)"}.`,
+    ...evaluation.risks.map((item) => `✗ ${item.message}`),
+    ...evaluation.warnings.map((item) => `⚠ ${item.message}`),
+    ...evaluation.evidenceGaps.map((item) => `· ${item}`),
+    `Report: ${path.join(output, file)}`,
+  ].join("\n")}\n`;
+  if (evaluation.status === "fail")
+    throw new Error(`Candidate evaluation failed.\n${text}`);
+  return values.json ? `${JSON.stringify(evaluation, null, 2)}\n` : text;
 }
 
 async function semanticChange(

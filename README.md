@@ -1034,6 +1034,7 @@ pnpm pathcompiler reason why-not clients.created fixtures/next-demo --context ro
 pnpm pathcompiler reason diff <base> <head> [directory]
 pnpm pathcompiler proposals generate <base> <head> [directory] --reasoning
 pnpm pathcompiler reason verify fixtures/next-demo --property properties.json
+pnpm pathcompiler evaluate <base> <candidate> [directory] --criteria criteria.json --tests results.json
 ```
 
 `@pathcompiler/reasoner-core` (phase R2) answers "can goal G be reached under
@@ -1094,6 +1095,20 @@ invariants plus `--property` files, writes
 `reports/reasoning/verification.json`, and exits nonzero on a violation.
 See [ADR 0041](docs/decisions/0041-property-verification.md).
 
+`@pathcompiler/candidate-evaluator` (phase I3, mode 5: Evaluate) judges any
+candidate commit independently of who made it. It checks four things:
+- intended versus observed reachability changes;
+- protected properties and invariants on both commits;
+- approved-workflow impact;
+- business-level test coverage, plus supplied test results.
+
+The result is `pass`, `pass_with_warnings`, `fail` or `inconclusive`, with the
+next step and whether the candidate is eligible for an experiment.
+`pathcompiler evaluate` writes `reports/evaluation/<candidate>.json` and exits
+nonzero on failure. A candidate's claimed outcome is recorded but never
+trusted.
+See [ADR 0042](docs/decisions/0042-candidate-evaluation.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1134,7 +1149,8 @@ Analysis packages:
 | `@pathcompiler/solver-z3` | `createZ3SolverProvider` (only package importing Z3) |
 | `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ProductReasoner.compareModels`, `ProductReasoner.verifyProperty`, `ProductPropertySchema`, `PropertyResult`, `propertiesFromInvariants`, `ModelComparison`, `ReachabilityChange`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
 | `@pathcompiler/semantic-change` | `analyzeSemanticChange`, `buildCommitModel`, `summarizeSemanticChange`, `collapseContexts`, `describeContext`, `SemanticChangeReport`, `SemanticWorkflowImpact` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

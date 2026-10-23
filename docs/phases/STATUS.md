@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after R8)
+## Current state (updated 2026-10-23, after I3)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **I3** (next), R5, R7, R9, R10, R12, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **C1** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking** (2026-10-23). The reasoning MVP (spec §94) is complete. |
-| Next recommended phase | **I3 — Candidate Evaluation, mode 5** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5, P0. |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
+| Next recommended phase | **C1 — Runtime contract alignment** (`MASTER_ROADMAP.md` §7), which gates the observability track. Parallel candidates: C8, C2, P0. |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2221,3 +2221,73 @@ ill-typed condition) are rejected with actionable errors.
 - Only safety properties are covered. Liveness ("eventually") needs lasso or
   fairness reasoning and is deferred until required.
 - Next recommended phase: I3 — Candidate Evaluation, mode 5.
+
+---
+
+## Phase I3 — Candidate Evaluation (mode 5)
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/candidate-evaluator`. `evaluateCandidate({ delta, base,
+  head }, solver, { criteria?, approved?, tests? })` returns a
+  `CandidateEvaluation` that answers handoff §18 A–D:
+  - **Intended change.** R11's reachability changes, one per goal and context,
+    are compared with `criteria.expectedChanges`. Omitted means no declared
+    intent: changes become a review warning. `[]` means none intended. When
+    intent is declared, unexpected changes and unmet expectations are risks.
+  - **Protected behavior.** The invariants of both commits plus
+    `criteria.protectedProperties` are checked on base and candidate (R8). A
+    violated or unverifiable protected property is a risk, a new violation of
+    any other property is a regression risk, and a violation already present at
+    base is a warning.
+  - **Unexpected workflow change.** Impact analysis runs with the semantic
+    findings. Medium or high impact is a warning unless declared, expected
+    changes explain it.
+  - **Does it work.** Test coverage per capability, base vs. candidate:
+    decreased coverage and untested affected capabilities are warnings.
+    Ingested Playwright JSON or `{ tests }` results are mapped to capabilities,
+    and any failure is a risk.
+
+  The decision is `fail` on any risk, then `inconclusive` on an unknown
+  answer, then `pass_with_warnings`, then `pass`. The next step is `reject`,
+  `revise_candidate`, `experiment` or `human_review`, and
+  `eligibleForExperiment` is set only for a `pass` with declared expectations.
+  A mutation's claimed outcome is recorded and checked, never trusted. Evidence
+  gaps (browser verification in I4, missing test results) are listed.
+- `analyzeSemanticChange` accepts prebuilt models, so each commit is extracted
+  only once.
+- Added `pathcompiler evaluate <base> <candidate> [directory] [--criteria]
+  [--tests]`, which writes `reports/evaluation/<candidate>.json` and exits
+  nonzero on `fail`.
+- Recorded in ADR 0042 and documented in the README. No runtime change.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 315 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 241 files |
+| `pnpm typecheck` | Passed, including the new package |
+| `pnpm test` | 322 tests passed across 44 suites (6 evaluator, 1 CLI end to end) |
+| `git diff --check` | Passed |
+
+Acceptance on the fixture:
+
+| Candidate | Criteria | Result |
+| --- | --- | --- |
+| Human PR: copy-only rename | None | `pass` → `human_review`; invariants hold; no observed changes |
+| Human PR: `requireEditor` checks `owner` | None | `pass_with_warnings` (18 observed changes) → `human_review` |
+| Same change | Exactly those expectations (`rec_owner_only`) | `pass`, eligible for an experiment → `experiment` |
+| §254: rename that also drops `requireEditor` from PATCH `/api/clients/:id`; mutation claims success | `expectedChanges: []`, protected "viewer never deactivates a client" | `fail` → `reject`; an unexpected-reachability risk and a protected-property counterexample ending in `clients.deactivate.confirm`; the claim is marked contradicted |
+| Copy-only rename with a failed Playwright test | None | `fail` → `revise_candidate`; the failure maps to `clients.create` and the other capabilities that test covers |
+
+### Deviations and limitations
+
+- The GitHub check section and dashboard view listed for I3 are deferred. They
+  need C2 (configuration) and dashboard support for stored evaluations; the
+  report artifact and CLI deliver mode 5 now.
+- Only reachability changes are matched against expectations. Cost or path
+  expectations ("minimum workflow cost 6 → 5") need R7.
+- Browser verification is I4, which also needs C8.
+- Next recommended phase: C1 — Runtime contract alignment.

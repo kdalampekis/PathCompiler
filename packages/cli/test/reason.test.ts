@@ -379,6 +379,98 @@ describe("pathcompiler reason reachable", () => {
     ).rejects.toThrow(/--property is only supported by reason verify/);
   });
 
+  it("evaluates candidate commits, failing a guard regression", async () => {
+    const cwd = await directory();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.test",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.test",
+    };
+    const app = path.join(cwd, "app");
+    const git = async (...args: string[]) =>
+      (await exec("git", ["-C", app, ...args], { env })).stdout.trim();
+    const tracked = (
+      await exec("git", ["-C", fixture, "ls-files", "-z", "--", "."])
+    ).stdout
+      .split("\0")
+      .filter(Boolean);
+    for (const file of tracked) {
+      await mkdir(path.dirname(path.join(app, file)), { recursive: true });
+      await writeFile(
+        path.join(app, file),
+        await readFile(path.join(fixture, file)),
+      );
+    }
+    await git("init", "--quiet");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "base");
+    const base = await git("rev-parse", "HEAD");
+    const edit = async (file: string, from: string, to: string) => {
+      const target = path.join(app, file);
+      await writeFile(
+        target,
+        (await readFile(target, "utf8")).replace(from, to),
+      );
+    };
+    await edit(
+      "components/clients.tsx",
+      "            Create Client\n",
+      "            Add Client\n",
+    );
+    await git("commit", "--quiet", "-am", "Rename button");
+    const copy = await git("rev-parse", "HEAD");
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    const passing = await run(["evaluate", base, copy, "app"]);
+    expect(passing).toContain(
+      `Candidate ${copy.slice(0, 12)} against ${base.slice(0, 12)}: PASS → human_review`,
+    );
+    expect(passing).toContain(
+      "Intended change: no declared intent; 0 reachability changes observed.",
+    );
+
+    await edit("app/api/clients/route.ts", "    requireEditor(session);\n", "");
+    await git("commit", "--quiet", "-am", "Simplify create");
+    const regression = await git("rev-parse", "HEAD");
+    const criteria = path.join(cwd, "criteria.json");
+    await writeFile(
+      criteria,
+      JSON.stringify({
+        expectedChanges: [],
+        mutation: { id: "mut_7", claimedOutcome: "success" },
+      }),
+    );
+    const failing = run([
+      "evaluate",
+      copy,
+      regression,
+      "app",
+      "--criteria",
+      criteria,
+    ]);
+    await expect(failing).rejects.toThrow(/Candidate evaluation failed/);
+    await expect(failing).rejects.toThrow(/FAIL → revise_candidate/);
+    await expect(failing).rejects.toThrow(
+      /✗ Unexpected: clients\.created became reachable for .*role=unlisted/,
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(cwd, "out/reports/evaluation", `${regression}.json`),
+        "utf8",
+      ),
+    );
+    expect(report).toMatchObject({
+      type: "candidate_evaluation",
+      status: "fail",
+      mutationClaim: { contradicted: true },
+      eligibleForExperiment: false,
+    });
+    await expect(run(["scan", "app", "--criteria", criteria])).rejects.toThrow(
+      /--criteria and --tests are only supported by evaluate/,
+    );
+  }, 300_000);
+
   it("rejects malformed invocations with actionable errors", async () => {
     const out = await directory();
     const file = path.join(out, "model.json");
