@@ -79,6 +79,31 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cli
 
+  examples/reference-demo:
+    dependencies:
+      "@pathcompiler/assistant-tools":
+        specifier: workspace:*
+        version: link:../../packages/assistant-tools
+      "@pathcompiler/cli":
+        specifier: workspace:*
+        version: link:../../packages/cli
+      "@pathcompiler/runtime-core":
+        specifier: workspace:*
+        version: link:../../packages/runtime-core
+      "@pathcompiler/sdk-js":
+        specifier: workspace:*
+        version: link:../../packages/sdk-js
+      "@pathcompiler/workflow-compiler":
+        specifier: workspace:*
+        version: link:../../packages/workflow-compiler
+    devDependencies:
+      "@playwright/test":
+        specifier: 1.64.1
+        version: 1.64.1
+      vite:
+        specifier: 8.3.5
+        version: 8.3.5(@types/node@22.20.5)(yaml@2.9.1)
+
   fixtures/next-demo:
     dependencies:
       next:

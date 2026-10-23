@@ -634,6 +634,21 @@ A complete example of an existing assistant that adds PathCompiler as one tool
 call and renders answers with its own UI, without any PathCompiler UI package or
 server, is in [examples/custom-assistant](examples/custom-assistant/README.md).
 
+## Full reference demo
+
+```sh
+pnpm --filter @pathcompiler/reference-demo demo
+```
+
+This runs the whole loop on a Git copy of the fixture: scan, product graph,
+discovery, approval, compile, resolver query, custom assistant answer, code change,
+impact detection, update proposal, approval, and new runtime output. The browser
+suite (`test:browser`, part of `pnpm test:e2e`) also verifies the navigate action
+and the interactive guide on the original app. It then shows that the rebuilt
+manifest guides the changed app while the old manifest fails safely. See
+[examples/reference-demo](examples/reference-demo/README.md) and
+[ADR 0031](docs/decisions/0031-reference-demo.md).
+
 ## Resolve product help
 
 ```ts

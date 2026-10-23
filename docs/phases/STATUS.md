@@ -1608,3 +1608,57 @@ of PathCompiler UI/React dependencies and imports.
 - All Phase 29 scope is implemented. The model is scripted. Real provider calls
   are documented but not exercised (no credentials or provider SDKs, by design).
 - Thirty phases are complete (0–29), leaving 1 (30).
+
+## Phase 30 — Full Reference Demo
+
+Complete — verified locally on 2026-10-22.
+
+- Added `examples/reference-demo`. It runs the full loop on a fresh Git copy of the
+  fixture through the public CLI and SDK: (1) scan, (2) product graph, (3) workflow
+  discovery, (4) approval, (5) compile, (6) resolver query, (7) custom assistant
+  answer, (10) code change, (11) impacted workflow detected, (12) update proposal,
+  (13) approval and (14) new runtime output. It records a transcript; `demo`
+  prints the narrative.
+- A Playwright suite serves the unchanged fixture and the changed copy as
+  production builds. It verifies (8) the assistant's navigate action and (9) an
+  interactive guide completing Create Client, and for (14) that the rebuilt
+  manifest guides Change Plan Structure through the renamed target while the old
+  manifest reports `target-missing`.
+- The in-workspace copy sets `turbopack.root` so it builds with the fixture's
+  dependencies. Chained into `pnpm test:e2e` and CI artifacts. Documented in
+  README, the example README and ADR 0031.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 29 baseline lint/typecheck/tests | Passed before edits; 258 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 207 files |
+| `pnpm typecheck` | Passed, including both examples and the dashboard |
+| `pnpm test` | 258 tests passed across thirty-three suites |
+| `pnpm test:e2e` | Fixture 7, verification 6, runtime 3, dashboard 7, reference demo 4 Chromium tests passed |
+| `pnpm --filter @pathcompiler/reference-demo demo` | All fourteen steps printed |
+| `git diff --check` | Passed |
+
+### Scope notes and limitations
+
+- All Phase 30 scope is implemented. The demo's code change is a semantic target
+  rename. Other change classes are covered by their phase suites.
+- All thirty-one phases (0–30) are complete.
+
+## Overall status after Phase 30
+
+All phases in `CODEX_BUILD_SPEC.md` are implemented and verified locally. Known
+limitations, carried from the phase notes:
+
+- **GitHub App (Phase 24):** never exercised against live GitHub. The job queue is
+  in-memory.
+- **Dashboard (Phase 25):** a local single-user tool with no authentication.
+- **Assistant adapters (Phase 28) and custom assistant (Phase 29):** model calls
+  are not exercised against live providers.
+- **Resolver (Phase 13):** English-only lexical matching with empty aliases.
+  Embeddings are not built.
+- **Hosted CI:** not inspected in these sessions.

@@ -30,4 +30,5 @@ jobs:
             packages/workflow-validator/test-results/
             packages/runtime-core/test-results/
             apps/dashboard/test-results/
+            examples/reference-demo/test-results/
           if-no-files-found: ignore
