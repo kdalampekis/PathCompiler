@@ -840,6 +840,29 @@ naming its verb and entity (0.10). No single signal is enough:
 The report is `reports/new-workflows.json`. Confidence is rule strength, not
 probability. See [ADR 0024](docs/decisions/0024-multi-signal-new-workflow-detection.md).
 
+## Deprecate workflows
+
+`proposals generate` writes a **deprecation** proposal (same file naming,
+`kind: workflow-deprecation-proposal`) instead of an update when two things hold:
+a high impact includes lost critical support (a removed step or condition target,
+a removed API, or a removed route), and no head-commit workflow matches. The
+proposal lists the lost support, a possible replacement (a capability new at head
+in the same domain and entity) and a readable summary. `proposals show` prints
+the summary.
+
+```sh
+pnpm pathcompiler proposals accept plans.change_structure.<head-sha> --by "Ana"
+```
+
+Accepting is an explicit reviewed decision. It verifies the approved workflow is
+unchanged since generation, writes `.pathcompiler/workflows/deprecated/<id>.yaml`
+(the full workflow with `status: deprecated`, reasons, replacement and commit),
+and removes the approved file so `build` no longer compiles it. Git keeps the
+history. Nothing is deleted automatically. `reject` and `ignore` keep the workflow
+approved. `workflows list/show` report the `deprecated` state, and approving the
+same ID again requires removing the deprecated record.
+See [ADR 0025](docs/decisions/0025-reviewed-workflow-deprecation.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -860,7 +883,7 @@ Analysis packages:
 | `@pathcompiler/capability-engine` | `discoverProductSurfaces`, `discoverCapabilities`, `evaluateCapabilities`, surface/capability/evaluation schemas, `SemanticModel`, classification/summary schemas and output parsers |
 | `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
 | `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types; `./browser`: `verifyFixtureWorkflow`, browser verification report schema |
-| `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected record schemas, YAML serialize/parse, `ReviewError` |
+| `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected/deprecated record schemas, YAML serialize/parse, `ReviewError` |
 | `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types; `./schema`: browser-safe schemas only |
 | `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, `relatedWorkflows`, `supportedActions`, request/result schemas and types |
 | `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `createHttpTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
@@ -871,7 +894,7 @@ Analysis packages:
 | `@pathcompiler/http-service` | `createHttpService`, `createRequestHandler`, `HttpServiceOptions` |
 | `@pathcompiler/graph-delta` | `computeGraphDelta`, `analyzeCommitRange`, `analyzeCommitRangeDetailed`, `GraphDeltaSchema`, `GraphNodeChangeSchema` and types |
 | `@pathcompiler/impact-analysis` | `analyzeWorkflowImpact`, impact reason/impact/report schemas and types |
-| `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `decideProposal`, `detectNewWorkflows`, `workflowDiff`, `proposalFileName`, proposal/detection schemas and YAML serialize/parse, `ProposalError` |
+| `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `acceptDeprecation`, `decideProposal`, `detectNewWorkflows`, `workflowDiff`, `proposalFileName`, proposal/detection schemas and YAML serialize/parse, `ProposalError` |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after

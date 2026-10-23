@@ -12,6 +12,8 @@ import { type WorkflowV1, WorkflowV1Schema } from "@pathcompiler/workflow-ir";
 import {
   type ApprovedWorkflow,
   ApprovedWorkflowSchema,
+  type DeprecatedWorkflow,
+  DeprecatedWorkflowSchema,
   ReviewerSchema,
 } from "@pathcompiler/workflow-review";
 import {
@@ -111,6 +113,43 @@ export type WorkflowUpdateProposal = z.infer<
   typeof WorkflowUpdateProposalSchema
 >;
 
+/** Impact reasons meaning the workflow lost critical implementation support. */
+export const SUPPORT_LOSS = [
+  "target-removed",
+  "condition-target-removed",
+  "api-removed",
+  "route-removed",
+] as const;
+export const WorkflowDeprecationProposalSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  kind: z.literal("workflow-deprecation-proposal"),
+  workflowId: z.string().min(1),
+  approved: z.strictObject({ commit: sha, revision: z.string() }),
+  head: z.strictObject({ commit: sha }),
+  impact: z.strictObject({
+    severity: z.literal("high"),
+    reasons: z.array(ImpactReasonSchema).min(1),
+    affectedSteps: z.array(z.string()),
+  }),
+  lostSupport: z.array(z.enum(SUPPORT_LOSS)).min(1),
+  /** A capability new at head in the same domain and entity, if any. */
+  replacement: z
+    .strictObject({ capabilityId: z.string(), title: z.string() })
+    .nullable(),
+  evidence: WorkflowUpdateProposalSchema.shape.evidence,
+  /** Human-readable explanation of why deprecation is proposed. */
+  summary: z.string(),
+  review: ProposalReviewSchema,
+});
+export type WorkflowDeprecationProposal = z.infer<
+  typeof WorkflowDeprecationProposalSchema
+>;
+export const ProposalSchema = z.union([
+  WorkflowUpdateProposalSchema,
+  WorkflowDeprecationProposalSchema,
+]);
+export type Proposal = WorkflowUpdateProposal | WorkflowDeprecationProposal;
+
 export type ProposalInput = {
   impact: WorkflowImpactReport;
   approved: readonly unknown[];
@@ -120,6 +159,13 @@ export type ProposalInput = {
   validate: (workflow: WorkflowV1) => ValidationReport;
   changedFiles?: WorkflowUpdateProposal["evidence"]["changedFiles"];
   commits?: { sha: string; authorDate: string; message: string }[];
+  /** Capabilities present at head but not base, for replacement suggestions. */
+  newCapabilities?: {
+    id: string;
+    domain: string;
+    entity: string;
+    title: string;
+  }[];
 };
 
 /** File name under `.pathcompiler/proposals/`. */
@@ -128,12 +174,11 @@ export function proposalFileName(workflowId: string, head: string): string {
 }
 
 /**
- * Pure: builds pending proposals for medium/high impacts. Never touches
- * approved records; the reviewer decides through accept/reject/ignore.
+ * Pure: builds pending proposals for medium/high impacts: an update when the
+ * head commit still supports the workflow, a deprecation when critical support
+ * was lost and no candidate matches. Never touches approved records.
  */
-export function generateProposals(
-  input: ProposalInput,
-): WorkflowUpdateProposal[] {
+export function generateProposals(input: ProposalInput): Proposal[] {
   const impact = WorkflowImpactReportSchema.parse(input.impact);
   const approved = new Map(
     input.approved
@@ -148,11 +193,61 @@ export function generateProposals(
     authorDate: commit.authorDate,
     subject: commit.message.split("\n")[0]?.trim() || "(no subject)",
   }));
-  return impact.impacts.flatMap((item) => {
+  return impact.impacts.flatMap((item): Proposal[] => {
     if (item.severity !== "medium" && item.severity !== "high") return [];
     const record = approved.get(item.workflowId);
     if (!record) return [];
     const match = matchCandidate(record.workflow, candidates);
+    const lost = SUPPORT_LOSS.filter((code) =>
+      item.reasons.some((reason) => reason.code === code),
+    );
+    if (!match.candidate && lost.length && item.severity === "high") {
+      const replacement =
+        (input.newCapabilities ?? [])
+          .filter(
+            (capability) =>
+              capability.id !== record.workflow.id &&
+              capability.domain === record.workflow.domain &&
+              capability.entity === record.workflow.intent.entity,
+          )
+          .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0] ?? null;
+      return [
+        WorkflowDeprecationProposalSchema.parse({
+          schemaVersion: 1,
+          kind: "workflow-deprecation-proposal",
+          workflowId: record.workflow.id,
+          approved: {
+            commit: record.approval.approvedCommit,
+            revision: workflowRevision(record.workflow),
+          },
+          head: { commit: impact.head.commit },
+          impact: {
+            severity: "high",
+            reasons: item.reasons,
+            affectedSteps: item.affectedSteps,
+          },
+          lostSupport: lost,
+          replacement: replacement
+            ? { capabilityId: replacement.id, title: replacement.title }
+            : null,
+          evidence: { changedFiles: input.changedFiles ?? [], commits },
+          summary: [
+            `${record.workflow.title} (${record.workflow.id}) lost implementation support at ${impact.head.commit.slice(0, 12)}:`,
+            ...item.reasons
+              .filter((reason) =>
+                (SUPPORT_LOSS as readonly string[]).includes(reason.code),
+              )
+              .map((reason) => `  - ${reason.message}`),
+            "No workflow at the head commit matches it.",
+            replacement
+              ? `Possible replacement: ${replacement.title} (${replacement.id}).`
+              : "No replacement capability was detected.",
+            "Accepting deprecates the workflow; it is never deleted automatically.",
+          ].join("\n"),
+          review: { status: "pending" },
+        }),
+      ];
+    }
     const proposed = match.candidate
       ? WorkflowV1Schema.parse({
           ...match.candidate.workflow,
@@ -344,7 +439,9 @@ export class ProposalError extends Error {
       | "no-proposed-workflow"
       | "stale-repository"
       | "dirty-repository"
-      | "validation-failed",
+      | "validation-failed"
+      | "wrong-kind"
+      | "approved-changed",
     message: string,
   ) {
     super(message);
@@ -352,7 +449,7 @@ export class ProposalError extends Error {
   }
 }
 
-function pending(proposal: WorkflowUpdateProposal) {
+function pending(proposal: Proposal) {
   if (proposal.review.status !== "pending")
     throw new ProposalError(
       "not-pending",
@@ -374,7 +471,13 @@ export function acceptProposal(
     repository: { commit: string | null; dirty: boolean | null };
   },
 ): { approved: ApprovedWorkflow; proposal: WorkflowUpdateProposal } {
-  const proposal = WorkflowUpdateProposalSchema.parse(input);
+  const parsed = ProposalSchema.parse(input);
+  if (parsed.kind !== "workflow-update-proposal")
+    throw new ProposalError(
+      "wrong-kind",
+      "This is a deprecation proposal; accept it with acceptDeprecation.",
+    );
+  const proposal = parsed;
   pending(proposal);
   if (!proposal.proposed)
     throw new ProposalError(
@@ -431,10 +534,10 @@ export function decideProposal(
   input: unknown,
   status: "rejected" | "ignored",
   decision: { decidedBy: string; decidedAt: string; note?: string },
-): WorkflowUpdateProposal {
-  const proposal = WorkflowUpdateProposalSchema.parse(input);
+): Proposal {
+  const proposal = ProposalSchema.parse(input);
   pending(proposal);
-  return WorkflowUpdateProposalSchema.parse({
+  return ProposalSchema.parse({
     ...proposal,
     review: {
       status,
@@ -445,15 +548,13 @@ export function decideProposal(
   });
 }
 
-export function serializeProposalYaml(
-  proposal: WorkflowUpdateProposal,
-): string {
-  return stringify(WorkflowUpdateProposalSchema.parse(proposal), {
+export function serializeProposalYaml(proposal: Proposal): string {
+  return stringify(ProposalSchema.parse(proposal), {
     aliasDuplicateObjects: false,
     lineWidth: 0,
   });
 }
-export function parseProposalYaml(input: string): WorkflowUpdateProposal {
+export function parseProposalYaml(input: string): Proposal {
   if (Buffer.byteLength(input, "utf8") > 2 * 1024 * 1024)
     throw new Error("Proposal YAML exceeds the 2 MiB limit.");
   const document = parseDocument(input, {
@@ -466,7 +567,57 @@ export function parseProposalYaml(input: string): WorkflowUpdateProposal {
     throw new Error(
       "Invalid proposal YAML. Use one YAML 1.2 document with unique keys and standard scalar types.",
     );
-  return WorkflowUpdateProposalSchema.parse(
-    document.toJS({ maxAliasCount: 0 }),
-  );
+  return ProposalSchema.parse(document.toJS({ maxAliasCount: 0 }));
+}
+
+/**
+ * Pure: accepts a pending deprecation, returning a deprecated record built from
+ * the still-unchanged approved workflow. The caller removes the approved file.
+ */
+export function acceptDeprecation(
+  input: unknown,
+  approvedRecord: unknown,
+  decision: { decidedBy: string; decidedAt: string; note?: string },
+): { deprecated: DeprecatedWorkflow; proposal: WorkflowDeprecationProposal } {
+  const proposal = ProposalSchema.parse(input);
+  if (proposal.kind !== "workflow-deprecation-proposal")
+    throw new ProposalError(
+      "wrong-kind",
+      "This is an update proposal; accept it with acceptProposal.",
+    );
+  pending(proposal);
+  const record = ApprovedWorkflowSchema.parse(approvedRecord);
+  if (
+    record.workflow.id !== proposal.workflowId ||
+    workflowRevision(record.workflow) !== proposal.approved.revision
+  )
+    throw new ProposalError(
+      "approved-changed",
+      "The approved workflow changed after this proposal was generated. Regenerate proposals.",
+    );
+  const review = {
+    status: "accepted" as const,
+    mode: "accept" as const,
+    decidedBy: decision.decidedBy,
+    decidedAt: decision.decidedAt,
+    ...(decision.note === undefined ? {} : { note: decision.note }),
+  };
+  return {
+    deprecated: DeprecatedWorkflowSchema.parse({
+      schemaVersion: 1,
+      kind: "deprecated-workflow",
+      deprecation: {
+        deprecatedBy: decision.decidedBy,
+        deprecatedAt: decision.decidedAt,
+        deprecatedCommit: proposal.head.commit,
+        reasons: proposal.lostSupport,
+        ...(proposal.replacement
+          ? { replacement: proposal.replacement.capabilityId }
+          : {}),
+        ...(decision.note === undefined ? {} : { note: decision.note }),
+      },
+      workflow: { ...record.workflow, status: "deprecated" },
+    }),
+    proposal: WorkflowDeprecationProposalSchema.parse({ ...proposal, review }),
+  };
 }

@@ -22,9 +22,11 @@ import {
 import { validateWorkflow } from "@pathcompiler/workflow-validator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  acceptDeprecation,
   acceptProposal,
   decideProposal,
   generateProposals,
+  type Proposal,
   ProposalError,
   parseProposalYaml,
   proposalFileName,
@@ -39,7 +41,7 @@ const fixture = fileURLToPath(
 let repository: string;
 let approved: ApprovedWorkflow[];
 let head: CommitAnalysis;
-let proposals: WorkflowUpdateProposal[];
+let proposals: Proposal[];
 const git = async (...args: string[]) =>
   (
     await exec("git", ["-C", repository, ...args], {
@@ -145,7 +147,8 @@ function proposal(): WorkflowUpdateProposal {
   const found = proposals.find(
     (item) => item.workflowId === "plans.change_structure",
   );
-  if (!found) throw new Error("Missing proposal");
+  if (found?.kind !== "workflow-update-proposal")
+    throw new Error("Missing update proposal");
   return structuredClone(found);
 }
 function proposalError(run: () => unknown): ProposalError {
@@ -307,5 +310,131 @@ describe("workflow update proposals", () => {
     const yaml = serializeProposalYaml(proposal());
     expect(parseProposalYaml(yaml)).toEqual(proposal());
     expect(() => parseProposalYaml(`${yaml}\nkind: other\n`)).toThrow();
+  });
+});
+
+describe("workflow deprecation proposals", () => {
+  const headSha = "c".repeat(40);
+  const record = () => {
+    const found = approved.find(
+      (item) => item.workflow.id === "clients.create",
+    );
+    if (!found) throw new Error("Missing approved clients.create");
+    return structuredClone(found);
+  };
+  const impact = (
+    code: "target-removed" | "api-changed",
+    severity: "high" | "medium",
+  ) => ({
+    schemaVersion: 1 as const,
+    base: { commit: record().approval.approvedCommit },
+    head: { commit: headSha },
+    method: "deterministic-rules" as const,
+    impacts: [
+      {
+        workflowId: "clients.create",
+        severity,
+        reasons: [
+          {
+            code,
+            severity,
+            message: `Semantic target clients.create was removed.`,
+            nodeId: "ui:clients.create",
+            stepIds: ["step.1"],
+          },
+        ],
+        affectedSteps: ["step.1"],
+      },
+    ],
+  });
+  const generate = (
+    code: "target-removed" | "api-changed",
+    severity: "high" | "medium",
+  ) =>
+    generateProposals({
+      impact: impact(code, severity),
+      approved: [record()],
+      candidates: [],
+      validate: () => {
+        throw new Error("No candidate should be validated");
+      },
+      newCapabilities: [
+        {
+          id: "plans.duplicate",
+          domain: "plans",
+          entity: "plan",
+          title: "Duplicate Plan",
+        },
+        {
+          id: "clients.invite",
+          domain: "clients",
+          entity: "client",
+          title: "Invite Client",
+        },
+      ],
+    });
+  const decided = { decidedBy: "Ana", decidedAt: "2026-10-22T12:00:00.000Z" };
+
+  it("proposes deprecation when critical support is lost and nothing matches", () => {
+    const [item] = generate("target-removed", "high");
+    expect(item).toMatchObject({
+      kind: "workflow-deprecation-proposal",
+      workflowId: "clients.create",
+      lostSupport: ["target-removed"],
+      replacement: { capabilityId: "clients.invite", title: "Invite Client" },
+      review: { status: "pending" },
+    });
+    if (item?.kind !== "workflow-deprecation-proposal")
+      throw new Error("Expected deprecation");
+    expect(item.summary).toContain("lost implementation support");
+    expect(item.summary).toContain(
+      "Possible replacement: Invite Client (clients.invite).",
+    );
+    expect(item.summary).toContain("never deleted automatically");
+    expect(parseProposalYaml(serializeProposalYaml(item))).toEqual(item);
+  });
+
+  it("keeps medium-only losses as manual update proposals", () => {
+    const [item] = generate("api-changed", "medium");
+    expect(item).toMatchObject({
+      kind: "workflow-update-proposal",
+      proposed: null,
+      match: { method: "none" },
+    });
+  });
+
+  it("accepts into a deprecated record and guards against drift and wrong kinds", () => {
+    const [item] = generate("target-removed", "high");
+    const result = acceptDeprecation(item, record(), {
+      ...decided,
+      note: "Replaced by invites",
+    });
+    expect(result.deprecated).toMatchObject({
+      kind: "deprecated-workflow",
+      deprecation: {
+        deprecatedBy: "Ana",
+        deprecatedCommit: headSha,
+        reasons: ["target-removed"],
+        replacement: "clients.invite",
+        note: "Replaced by invites",
+      },
+      workflow: { id: "clients.create", status: "deprecated" },
+    });
+    expect(result.proposal.review).toMatchObject({ status: "accepted" });
+    const changed = record();
+    changed.workflow.title = "Edited later";
+    expect(
+      proposalError(() => acceptDeprecation(item, changed, decided)).code,
+    ).toBe("approved-changed");
+    expect(
+      proposalError(() => acceptDeprecation(proposal(), record(), decided))
+        .code,
+    ).toBe("wrong-kind");
+    expect(proposalError(() => acceptProposal(item, decision())).code).toBe(
+      "wrong-kind",
+    );
+    expect(decideProposal(item, "rejected", decided).review.status).toBe(
+      "rejected",
+    );
   });
 });

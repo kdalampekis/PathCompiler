@@ -73,6 +73,30 @@ export const RejectedWorkflowSchema = z
   });
 export type RejectedWorkflow = z.infer<typeof RejectedWorkflowSchema>;
 
+export const DeprecatedWorkflowSchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    kind: z.literal("deprecated-workflow"),
+    deprecation: z.strictObject({
+      deprecatedBy: ReviewerSchema,
+      deprecatedAt: z.iso.datetime(),
+      /** Commit at which the workflow lost its implementation support. */
+      deprecatedCommit: CommitSchema,
+      reasons: z.array(z.string().min(1)).min(1),
+      replacement: z.string().min(1).optional(),
+      note: z.string().min(1).max(500).optional(),
+    }),
+    workflow: WorkflowV1Schema,
+  })
+  .superRefine((record, context) => {
+    if (record.workflow.status !== "deprecated")
+      context.addIssue({
+        code: "custom",
+        message: "Deprecated artifacts must contain a deprecated workflow",
+      });
+  });
+export type DeprecatedWorkflow = z.infer<typeof DeprecatedWorkflowSchema>;
+
 export class ReviewError extends Error {
   constructor(
     readonly code:
@@ -94,6 +118,7 @@ export function reviewPaths(id: string) {
     candidate: `workflows/candidates/${id}.yaml`,
     approved: `workflows/${id}.yaml`,
     rejected: `workflows/rejected/${id}.yaml`,
+    deprecated: `workflows/deprecated/${id}.yaml`,
   };
 }
 
@@ -174,12 +199,14 @@ export function rejectCandidate(
 }
 
 export function serializeReviewedYaml(
-  record: ApprovedWorkflow | RejectedWorkflow,
+  record: ApprovedWorkflow | RejectedWorkflow | DeprecatedWorkflow,
 ): string {
   const parsed =
     record.kind === "approved-workflow"
       ? ApprovedWorkflowSchema.parse(record)
-      : RejectedWorkflowSchema.parse(record);
+      : record.kind === "rejected-workflow"
+        ? RejectedWorkflowSchema.parse(record)
+        : DeprecatedWorkflowSchema.parse(record);
   return stringify(parsed, { aliasDuplicateObjects: false, lineWidth: 0 });
 }
 export function parseApprovedWorkflowYaml(input: string): ApprovedWorkflow {
@@ -187,6 +214,9 @@ export function parseApprovedWorkflowYaml(input: string): ApprovedWorkflow {
 }
 export function parseRejectedWorkflowYaml(input: string): RejectedWorkflow {
   return RejectedWorkflowSchema.parse(loadYaml(input, "rejected workflow"));
+}
+export function parseDeprecatedWorkflowYaml(input: string): DeprecatedWorkflow {
+  return DeprecatedWorkflowSchema.parse(loadYaml(input, "deprecated workflow"));
 }
 
 function loadYaml(input: string, label: string): unknown {

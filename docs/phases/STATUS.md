@@ -1291,3 +1291,51 @@ approves normally, and re-detection then finds nothing.
   needs a token). Commit subjects come from file histories in the range.
 - Weights are fixed rule strengths, not calibrated probabilities.
 - Twenty-three phases are complete (0–22), leaving 8 (23–30).
+
+## Phase 23 — Workflow Deprecation
+
+Complete — verified locally on 2026-10-22.
+
+- Added the `workflow-deprecation-proposal` kind to `@pathcompiler/workflow-proposals`.
+  It is generated instead of an update when a high impact includes lost critical
+  support (removed step/condition target, API or route) and no head-commit
+  workflow matches. It carries the lost support, an optional replacement (a new
+  same-domain/entity capability at head) and a readable summary.
+- Added `DeprecatedWorkflowSchema` (`workflows/deprecated/<id>.yaml`) to
+  `@pathcompiler/workflow-review` and pure `acceptDeprecation`. It refuses if the
+  approved workflow changed since generation.
+- `proposals accept` on a deprecation writes the deprecated record, records the
+  decision, then removes the approved file (only on explicit acceptance; never
+  automatic). Reject/ignore keep the workflow approved. `proposals list` shows the
+  kind; `show` prints the summary. `workflows list/show` include `deprecated`, and
+  approve/reject refuse deprecated IDs.
+- `proposals generate` passes capabilities new at head for replacement
+  suggestions. Documented in README and ADR 0025.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 22 baseline lint/typecheck/tests | Passed before edits; 232 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 164 files |
+| `pnpm typecheck` | Passed, twenty-five package builds, root tests and fixture |
+| `pnpm test` | 236 tests passed across thirty suites |
+| `git diff --check` | Passed |
+
+Pure tests cover deprecation generation with a replacement, medium-only no-match
+staying an update, acceptance into a deprecated record, approved-drift and
+wrong-kind refusals, rejection and YAML round trips. Through the built CLI in a
+temporary fixture repository, removing the Change Plan Structure control yields a
+high-impact deprecation proposal. Accepting it writes the deprecated record,
+removes the approved file, shows `deprecated` in `workflows show`, rebuilds with
+only `plans.create`, and blocks re-approval.
+
+### Scope notes and limitations
+
+- All Phase 23 scope is implemented. Replacement detection only suggests
+  same-domain, same-entity capabilities and never auto-links them.
+- Rename-like changes with a matching successor produce updates, not deprecations.
+- Twenty-four phases are complete (0–23), leaving 7 (24–30).

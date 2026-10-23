@@ -47,6 +47,7 @@ import {
 } from "@pathcompiler/workflow-discovery";
 import type { WorkflowV1 } from "@pathcompiler/workflow-ir";
 import {
+  acceptDeprecation,
   acceptProposal,
   decideProposal,
   detectNewWorkflows,
@@ -60,6 +61,7 @@ import {
   type ApprovedWorkflow,
   approveCandidate,
   parseApprovedWorkflowYaml,
+  parseDeprecatedWorkflowYaml,
   parseRejectedWorkflowYaml,
   type RejectedWorkflow,
   ReviewError,
@@ -214,7 +216,7 @@ export async function runCli(
         return `${JSON.stringify({ schemaVersion: 1, workflows }, null, 2)}\n`;
       const count = (state: string) =>
         workflows.filter((item) => item.state === state).length;
-      return `${workflows.length} workflows: ${count("approved")} approved, ${count("rejected")} rejected, ${count("candidate")} candidates.\n${workflows
+      return `${workflows.length} workflows: ${count("approved")} approved, ${count("rejected")} rejected, ${count("candidate")} candidates, ${count("deprecated")} deprecated.\n${workflows
         .map(
           (item) =>
             `${item.state.padEnd(9)} ${item.id}  ${item.title}  (commit ${item.commit.slice(0, 12)})`,
@@ -232,21 +234,28 @@ export async function runCli(
               stored.approved,
               parseStored(stored.approved, id, parseApprovedWorkflowYaml),
             ] as const)
-          : stored.rejected !== undefined
+          : stored.deprecated !== undefined
             ? ([
-                "rejected",
-                stored.paths.rejected,
-                stored.rejected,
-                parseStored(stored.rejected, id, parseRejectedWorkflowYaml),
+                "deprecated",
+                stored.paths.deprecated,
+                stored.deprecated,
+                parseStored(stored.deprecated, id, parseDeprecatedWorkflowYaml),
               ] as const)
-            : stored.candidate !== undefined
+            : stored.rejected !== undefined
               ? ([
-                  "candidate",
-                  stored.paths.candidate,
-                  stored.candidate,
-                  parseStored(stored.candidate, id, parseCandidateYaml),
+                  "rejected",
+                  stored.paths.rejected,
+                  stored.rejected,
+                  parseStored(stored.rejected, id, parseRejectedWorkflowYaml),
                 ] as const)
-              : [];
+              : stored.candidate !== undefined
+                ? ([
+                    "candidate",
+                    stored.paths.candidate,
+                    stored.candidate,
+                    parseStored(stored.candidate, id, parseCandidateYaml),
+                  ] as const)
+                : [];
       if (!state)
         throw new Error(
           `No workflow ${id} under ${output}. Run workflows discover, or pass the --out used earlier.`,
@@ -908,12 +917,13 @@ async function readOptional(file: string): Promise<string | undefined> {
 
 async function readReviewState(output: string, id: string) {
   const paths = reviewPaths(id);
-  const [candidate, approved, rejected] = await Promise.all([
+  const [candidate, approved, rejected, deprecated] = await Promise.all([
     readOptional(path.join(output, paths.candidate)),
     readOptional(path.join(output, paths.approved)),
     readOptional(path.join(output, paths.rejected)),
+    readOptional(path.join(output, paths.deprecated)),
   ]);
-  return { paths, candidate, approved, rejected };
+  return { paths, candidate, approved, rejected, deprecated };
 }
 
 function refuseReviewed(
@@ -928,6 +938,10 @@ function refuseReviewed(
   if (stored.rejected !== undefined)
     throw new Error(
       `Workflow ${id} was already rejected (${path.join(output, stored.paths.rejected)}). Remove that record to review it again.`,
+    );
+  if (stored.deprecated !== undefined)
+    throw new Error(
+      `Workflow ${id} was deprecated (${path.join(output, stored.paths.deprecated)}). Remove that record to review it again.`,
     );
 }
 
@@ -980,7 +994,7 @@ async function listWorkflows(output: string) {
     string,
     {
       id: string;
-      state: "candidate" | "approved" | "rejected";
+      state: "candidate" | "approved" | "rejected" | "deprecated";
       title: string;
       confidence: number;
       commit: string;
@@ -988,12 +1002,13 @@ async function listWorkflows(output: string) {
     }
   >();
   const sources: [
-    "candidate" | "approved" | "rejected",
+    "candidate" | "approved" | "rejected" | "deprecated",
     string,
     (input: string) => { workflow: WorkflowV1 },
   ][] = [
     ["candidate", "workflows/candidates", parseCandidateYaml],
     ["rejected", "workflows/rejected", parseRejectedWorkflowYaml],
+    ["deprecated", "workflows/deprecated", parseDeprecatedWorkflowYaml],
     ["approved", "workflows", parseApprovedWorkflowYaml],
   ];
   // Later sources take precedence: approved > rejected > candidate.
@@ -1068,7 +1083,7 @@ async function runProposals(
         `No approved workflows under ${path.join(output, "workflows")}. Approve workflows first.`,
       );
     const scanned = path.resolve(cwd, positionals[4] ?? ".");
-    const { delta, head } = await analyzeCommitRangeDetailed({
+    const { delta, base, head } = await analyzeCommitRangeDetailed({
       directory: scanned,
       base: positionals[2] ?? "",
       head: positionals[3] ?? "",
@@ -1076,6 +1091,19 @@ async function runProposals(
     });
     const impact = analyzeWorkflowImpact(delta, approved);
     const capabilities = discoverCapabilities(head.mined.graph);
+    const existing = new Set(
+      discoverCapabilities(base.mined.graph).report.capabilities.map(
+        (capability) => capability.id,
+      ),
+    );
+    const newCapabilities = capabilities.report.capabilities
+      .filter((capability) => !existing.has(capability.id))
+      .map((capability) => ({
+        id: capability.id,
+        domain: capability.domain,
+        entity: capability.entity,
+        title: capability.title,
+      }));
     const candidates = discoverWorkflows(
       capabilities.graph,
       capabilities.report,
@@ -1093,6 +1121,7 @@ async function runProposals(
         }),
       changedFiles: delta.summary.files,
       commits,
+      newCapabilities,
     });
     await writeArtifacts(output, [
       ["reports/graph-delta.json", `${JSON.stringify(delta, null, 2)}\n`],
@@ -1132,8 +1161,18 @@ async function runProposals(
         head: proposal.head.commit,
         severity: proposal.impact.severity,
         status: proposal.review.status,
-        match: proposal.match.method,
-        valid: proposal.validation?.valid ?? null,
+        kind:
+          proposal.kind === "workflow-update-proposal"
+            ? "update"
+            : "deprecation",
+        match:
+          proposal.kind === "workflow-update-proposal"
+            ? proposal.match.method
+            : null,
+        valid:
+          proposal.kind === "workflow-update-proposal"
+            ? (proposal.validation?.valid ?? null)
+            : null,
       });
     }
     if (values.json)
@@ -1141,7 +1180,7 @@ async function runProposals(
     return `${items.length} proposals.\n${items
       .map(
         (item) =>
-          `${item.status.padEnd(8)} ${item.severity.padEnd(6)} ${item.name}${item.valid === false ? "  (proposed workflow invalid)" : ""}`,
+          `${item.status.padEnd(8)} ${item.severity.padEnd(6)} ${item.kind.padEnd(11)} ${item.name}${item.valid === false ? "  (proposed workflow invalid)" : ""}`,
       )
       .join("\n")}${items.length ? "\n" : ""}`;
   }
@@ -1153,13 +1192,43 @@ async function runProposals(
   const file = path.join(directory, `${name}.yaml`);
   const proposal = await readProposal(directory, name);
   if (command === "show" && positionals.length === 3)
-    return `${proposal.diff}\n${serializeProposalYaml(proposal)}`;
+    return `${proposal.kind === "workflow-update-proposal" ? proposal.diff : `${proposal.summary}\n`}\n${serializeProposalYaml(proposal)}`;
   const decidedBy = reviewer(values.by);
   const decidedAt = new Date().toISOString();
   const note = values.reason === undefined ? {} : { note: values.reason };
   try {
     if (
       command === "accept" &&
+      proposal.kind === "workflow-deprecation-proposal" &&
+      positionals.length === 3
+    ) {
+      const paths = reviewPaths(proposal.workflowId);
+      const approvedFile = path.join(output, paths.approved);
+      const content = await readOptional(approvedFile);
+      if (content === undefined)
+        throw new Error(
+          `No approved workflow ${proposal.workflowId} to deprecate at ${approvedFile}.`,
+        );
+      const result = acceptDeprecation(
+        proposal,
+        parseStored(content, proposal.workflowId, parseApprovedWorkflowYaml),
+        { decidedBy, decidedAt, ...note },
+      );
+      const deprecatedFile = path.join(output, paths.deprecated);
+      await writeExclusive(
+        deprecatedFile,
+        serializeReviewedYaml(result.deprecated),
+      );
+      await writeArtifacts(output, [
+        [path.relative(output, file), serializeProposalYaml(result.proposal)],
+      ]);
+      // Explicit, reviewed removal from the runtime source of truth; Git keeps history.
+      await unlink(approvedFile);
+      return `Deprecated ${proposal.workflowId} by ${decidedBy}.\nRecord: ${deprecatedFile}\nRemoved ${approvedFile} from approved workflows; commit both changes and rebuild.\n`;
+    }
+    if (
+      command === "accept" &&
+      proposal.kind === "workflow-update-proposal" &&
       positionals.length >= 3 &&
       positionals.length <= 4
     ) {

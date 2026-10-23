@@ -173,6 +173,7 @@ describe("workflow review", () => {
       candidate: "workflows/candidates/clients.create.yaml",
       approved: "workflows/clients.create.yaml",
       rejected: "workflows/rejected/clients.create.yaml",
+      deprecated: "workflows/deprecated/clients.create.yaml",
     });
     for (const id of ["../secret", "clients", "Clients.create"])
       expect(() => reviewPaths(id)).toThrow();
