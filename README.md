@@ -990,6 +990,22 @@ dashboard has no authentication: bind it to `127.0.0.1` for local review. There 
 no graph visualization yet.
 See [ADR 0027](docs/decisions/0027-local-control-plane-dashboard.md).
 
+## Formal Product Model (reasoning track)
+
+```ts
+import { f, parseFormalModel, serializeFormalModel, formalModelHash } from '@pathcompiler/formal-model';
+```
+
+`@pathcompiler/formal-model` is the solver-independent foundation for formal
+reasoning (`docs/phases/MASTER_ROADMAP.md`, phase R0). It defines typed state
+variables (`context` such as role or flags, versus mutable `state`), an expression
+AST, actions with preconditions and simultaneous-assignment effects, invariants,
+goals and admissible initial states. Every object carries `EvidenceRef`
+provenance to graph nodes. Validation type-checks every expression and effect,
+and serialization and hashing are canonical. There is no solver yet, and nothing
+changes discovery or runtime behavior.
+See [ADR 0035](docs/decisions/0035-formal-product-model-semantics.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1024,6 +1040,7 @@ Analysis packages:
 | `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `acceptDeprecation`, `decideProposal`, `detectNewWorkflows`, `workflowDiff`, `proposalFileName`, proposal/detection schemas and YAML serialize/parse, `ProposalError` |
 | `@pathcompiler/github-app` | `verifyWebhookSignature`, `parseWebhookEvent`, `createWebhookHandler`, `createJobQueue`, `createAppAuth`, `publishCheckRun`, `summarizeWorkflowCheck`, `createWorkflowCheckWorker`, `createLocalRepositoryProvider`, `githubAppManifest`, `APP_PERMISSIONS` |
 | `@pathcompiler/assistant-tools` | `resolveProductHelp`, `parseToolInput`, `toolResultText`, `jsonSchemaTool`, `anthropicTool`, `openAITool`, `langChainTool`, `INPUT_SCHEMA`, `STRICT_INPUT_SCHEMA`, `ToolInputError` |
+| `@pathcompiler/formal-model` | `FormalProductModelSchema`, `parseFormalModel`, `normalizeFormalModel`, `serializeFormalModel`, `formalModelHash`, `collectFormalEvidence`, `f` constructors, variable/expression/action/goal schemas and types |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after

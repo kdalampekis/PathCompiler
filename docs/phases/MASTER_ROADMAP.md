@@ -1,6 +1,6 @@
 # PathCompiler master roadmap
 
-Status as of 2026-10-22. This document is dependency-ordered, not sequential.
+Status as of 2026-10-23 (R0 complete). This document is dependency-ordered, not sequential.
 
 Sources: `CODEX_BUILD_SPEC.md` (original phases 0–30 and cross-cutting contracts
 §§43–96), `REASONING_ENGINE_BUILD_SPEC.md` (R, P, O and I tracks) and
@@ -366,7 +366,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
   commit diffs.
 - **Runtime change:** Fixture only.
 - **Unblocks:** R5, R6 and R8–R10 evaluations; I demos.
-- **Status:** 🔒 blocked on R0.
+- **Status:** 🟢 unblocked.
 
 #### C8 — Generalized browser verification
 - **Objective:** Generalize the Phase 10 runner from `clients.create` to
@@ -436,7 +436,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   resolution against the mined fixture graph.
 - **Runtime change:** No.
 - **Unblocks:** R1, R2, C7, O8, I0.
-- **Status:** 🟢 **unblocked; recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `@pathcompiler/formal-model`, ADR 0035.
 
 #### R1 — Formal Abstraction Builder
 - **Objective:** Derive a candidate Formal Product Model from the Product Graph,
@@ -451,7 +451,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Tests/evals:** fixture equivalence; coverage report; determinism.
 - **Runtime change:** No.
 - **Unblocks:** R2 (extracted models), R-WI, R9, R11, P1, I3.
-- **Status:** 🔒 blocked on R0.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### R2 — SMT Reachability
 - **Objective:** `solver-provider` boundary and the first SMT backend (choice
@@ -825,13 +825,13 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **R0** (next), C1, C2, C3, C4, C5, C6 (needs repos), C8, P0 | C9 (C5, C2, C3) · R1 (R0) · R2 (R1) · R3/R4/R8/R9 (R2) · R5/R12 (R4) · R6 (R3, C7) · R7 (R3) · R10 (R3, R8) · R11 (R1, R2, R4) · R-WI (R1, R3, C2, C3) · C7 (R0) · P1 (P0, R1, C9) · P2 (P1) · P3 (P0, C8, R2) · P4 (P0, R11) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0, R4, R11) · IG (I0, C2) · I1 (IG, R8) · I2 (I1, R11) · I3 (R1, R8, R11) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R1** (next), C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅ | C9 (C5, C2, C3) · R2 (R1) · R3/R4/R8/R9 (R2) · R5/R12 (R4) · R6 (R3, C7) · R7 (R3) · R10 (R3, R8) · R11 (R1, R2, R4) · R-WI (R1, R3, C2, C3) · P1 (P0, R1, C9) · P2 (P1) · P3 (P0, C8, R2) · P4 (P0, R11) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0, R4, R11) · IG (I0, C2) · I1 (IG, R8) · I2 (I1, R11) · I3 (R1, R8, R11) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
 | Lane | Sequence | Notes |
 | --- | --- | --- |
-| A — formal core (critical path) | R0 → R1 → R2 → R3 / R4 → R11 | Longest dependency chain; gates the reasoning MVP and the I track. |
+| A — formal core (critical path) | R0 ✅ → R1 → R2 → R3 / R4 → R11 | Longest dependency chain; gates the reasoning MVP and the I track. |
 | B — contracts and infrastructure | C1, C2, C3, C5, C8 (independent of each other and of lane A), then C9 | C1 gates O; C2 and C3 gate R-WI, C9 and IG; C8 gates I4, P3 and mode-5 browser checks. |
 | C — uncertainty | P0 (any time) → P1 after R1 + C9 | Independent of A until P1. |
 | D — observability | O0 after C1 → O1 → O3/O4/O5 → O6 → O7 | O8+ joins lane A outputs. |
@@ -839,7 +839,14 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: R0 — Formal Model Foundation
+## 7. Next implementation phase: R1 — Formal Abstraction Builder
+
+R0 is complete. R1 is next on the critical path: R2 needs extracted models, and
+R1 must prove it reproduces the hand-encoded `next-demo` model (or explain each
+difference) before any solver depends on it. C1 remains the parallel candidate
+for lane D (observability).
+
+### 7.1 Original rationale for choosing R0 first (2026-10-22)
 
 Why R0, rather than another C phase or an original phase:
 

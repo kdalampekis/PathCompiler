@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23)
+## Current state (updated 2026-10-23, after R0)
 
 | Item | State |
 | --- | --- |
@@ -9,10 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R0** (next), C1, C2, C3, C4, C5, C6 (needs repositories), C8, P0 |
-| Blocked | All other R, P, O and I phases, plus C7 and C9 (see the roadmap §5) |
+| Unblocked | **R1** (next), C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| Next recommended phase | **R0 — Formal Model Foundation** (rationale: `MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5. |
+| New-track phases complete | **R0 — Formal Model Foundation** (2026-10-23) |
+| Next recommended phase | **R1 — Formal Abstraction Builder** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5. |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -1723,4 +1724,64 @@ Planning only — 2026-10-23. No implementation phase was started.
   mismatched discovery baseline; the fixture-only browser verifier blocking I4;
   and the Phase 28 provider-SDK ban vs future adapters.
 - Next recommended phase: **R0 — Formal Model Foundation**.
+
+## Phase R0 — Formal Model Foundation
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/formal-model` (depends only on `workflow-ir` for
+  `EvidenceRef`, and `zod`; no solver). It provides typed state variables
+  (`boolean`, `enum`, `integer`, `string`) with `context` or `state` scope, a
+  typed `FormalExpr`/`FormalTerm` AST, actions with preconditions and
+  simultaneous-assignment effects, invariants, goals, an admissible-initial-state
+  constraint, and versioning metadata (§82).
+- Validation enforces unique IDs, known variables, enum membership,
+  integer-only ordering, integer bounds, compatible comparison types, no
+  assignment of context variables, at most one assignment per variable per
+  action, an expression depth limit, and mandatory evidence on every object.
+- `normalizeFormalModel`, `serializeFormalModel` and `formalModelHash` are
+  canonical and independent of authoring order. `collectFormalEvidence` lists
+  provenance by owner. `f` constructors keep hand-encoded models readable.
+- Hand-encoded the fixture reference model (`test/next-demo-model.ts`): 13
+  variables (role and `planStructure` flag as context), 12 actions covering
+  Create Client and Change Plan Structure including the weekly → simple
+  confirmation branch, 3 invariants, and the goals `clients.created` and
+  `plans.structure_changed`.
+- Documented semantics in ADR 0035 and the README. No change to discovery,
+  compiled artifacts or runtime behavior.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 258 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 212 files |
+| `pnpm typecheck` | Passed, including the new package |
+| `pnpm test` | 266 tests passed across 34 suites (8 new formal-model tests) |
+| `git diff --check` | Passed |
+
+Tests check that:
+- the fixture model validates;
+- shuffled authoring order gives byte-identical serialization and an identical
+  hash, and serialization round-trips;
+- every one of the model's evidence references resolves to a node in the mined
+  fixture graph, at the scanned commit, with a locator present in that node's own
+  evidence;
+- every semantic target exists as a UI node, and every capability link is a
+  discovered capability;
+- every step target of the discovered `clients.create` and
+  `plans.change_structure` workflows is covered by a formal action;
+- all variable types and typed comparisons are accepted;
+- each validation rule rejects bad input with an actionable message;
+- provenance, strict keys, the schema version, the ID format and the depth limit
+  are enforced.
+
+### Scope notes and limitations
+
+- All R0 scope is implemented. Reachability, planning and invariant checking
+  start in R2, R3 and R8.
+- The model is single-entity and unparameterized (for example "a plan exists",
+  not per-plan state). Richer constructs need an ADR and a schema bump.
+- Next recommended phase: R1 — Formal Abstraction Builder.
 
