@@ -1033,6 +1033,7 @@ pnpm pathcompiler reason plan plans.structure_changed fixtures/next-demo --conte
 pnpm pathcompiler reason why-not clients.created fixtures/next-demo --context role=unlisted
 pnpm pathcompiler reason diff <base> <head> [directory]
 pnpm pathcompiler proposals generate <base> <head> [directory] --reasoning
+pnpm pathcompiler reason verify fixtures/next-demo --property properties.json
 ```
 
 `@pathcompiler/reasoner-core` (phase R2) answers "can goal G be reached under
@@ -1080,6 +1081,19 @@ lost reachability is high severity. The GitHub App config's `"reasoning": true`
 adds a "Product logic" section to the check. All of this is opt-in.
 See [ADR 0040](docs/decisions/0040-semantic-change-reasoning.md).
 
+`verifyProperty` (phase R8) checks safety properties by bounded model checking.
+The kinds are:
+- `never`: a goal or condition is never reached;
+- `always`: a condition holds in every reachable state;
+- `invariant`: a declared model invariant holds;
+- `via`: every path to the goal passes through one of the given actions.
+
+Each property comes back as holds (with a proof), violated (with a canonical
+counterexample trace), or unknown. `reason verify` checks the model's
+invariants plus `--property` files, writes
+`reports/reasoning/verification.json`, and exits nonzero on a violation.
+See [ADR 0041](docs/decisions/0041-property-verification.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1118,9 +1132,9 @@ Analysis packages:
 | `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
 | `@pathcompiler/solver-provider` | `SolverProvider` (assumptions, unsat cores), `SolverProblem`, `SolverTerm`, `SolverCheckResult`, `SolverProblemSchema`, `parseSolverProblem` |
 | `@pathcompiler/solver-z3` | `createZ3SolverProvider` (only package importing Z3) |
-| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ProductReasoner.compareModels`, `ModelComparison`, `ReachabilityChange`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
+| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ProductReasoner.compareModels`, `ProductReasoner.verifyProperty`, `ProductPropertySchema`, `PropertyResult`, `propertiesFromInvariants`, `ModelComparison`, `ReachabilityChange`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
 | `@pathcompiler/semantic-change` | `analyzeSemanticChange`, `buildCommitModel`, `summarizeSemanticChange`, `collapseContexts`, `describeContext`, `SemanticChangeReport`, `SemanticWorkflowImpact` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable/plan/why-not/diff`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

@@ -552,7 +552,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   the seeded bug yields a counterexample.
 - **Runtime change:** No.
 - **Unblocks:** R10, I1/I2 protected behaviors, I3, P5.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `verifyProperty`, `ProductPropertySchema`, `reason verify`, ADR 0041. Seeded bug created in-test until C7.
 
 #### R9 — Dead feature and missing transition detection
 - **Prerequisites:** R1, R2. **Packages:** `reasoner-core`.
@@ -565,7 +565,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   `.pathcompiler/generated-tests/` (review required).
 - **Acceptance:** generated positive and negative Playwright candidates run
   against the fixture.
-- **Runtime change:** No. **Status:** 🔒 blocked on R8.
+- **Runtime change:** No. **Status:** 🟢 unblocked.
 
 #### R11 — Commit semantic reasoning
 - **Objective:** Formal model diff, reachability and applicability diff, and
@@ -796,7 +796,7 @@ Shared rules:
 - **Acceptance:** a human PR is evaluated with no recommendation present. The
   "unexpected regression" demo (§254) fails a candidate even though the harness
   claims success.
-- **Status:** 🔒 blocked on R8.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### I4 — Browser candidate verification
 - **Prerequisites:** I3, C8. **Status:** 🔒 blocked.
@@ -825,13 +825,13 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **R8** (next), R5, R7, R9, R12, C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP) | C9 (C5, C2, C3) · R6 (C7) · R10 (R8) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0) · IG (I0, C2) · I1 (IG, R8) · I2 (I1) · I3 (R8) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **I3** (next), R5, R7, R9, R10, R12, C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
 | Lane | Sequence | Notes |
 | --- | --- | --- |
-| A — formal core (critical path) | R0 ✅ → R1 ✅ → R2 ✅ → R3 ✅ / R4 ✅ → R11 ✅; then R8 → I3 | Longest dependency chain; gates the reasoning MVP and the I track. |
+| A — formal core (critical path) | R0 ✅ → R1 ✅ → R2 ✅ → R3 ✅ / R4 ✅ → R11 ✅; R8 ✅ → I3 | Longest dependency chain; gates the reasoning MVP and the I track. |
 | B — contracts and infrastructure | C1, C2, C3, C5, C8 (independent of each other and of lane A), then C9 | C1 gates O; C2 and C3 gate R-WI, C9 and IG; C8 gates I4, P3 and mode-5 browser checks. |
 | C — uncertainty | P0 (any time) → P1 after R1 + C9 | Independent of A until P1. |
 | D — observability | O0 after C1 → O1 → O3/O4/O5 → O6 → O7 | O8+ joins lane A outputs. |
@@ -839,24 +839,27 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: R8 — Bounded model checking
+## 7. Next implementation phase: I3 — Candidate Evaluation (mode 5)
 
-The reasoning MVP (spec §94: R0–R4 and R11) is complete. R8 is the last
-reasoning prerequisite of I3 (Candidate Evaluation, which delivers mode 5:
-Evaluate human PRs). It also feeds I1 protected behaviors, R10 and P5.
-- It adds a small property language, such as "a viewer can never hold an
-  editing form open" or "viewer can never create a client".
-- It adds bounded checking with counterexample traces, and `reason verify`.
-- It finally checks the invariants that R0 and R1 only declare.
+The reasoning MVP and R8 are complete, so every prerequisite of I3 is met: R1
+rebuilds models, R11 diffs them and R8 checks properties. I3 delivers
+operating mode 5 (Evaluate) without any harness. It evaluates a candidate
+commit, such as a human PR:
+- rebuild the model;
+- compute the semantic diff;
+- re-check the protected properties;
+- run workflow regression analysis;
+- ingest business-level test results.
 
-R5, R7, R9 and R12 are also unblocked. P0 now gates I0. C1 remains the
-parallel candidate for lane D (observability).
+The output is a `CandidateEvaluation`. Recommendations and `MutationResult`
+remain optional inputs (ADR 0033). R5, R7, R9, R10 and R12 are also unblocked.
+C1 remains the parallel candidate for lane D (observability), and P0 gates
+I0.
 
-R11 (2026-10-23) reports semantic product diffs between commits (ADR 0040).
-For example, changing `requireEditor` to `owner` removes editor reachability
-on all five guarded capabilities, each traced to `lib/session.ts`. It also
-feeds high-severity reasons into impact analysis and proposals
-(`--reasoning`). A copy-only change gives no findings.
+R8 (2026-10-23) verifies `never`, `always`, `invariant` and `via` properties
+with proofs or canonical counterexamples (ADR 0041). The seeded authorization
+bug (POST `/api/clients` without `requireEditor`) is caught with a 5-step
+counterexample.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

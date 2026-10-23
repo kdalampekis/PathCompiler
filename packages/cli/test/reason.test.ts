@@ -302,6 +302,83 @@ describe("pathcompiler reason reachable", () => {
     );
   }, 300_000);
 
+  it("verifies invariants and properties, failing with a counterexample", async () => {
+    const out = await directory();
+    const model = path.join(out, "model.json");
+    await writeFile(model, JSON.stringify(nextDemoFormalModel("abc")));
+    const properties = path.join(out, "properties.json");
+    await writeFile(
+      properties,
+      JSON.stringify({
+        properties: [
+          {
+            kind: "never",
+            id: "security.viewer_never_creates_client",
+            description: "A viewer can never create a client",
+            goal: "clients.created",
+            context: { role: "viewer" },
+          },
+        ],
+      }),
+    );
+    const passing = await runCli([
+      "reason",
+      "verify",
+      "--model",
+      model,
+      "--property",
+      properties,
+      "--out",
+      out,
+    ]);
+    expect(passing).toContain(
+      "Verified 4 properties: 4 hold, 0 violated, 0 unknown.",
+    );
+    expect(passing).toContain(
+      "✓ security.viewer_never_creates_client (role=viewer)",
+    );
+    await writeFile(
+      properties,
+      JSON.stringify([
+        {
+          kind: "via",
+          id: "plans.structure_change_confirmed",
+          description: "Every structure change passes through confirmation",
+          goal: "plans.structure_changed",
+          via: ["plans.confirm_simplify"],
+        },
+      ]),
+    );
+    const failure = runCli([
+      "reason",
+      "verify",
+      "--model",
+      model,
+      "--property",
+      properties,
+      "--context",
+      "role=editor",
+      "--out",
+      out,
+    ]);
+    await expect(failure).rejects.toThrow(/Property violations found/);
+    await expect(failure).rejects.toThrow(
+      /✗ plans\.structure_change_confirmed \(role=editor\)[\s\S]*\d\. plans\.save_structure/,
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(out, "reports/reasoning/verification.json"),
+        "utf8",
+      ),
+    );
+    expect(
+      report.results.map((item: { status: string }) => item.status),
+    ).toContain("violated");
+    await expect(
+      runCli(["scan", fixture, "--property", properties]),
+    ).rejects.toThrow(/--property is only supported by reason verify/);
+  });
+
   it("rejects malformed invocations with actionable errors", async () => {
     const out = await directory();
     const file = path.join(out, "model.json");
@@ -351,7 +428,9 @@ describe("pathcompiler reason reachable", () => {
     ).rejects.toThrow(/--max-depth must be a non-negative integer/);
     await expect(
       runCli(["scan", fixture, "--context", "role=editor"]),
-    ).rejects.toThrow(/only supported by reason reachable, plan and why-not/);
+    ).rejects.toThrow(
+      /only supported by reason reachable, plan, why-not and verify/,
+    );
     await writeFile(file, "{}");
     await expect(
       runCli(["reason", "reachable", "clients.created", "--model", file]),

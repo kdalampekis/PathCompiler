@@ -54,11 +54,15 @@ import {
   type FormalValue,
   type PlanEvaluation,
   type PlanResult,
+  type ProductProperty,
+  type PropertyResult,
+  propertiesFromInvariants,
   type ReachabilityResult,
 } from "@pathcompiler/reasoner-core";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import {
   analyzeSemanticChange,
+  describeContext,
   type SemanticChangeReport,
   summarizeSemanticChange,
 } from "@pathcompiler/semantic-change";
@@ -137,6 +141,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason reachable|plan|why-not <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
 
@@ -195,6 +200,9 @@ model coverage and uncertainties it reports. reason plan returns the shortest pl
 approved workflow exists, writing reports/reasoning/plans/<goal>.json. reason why-not explains an
 unreachable goal with a minimal set of product constraints (context, preconditions, initial
 state) and their source evidence, writing reports/reasoning/why-not/<goal>.json.
+reason verify checks the model's invariants and any properties in --property (kinds:
+never, always, invariant, via) by bounded model checking, writing
+reports/reasoning/verification.json. A violation prints a counterexample and exits nonzero (also with --json).
 reason diff builds both commits' models and reports goals that became reachable or
 unreachable per context, with root causes traced to changed files, in
 reports/semantic-change.json. impact and proposals generate accept --reasoning to add
@@ -229,6 +237,7 @@ const CLI_OPTIONS = {
   "timeout-ms": { type: "string" },
   model: { type: "string" },
   reasoning: { type: "boolean" },
+  property: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -267,8 +276,13 @@ export async function runCli(
     positionals[0] !== "reason"
   )
     throw new Error(
-      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable, plan and why-not.",
+      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable, plan, why-not and verify.",
     );
+  if (
+    values.property !== undefined &&
+    !(positionals[0] === "reason" && positionals[1] === "verify")
+  )
+    throw new Error("--property is only supported by reason verify.");
   if (
     values.reasoning &&
     !(
@@ -282,6 +296,8 @@ export async function runCli(
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (positionals[0] === "reason" && positionals[1] === "diff")
     return runSemanticDiff(positionals, values, cwd);
+  if (positionals[0] === "reason" && positionals[1] === "verify")
+    return runVerify(positionals, values, cwd);
   if (positionals[0] === "reason") return runReason(positionals, values, cwd);
   if (values.format !== undefined && positionals[0] !== "build")
     throw new Error("--format is only supported by build.");
@@ -1062,55 +1078,12 @@ async function runReason(
   };
   const maxDepth = integer("max-depth", values["max-depth"]);
   const timeoutMs = integer("timeout-ms", values["timeout-ms"]);
-  let model: FormalProductModel;
-  let extraction: ReturnType<typeof buildFormalModel> | undefined;
-  if (values.model !== undefined) {
-    if (positionals[3] !== undefined || values.exclude !== undefined)
-      throw new Error(
-        "--model reasons over the given model; do not also pass a directory or --exclude.",
-      );
-    try {
-      model = parseFormalModel(
-        JSON.parse(await readFile(path.resolve(cwd, values.model), "utf8")),
-      );
-    } catch (error) {
-      throw new Error(
-        `Cannot read the Formal Product Model in ${values.model}. Provide JSON matching @pathcompiler/formal-model (schemaVersion 1).`,
-        { cause: error },
-      );
-    }
-  } else {
-    const project = await readSourceProject(
-      path.resolve(cwd, positionals[3] ?? "."),
-      { exclude: values.exclude ?? [] },
-    );
-    const mined = minePlaywrightTests(
-      project,
-      analyzeNextProject(project).graph,
-    );
-    const capabilities = discoverCapabilities(mined.graph);
-    extraction = buildFormalModel(
-      capabilities.graph,
-      capabilities.report,
-      mined.report,
-    );
-    model = extraction.model;
-  }
-  const context: Record<string, FormalValue> = {};
-  for (const entry of values.context ?? []) {
-    const separator = entry.indexOf("=");
-    if (separator <= 0)
-      throw new Error(`--context expects name=value, got "${entry}".`);
-    const name = entry.slice(0, separator);
-    const raw = entry.slice(separator + 1);
-    const variable = model.variables.find((item) => item.id === name);
-    context[name] =
-      variable?.type === "boolean" && (raw === "true" || raw === "false")
-        ? raw === "true"
-        : variable?.type === "integer" && /^-?\d+$/.test(raw)
-          ? Number(raw)
-          : raw;
-  }
+  const { model, extraction } = await loadReasoningModel(
+    positionals[3],
+    values,
+    cwd,
+  );
+  const context = parseContext(values.context, model);
   const query = {
     goal,
     context,
@@ -1267,6 +1240,198 @@ async function runReason(
   }
   lines.push(`Artifact: ${path.join(output, file)}`);
   return `${lines.join("\n")}\n`;
+}
+
+async function loadReasoningModel(
+  directory: string | undefined,
+  values: Values,
+  cwd: string,
+): Promise<{
+  model: FormalProductModel;
+  extraction: ReturnType<typeof buildFormalModel> | undefined;
+}> {
+  if (values.model !== undefined) {
+    if (directory !== undefined || values.exclude !== undefined)
+      throw new Error(
+        "--model reasons over the given model; do not also pass a directory or --exclude.",
+      );
+    try {
+      return {
+        model: parseFormalModel(
+          JSON.parse(await readFile(path.resolve(cwd, values.model), "utf8")),
+        ),
+        extraction: undefined,
+      };
+    } catch (error) {
+      throw new Error(
+        `Cannot read the Formal Product Model in ${values.model}. Provide JSON matching @pathcompiler/formal-model (schemaVersion 1).`,
+        { cause: error },
+      );
+    }
+  }
+  const project = await readSourceProject(path.resolve(cwd, directory ?? "."), {
+    exclude: values.exclude ?? [],
+  });
+  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const capabilities = discoverCapabilities(mined.graph);
+  const extraction = buildFormalModel(
+    capabilities.graph,
+    capabilities.report,
+    mined.report,
+  );
+  return { model: extraction.model, extraction };
+}
+
+/** `name=value` entries, typed by the model's variable declarations. */
+function parseContext(
+  entries: string[] | undefined,
+  model: FormalProductModel,
+): Record<string, FormalValue> {
+  const context: Record<string, FormalValue> = {};
+  for (const entry of entries ?? []) {
+    const separator = entry.indexOf("=");
+    if (separator <= 0)
+      throw new Error(`--context expects name=value, got "${entry}".`);
+    const name = entry.slice(0, separator);
+    const raw = entry.slice(separator + 1);
+    const variable = model.variables.find((item) => item.id === name);
+    context[name] =
+      variable?.type === "boolean" && (raw === "true" || raw === "false")
+        ? raw === "true"
+        : variable?.type === "integer" && /^-?\d+$/.test(raw)
+          ? Number(raw)
+          : raw;
+  }
+  return context;
+}
+
+async function runVerify(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length > 3)
+    throw new Error(
+      "Expected: pathcompiler reason verify [directory]. Use --help for options.",
+    );
+  const integer = (flag: string, value: string | undefined) => {
+    if (value === undefined) return undefined;
+    if (!/^\d+$/.test(value))
+      throw new Error(`--${flag} must be a non-negative integer.`);
+    return Number(value);
+  };
+  const maxDepth = integer("max-depth", values["max-depth"]);
+  const timeoutMs = integer("timeout-ms", values["timeout-ms"]);
+  const { model, extraction } = await loadReasoningModel(
+    positionals[2],
+    values,
+    cwd,
+  );
+  const context = parseContext(values.context, model);
+  let declared: unknown[] = [];
+  if (values.property !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(
+        await readFile(path.resolve(cwd, values.property), "utf8"),
+      );
+    } catch (error) {
+      throw new Error(
+        `Cannot read properties from ${values.property}. Provide a JSON array of properties or { "properties": [...] }.`,
+        { cause: error },
+      );
+    }
+    declared = Array.isArray(parsed)
+      ? parsed
+      : parsed &&
+          typeof parsed === "object" &&
+          "properties" in parsed &&
+          Array.isArray(parsed.properties)
+        ? parsed.properties
+        : [];
+    if (declared.length === 0)
+      throw new Error(
+        `${values.property} has no properties. Provide a JSON array of properties or { "properties": [...] }.`,
+      );
+  }
+  const properties = [
+    ...propertiesFromInvariants(model),
+    ...(declared as ProductProperty[]),
+  ].map((property) => ({
+    ...property,
+    context: { ...context, ...(property.context ?? {}) },
+  }));
+  if (properties.length === 0)
+    throw new Error(
+      "The model declares no invariants; pass --property <json-file> with properties to verify.",
+    );
+  const solver = await createZ3SolverProvider();
+  const results: PropertyResult[] = [];
+  try {
+    const reasoner = createProductReasoner(solver);
+    for (const property of properties)
+      results.push(
+        await reasoner.verifyProperty(model, property, {
+          ...(maxDepth === undefined ? {} : { maxDepth }),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        }),
+      );
+  } finally {
+    await solver.close();
+  }
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = "reports/reasoning/verification.json";
+  const report = {
+    schemaVersion: 1,
+    type: "verification_result",
+    model: results[0]?.model,
+    results,
+    ...(extraction
+      ? {
+          modelCoverage: extraction.coverage,
+          uncertainties: extraction.uncertainties,
+        }
+      : {}),
+  };
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  const count = (status: PropertyResult["status"]) =>
+    results.filter((item) => item.status === status).length;
+  const lines = [
+    `Verified ${results.length} properties: ${count("holds")} hold, ${count("violated")} violated, ${count("unknown")} unknown.`,
+  ];
+  for (const result of results) {
+    const given = describeContext(result.context);
+    if (result.status === "holds")
+      lines.push(
+        `✓ ${result.property.id} (${given})${result.vacuous ? " — vacuous: the goal is unreachable" : ""}`,
+      );
+    else if (result.status === "unknown")
+      lines.push(
+        `? ${result.property.id} (${given}): ${result.reason}. ${result.detail}`,
+      );
+    else {
+      lines.push(
+        `✗ ${result.property.id} (${given}): ${result.property.description}`,
+        `  Counterexample${Object.keys(result.counterexample.context).length ? ` (${describeContext(result.counterexample.context)})` : ""}:`,
+        ...result.counterexample.actions.map(
+          (step) =>
+            `    ${step.index + 1}. ${step.actionId}${step.semanticTarget ? ` [${step.semanticTarget}]` : ""}`,
+        ),
+      );
+    }
+  }
+  if (extraction)
+    lines.push(
+      `Checked in the extracted model (${extraction.coverage.transitions.total} transitions, ${extraction.uncertainties.length} uncertainties); a violation can also be an extraction error, so confirm it in the browser.`,
+    );
+  lines.push(`Report: ${path.join(output, file)}`);
+  const text = `${lines.join("\n")}\n`;
+  // Violations always exit nonzero; the report is written either way.
+  if (count("violated") > 0)
+    throw new Error(`Property violations found.\n${text}`);
+  return values.json ? `${JSON.stringify(report, null, 2)}\n` : text;
 }
 
 async function semanticChange(

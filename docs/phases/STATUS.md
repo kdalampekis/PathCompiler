@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after R11)
+## Current state (updated 2026-10-23, after R8)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R8** (next), R5, R7, R9, R12, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **I3** (next), R5, R7, R9, R10, R12, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning** (2026-10-23). The reasoning MVP (spec §94) is complete. |
-| Next recommended phase | **R8 — Bounded model checking** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5, P0. |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking** (2026-10-23). The reasoning MVP (spec §94) is complete. |
+| Next recommended phase | **I3 — Candidate Evaluation, mode 5** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5, P0. |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2158,3 +2158,66 @@ commit changes `requireEditor` from `editor` to `owner`:
   costs two extractions plus about 6 queries per goal: about 10 s for the
   fixture.
 - Next recommended phase: R8 — Bounded model checking.
+
+---
+
+## Phase R8 — Bounded model checking
+
+Complete — verified locally on 2026-10-23.
+
+- **`ProductPropertySchema`** is a safety-property language with four kinds:
+  `never` (a goal or condition), `always` (a condition), `invariant` (a
+  reference to a declared invariant) and `via` (every path to a goal performs
+  one of the listed actions). Each property has an ID, a description and an
+  optional fixed context. `propertiesFromInvariants` lifts every declared
+  invariant into a property.
+- **`ProductReasoner.verifyProperty(model, property)`** reduces every kind to
+  reachability of a type-checked synthetic target on a copy of the model; for
+  `via`, the copy has the listed actions removed.
+  - **holds** comes with a k-induction proof. A `via` property that holds only
+    because the goal is unreachable is marked `vacuous`.
+  - **violated** comes with a canonical shortest counterexample.
+  - **unknown** keeps its reason.
+- **`pathcompiler reason verify [directory]`** checks the invariants plus any
+  `--property` file, with `--context` defaults. It writes
+  `reports/reasoning/verification.json` and exits nonzero on a violation, also
+  with `--json`. For extracted models it notes that a violation may be an
+  extraction error.
+- Recorded in ADR 0041 and documented in the README. No runtime change.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 309 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 237 files |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 315 tests passed across 43 suites (5 verification, 1 CLI verify) |
+| CLI binary | `reason verify fixtures/next-demo`: 6 of 6 extracted invariants hold, exit 0 |
+| `git diff --check` | Passed |
+
+Acceptance on the fixture:
+
+| Model | Property | Result |
+| --- | --- | --- |
+| Hand model | 3 declared invariants, including `security.viewer_cannot_edit` | Hold |
+| Hand model | Never `clients.created` (role viewer) | Holds |
+| Hand model | Always confirmation implies the structure dialog | Holds |
+| Hand model | `plans.structure_changed` via save or confirm | Holds, not vacuous |
+| Hand model | `plans.structure_changed` via confirm only | Violated; the counterexample ends in `plans.save_structure` |
+| Hand model | `clients.created` via submit (role viewer) | Holds, vacuous |
+| Extracted model | 6 structural invariants, and never `clients.created` (role unlisted) | Hold |
+| Extracted model, seeded bug (`requireEditor` removed from POST `/api/clients`) | Never `clients.created` (role unlisted) | Violated: `navigate.nav_clients → clients.create.open → enter_email → enter_name → submit` |
+
+Malformed properties (an empty `never`, an unknown goal, an unknown action, an
+ill-typed condition) are rejected with actionable errors.
+
+### Deviations and limitations
+
+- The roadmap lists C7 (seeded-violation fixtures) as a prerequisite. The
+  acceptance bug is seeded in a temporary fixture copy inside the test; C7 will
+  turn such cases into shared fixtures.
+- Only safety properties are covered. Liveness ("eventually") needs lasso or
+  fairness reasoning and is deferred until required.
+- Next recommended phase: I3 — Candidate Evaluation, mode 5.

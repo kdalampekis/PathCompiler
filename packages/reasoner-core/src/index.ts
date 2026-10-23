@@ -1,6 +1,7 @@
 import {
   type FormalAction,
   type FormalExpr,
+  FormalExprSchema,
   type FormalGoal,
   type FormalProductModel,
   type FormalStateVariable,
@@ -18,6 +19,7 @@ import type {
 } from "@pathcompiler/solver-provider";
 import { compareText } from "@pathcompiler/source-model";
 import type { EvidenceRef } from "@pathcompiler/workflow-ir";
+import { z } from "zod";
 
 export type FormalValue = boolean | number | string;
 export type FormalStateSnapshot = Record<string, FormalValue>;
@@ -163,6 +165,89 @@ export interface ProductReasoner {
     after: FormalProductModel,
     options?: ComparisonOptions,
   ): Promise<ModelComparison>;
+  /** Bounded model checking of one product property (reasoning spec §31–§32). */
+  verifyProperty(
+    model: FormalProductModel,
+    property: ProductProperty,
+    options?: Pick<ReachabilityQuery, "maxDepth" | "timeoutMs">,
+  ): Promise<PropertyResult>;
+}
+
+const propertyId = z.string().regex(/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/);
+const propertyContext = z
+  .record(z.string(), z.union([z.boolean(), z.number(), z.string()]))
+  .optional();
+const propertyBase = {
+  id: propertyId,
+  description: z.string().min(1),
+  /** Fixed context values; omitted context variables are universally quantified. */
+  context: propertyContext,
+};
+/**
+ * Small safety-property language. Every kind reduces to "no reachable state
+ * satisfies a target", so one bounded engine decides all of them.
+ */
+export const ProductPropertySchema = z.discriminatedUnion("kind", [
+  /** The goal, or the condition, is never reached. */
+  z
+    .strictObject({
+      kind: z.literal("never"),
+      ...propertyBase,
+      goal: z.string().min(1).optional(),
+      condition: FormalExprSchema.optional(),
+    })
+    .refine(
+      (item) => (item.goal === undefined) !== (item.condition === undefined),
+      "A never property needs exactly one of goal or condition",
+    ),
+  /** The condition holds in every reachable state. */
+  z.strictObject({
+    kind: z.literal("always"),
+    ...propertyBase,
+    condition: FormalExprSchema,
+  }),
+  /** A model invariant holds in every reachable state. */
+  z.strictObject({
+    kind: z.literal("invariant"),
+    ...propertyBase,
+    invariant: z.string().min(1),
+  }),
+  /** Every path that reaches the goal performs one of the `via` actions. */
+  z.strictObject({
+    kind: z.literal("via"),
+    ...propertyBase,
+    goal: z.string().min(1),
+    via: z.array(z.string().min(1)).min(1),
+  }),
+]);
+export type ProductProperty = z.infer<typeof ProductPropertySchema>;
+export type ProductPropertyRef = Pick<
+  ProductProperty,
+  "id" | "kind" | "description"
+>;
+export type PropertyResult = Omit<ResultBase, "goal"> & {
+  property: ProductPropertyRef;
+} & (
+    | {
+        status: "holds";
+        proof: { method: "k-induction"; depth: number };
+        /** `via` only: the goal is unreachable anyway, so the property says nothing. */
+        vacuous?: boolean;
+      }
+    | { status: "violated"; counterexample: ReasoningTrace }
+    | { status: "unknown"; reason: UnknownReason; detail: string }
+  );
+
+/** One `invariant` property per invariant the model declares. */
+export function propertiesFromInvariants(
+  model: FormalProductModel,
+): ProductProperty[] {
+  return model.invariants.map((item) => ({
+    kind: "invariant",
+    id: item.id,
+    description: item.description,
+    invariant: item.id,
+  }));
 }
 
 export type ComparisonStatus =
@@ -434,6 +519,8 @@ export function createProductReasoner(solver: SolverProvider): ProductReasoner {
       search(solver, model, query, "explain") as Promise<ExplanationResult>,
     compareModels: (before, after, options) =>
       compare(solver, before, after, options ?? {}),
+    verifyProperty: (model, property, options) =>
+      verify(solver, model, property, options ?? {}),
     async findPlan(input, query) {
       const result = await search(solver, input, query, "plan");
       if (result.status === "unknown") return result;
@@ -1505,4 +1592,142 @@ function presentIn(
   if (constraint.kind === "initial") return same(flatten(model.initial));
   const action = model.actions.find((item) => item.id === constraint.actionId);
   return action !== undefined && same(flatten(action.precondition));
+}
+
+const TARGET = "property_check.target";
+async function verify(
+  solver: SolverProvider,
+  input: FormalProductModel,
+  candidate: ProductProperty,
+  options: Pick<ReachabilityQuery, "maxDepth" | "timeoutMs">,
+): Promise<PropertyResult> {
+  const parsed = ProductPropertySchema.safeParse(candidate);
+  if (!parsed.success)
+    throw new ReasoningQueryError(
+      `Invalid property: ${parsed.error.issues.map((item) => item.message).join("; ")}`,
+    );
+  const property = parsed.data;
+  const model = normalizeFormalModel(input);
+  const goalOf = (id: string) => {
+    const goal = model.goals.find((item) => item.id === id);
+    if (!goal)
+      throw new ReasoningQueryError(
+        `Property ${property.id} references unknown goal ${id}.`,
+      );
+    return goal;
+  };
+  const variableEvidence = (expr: FormalExpr) =>
+    model.variables
+      .filter((item) => formalExprVariables(expr).includes(item.id))
+      .flatMap((item) => item.evidence);
+  let condition: FormalExpr;
+  let evidence: EvidenceRef[];
+  let actions = model.actions;
+  switch (property.kind) {
+    case "never":
+      if (property.goal) {
+        const goal = goalOf(property.goal);
+        condition = goal.condition;
+        evidence = goal.evidence;
+      } else {
+        condition = property.condition as FormalExpr;
+        evidence = variableEvidence(condition);
+      }
+      break;
+    case "always":
+      condition = f.not(property.condition);
+      evidence = variableEvidence(property.condition);
+      break;
+    case "invariant": {
+      const invariant = model.invariants.find(
+        (item) => item.id === property.invariant,
+      );
+      if (!invariant)
+        throw new ReasoningQueryError(
+          `Property ${property.id} references unknown invariant ${property.invariant}.`,
+        );
+      condition = f.not(invariant.condition);
+      evidence = invariant.evidence;
+      break;
+    }
+    case "via": {
+      const goal = goalOf(property.goal);
+      for (const id of property.via)
+        if (!model.actions.some((item) => item.id === id))
+          throw new ReasoningQueryError(
+            `Property ${property.id} references unknown action ${id}.`,
+          );
+      // A path to the goal in the model without the `via` actions avoids them.
+      actions = model.actions.filter((item) => !property.via.includes(item.id));
+      condition = goal.condition;
+      evidence = goal.evidence;
+      break;
+    }
+  }
+  if (evidence.length === 0) evidence = model.variables[0]?.evidence ?? [];
+  let augmented: FormalProductModel;
+  try {
+    augmented = parseFormalModel({
+      ...model,
+      actions,
+      goals: [
+        ...model.goals.filter((item) => item.id !== TARGET),
+        {
+          id: TARGET,
+          condition,
+          businessMeaning: property.description,
+          evidence,
+          confidence: 1,
+        },
+      ],
+    });
+  } catch (error) {
+    throw new ReasoningQueryError(
+      `Property ${property.id} does not fit the model: ${
+        error instanceof z.ZodError
+          ? error.issues.map((item) => item.message).join("; ")
+          : String(error)
+      }`,
+    );
+  }
+  const query = { goal: TARGET, context: property.context ?? {}, ...options };
+  // Canonical search: counterexamples are shortest and stable across solver versions.
+  const result = await search(solver, augmented, query, "plan");
+  const { goal: _goal, model: _model, ...common } = result;
+  const ref: ProductPropertyRef = {
+    id: property.id,
+    kind: property.kind,
+    description: property.description,
+  };
+  const head = { ...common, model: summary(model), property: ref };
+  if (result.status === "unknown")
+    return {
+      ...head,
+      status: "unknown",
+      reason: result.reason,
+      detail: result.detail,
+    };
+  if (result.status === "reachable")
+    return {
+      ...head,
+      status: "violated",
+      counterexample: { ...result.trace, goal: property.id },
+    };
+  if (result.status !== "unreachable") throw new Error("Unexpected result");
+  let vacuous: boolean | undefined;
+  if (property.kind === "via") {
+    const reach = await search(
+      solver,
+      model,
+      { goal: property.goal, context: property.context ?? {}, ...options },
+      "reach",
+    );
+    vacuous = reach.status === "unreachable";
+  }
+  return {
+    ...head,
+    status: "holds",
+    proof: result.proof,
+    ...(vacuous === undefined ? {} : { vacuous }),
+  };
 }
