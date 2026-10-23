@@ -346,6 +346,34 @@ importers:
         specifier: workspace:*
         version: link:../adapter-nextjs
 
+  packages/ui:
+    dependencies:
+      "@pathcompiler/react":
+        specifier: workspace:*
+        version: link:../react
+    devDependencies:
+      "@pathcompiler/runtime-core":
+        specifier: workspace:*
+        version: link:../runtime-core
+      "@pathcompiler/sdk-js":
+        specifier: workspace:*
+        version: link:../sdk-js
+      "@pathcompiler/workflow-compiler":
+        specifier: workspace:*
+        version: link:../workflow-compiler
+      "@types/react":
+        specifier: 19.3.0
+        version: 19.3.0
+      "@types/react-dom":
+        specifier: 19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      react:
+        specifier: 19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: 19.3.1
+        version: 19.3.1(react@19.3.1)
+
   packages/workflow-compiler:
     dependencies:
       "@pathcompiler/workflow-ir":

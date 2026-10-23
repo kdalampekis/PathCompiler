@@ -27,6 +27,13 @@ import {
   useSyncExternalStore,
 } from "react";
 
+export type { GuideState, GuideStatus } from "@pathcompiler/runtime-core";
+export type {
+  ProductHelpResult,
+  ResolveContext,
+  WorkflowDetails,
+} from "@pathcompiler/sdk-js";
+
 export type PathCompilerProviderProps = {
   client: PathCompiler;
   /** Current route from the application's router; enables SPA route awareness. */

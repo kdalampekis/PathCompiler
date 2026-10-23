@@ -664,6 +664,30 @@ observation and timers. `stop` is explicit. A step without progress becomes
 rendering is safe and reports `idle`. Pass the router's route so SPA navigation
 is observed. See [ADR 0017](docs/decisions/0017-observing-guide-runtime.md).
 
+## Optional UI components
+
+```tsx
+import { GuideOverlay, ProductHelpCard, WorkflowChecklist, WorkflowSearch } from '@pathcompiler/ui';
+
+<WorkflowSearch onSelect={setWorkflowId} />
+<ProductHelpCard result={help.data} onSelect={setWorkflowId} />
+<WorkflowChecklist workflowId="clients.create" />
+<GuideOverlay />
+```
+
+`@pathcompiler/ui` is a convenience layer. The SDK, runtime and React adapter never
+depend on it, and every component uses only public `@pathcompiler/react` hooks, so
+an application can replace any of them. Components use semantic HTML: labelled
+sections and headings, an ordered checklist with `aria-current="step"`, a labelled
+`<search>` form that resolves on submit, live status regions, and a non-modal guide
+panel with Pause/Resume/Stop/Next buttons. The overlay's highlight is
+`aria-hidden` and pointer-transparent, and missing targets show a text fallback.
+Theme with `className`, the `pathcompiler-*` classes or the CSS custom properties
+`--pc-accent`, `--pc-surface`, `--pc-text`, `--pc-radius` and `--pc-z-index`.
+Override any text (for example for translation) with `labels`. Only the overlay
+sets inline styles, and only those its positioning needs.
+See [ADR 0018](docs/decisions/0018-optional-ui-components.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -690,6 +714,7 @@ Analysis packages:
 | `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
 | `@pathcompiler/runtime-core` | `createGuideRuntime`, `createDomEnvironment`, `routeMatches`, `idleGuideState`, environment/state types |
 | `@pathcompiler/react` | `PathCompilerProvider`, `useProductHelp`, `useWorkflow`, `useGuideRuntime`, `useWorkflowProgress` |
+| `@pathcompiler/ui` | `ProductHelpCard`, `WorkflowChecklist`, `GuideOverlay`, `WorkflowSearch`, `defaultLabels` |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after

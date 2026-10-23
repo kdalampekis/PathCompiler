@@ -956,3 +956,49 @@ hooks, provider requirement and server rendering.
 - Repeated row targets report `many` until scoped targets are designed. Visibility
   is style-based, not layout-based. No UI rendering (Phase 16).
 - Sixteen phases are complete (0–15), leaving 15 (16–30).
+
+## Phase 16 — Optional UI Components
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/ui` with `ProductHelpCard`, `WorkflowChecklist`,
+  `GuideOverlay` and `WorkflowSearch`, built only from public `@pathcompiler/react`
+  hooks (replaceable). React is a peer dependency. No SDK/runtime/adapter package
+  depends on `ui` (enforced by test).
+- Accessible: labelled sections and headings, ordered checklist with
+  `aria-current="step"` and textual done/current state, labelled `<search>` form
+  that resolves on submit, polite live regions, non-modal guide panel with
+  Pause/Resume/Stop/Next, decorative `aria-hidden` highlight and a text fallback for
+  missing targets.
+- Themeable through class names, `className` and `--pc-*` CSS custom properties.
+  All text is overridable through `labels`. Only the overlay sets positioning styles.
+- `@pathcompiler/react` now re-exports `GuideState`, `GuideStatus`,
+  `ProductHelpResult`, `ResolveContext` and `WorkflowDetails` types. The root test
+  tsconfig enables `react-jsx` so tests can import TSX sources.
+- Documented in README and ADR 0018.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 15 baseline lint/typecheck/tests | Passed before edits; 191 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 140 files |
+| `pnpm typecheck` | Passed, nineteen package builds, root tests and fixture |
+| `pnpm test` | 196 tests passed across twenty-four suites |
+| `git diff --check` | Passed |
+
+Tests (happy-dom with React 19) cover workflow/ambiguous/unsupported cards, guide
+start from a card, checklist progress states, overlay step count, pause/resume,
+custom labels, stop and dismiss, missing-target fallback and recovery, completion,
+submit-only search with an associated label and announced results, and the
+dependency boundary. Browser suites were not rerun because no runtime or fixture
+behavior changed.
+
+### Scope notes and limitations
+
+- All Phase 16 scope is implemented.
+- No automated axe audit and no real-browser visual check of overlay positioning.
+- Seventeen phases are complete (0–16), leaving 14 (17–30).
