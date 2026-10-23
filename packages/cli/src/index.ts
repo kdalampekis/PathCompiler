@@ -49,7 +49,10 @@ import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
   createProductReasoner,
+  evaluatePlan,
   type FormalValue,
+  type PlanEvaluation,
+  type PlanResult,
   type ReachabilityResult,
 } from "@pathcompiler/reasoner-core";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
@@ -128,7 +131,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
-       pathcompiler reason reachable <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler reason reachable|plan <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
 
 Writes .pathcompiler/graph/source-graph.json and .pathcompiler/reports/scan-summary.json
 under the current working directory, or under the directory supplied to --out.
@@ -180,7 +183,10 @@ fixed context values (role, flags; omitted ones are free). Without --model it ex
 model from the repository and its tests (static evidence). It answers reachable (with a
 witness trace), unreachable (k-induction proof) or unknown, and writes
 reports/reasoning/<goal>.json. Unreachable means unreachable in the model: read it with the
-model coverage and uncertainties it reports. Reasoning output is for developers only.
+model coverage and uncertainties it reports. reason plan returns the shortest plan
+(canonical among equals) and compares it with workflows/<capability>.yaml when that
+approved workflow exists, writing reports/reasoning/plans/<goal>.json.
+Reasoning output is for developers only.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -247,7 +253,7 @@ export async function runCli(
     positionals[0] !== "reason"
   )
     throw new Error(
-      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable.",
+      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable and reason plan.",
     );
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (positionals[0] === "reason") return runReason(positionals, values, cwd);
@@ -993,13 +999,14 @@ async function runReason(
   values: Values,
   cwd: string,
 ): Promise<string> {
+  const mode = positionals[1];
   if (
-    positionals[1] !== "reachable" ||
+    (mode !== "reachable" && mode !== "plan") ||
     positionals.length < 3 ||
     positionals.length > 4
   )
     throw new Error(
-      "Expected: pathcompiler reason reachable <goal> [directory]. Use --help for options.",
+      "Expected: pathcompiler reason reachable|plan <goal> [directory]. Use --help for options.",
     );
   const goal = positionals[2] as string;
   const integer = (flag: string, value: string | undefined) => {
@@ -1059,22 +1066,47 @@ async function runReason(
           ? Number(raw)
           : raw;
   }
+  const query = {
+    goal,
+    context,
+    ...(maxDepth === undefined ? {} : { maxDepth }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  };
   const solver = await createZ3SolverProvider();
-  let result: ReachabilityResult;
+  let result: ReachabilityResult | PlanResult;
   try {
-    result = await createProductReasoner(solver).checkReachability(model, {
-      goal,
-      context,
-      ...(maxDepth === undefined ? {} : { maxDepth }),
-      ...(timeoutMs === undefined ? {} : { timeoutMs }),
-    });
+    const reasoner = createProductReasoner(solver);
+    result =
+      mode === "plan"
+        ? await reasoner.findPlan(model, query)
+        : await reasoner.checkReachability(model, query);
   } finally {
     await solver.close();
   }
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  let evaluation: PlanEvaluation | undefined;
+  let compared: string | undefined;
+  if (result.status === "found") {
+    const capability = model.goals.find(
+      (item) => item.id === goal,
+    )?.capabilityId;
+    const file = capability
+      ? path.join(output, "workflows", `${capability}.yaml`)
+      : undefined;
+    const approved = file ? await readOptional(file) : undefined;
+    evaluation = evaluatePlan(
+      model,
+      result.plan,
+      approved ? parseApprovedWorkflowYaml(approved).workflow : undefined,
+    );
+    if (approved) compared = capability;
+  }
   const report = {
     schemaVersion: 1,
-    type: "reachability_result",
+    type: mode === "plan" ? "plan_result" : "reachability_result",
     result,
+    ...(evaluation ? { evaluation } : {}),
+    ...(compared ? { comparedWorkflow: compared } : {}),
     ...(extraction
       ? {
           modelCoverage: extraction.coverage,
@@ -1082,8 +1114,10 @@ async function runReason(
         }
       : {}),
   };
-  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
-  const file = `reports/reasoning/${goal}.json`;
+  const file =
+    mode === "plan"
+      ? `reports/reasoning/plans/${goal}.json`
+      : `reports/reasoning/${goal}.json`;
   await writeArtifacts(output, [
     [file, `${JSON.stringify(report, null, 2)}\n`],
   ]);
@@ -1092,21 +1126,45 @@ async function runReason(
     Object.entries(result.context)
       .map(([name, value]) => `${name}=${value}`)
       .join(", ") || "any context";
-  const lines = [`${goal} under ${given}: ${result.status.toUpperCase()}`];
-  if (result.status === "reachable") {
-    const chosen = Object.entries(result.trace.context)
+  const lines: string[] = [];
+  const steps = (
+    context: Record<string, FormalValue>,
+    list: { index: number; actionId: string; semanticTarget?: string }[],
+  ) => {
+    const chosen = Object.entries(context)
       .filter(([name]) => !(name in result.context))
       .map(([name, value]) => `${name}=${value}`);
     if (chosen.length > 0) lines.push(`Witness context: ${chosen.join(", ")}`);
-    for (const step of result.trace.actions)
+    for (const step of list)
       lines.push(
         `  ${step.index + 1}. ${step.actionId}${step.semanticTarget ? ` [${step.semanticTarget}]` : ""}`,
       );
-  } else if (result.status === "unreachable")
+  };
+  if (result.status === "found") {
+    const { plan, optimality } = result;
     lines.push(
+      `${goal} under ${given}: PLAN FOUND (${plan.length} steps, cost ${plan.cost}; shortest${optimality.cost === "optimal" ? " and cheapest" : ", cheapest not guaranteed"})`,
+    );
+    steps(plan.context, plan.steps);
+    const major = evaluation?.majorSteps;
+    if (major)
+      lines.push(
+        `Approved workflow ${compared}: ${major.matched}/${major.expected.length} major steps matched${major.missing.length > 0 ? ` (missing ${major.missing.join(", ")})` : ""}${major.extra.length > 0 ? ` (extra ${major.extra.join(", ")})` : ""}.`,
+      );
+    else lines.push("No approved workflow to compare with.");
+  } else if (result.status === "reachable") {
+    lines.push(`${goal} under ${given}: REACHABLE`);
+    steps(result.trace.context, result.trace.actions);
+  } else if (result.status === "unreachable" || result.status === "impossible")
+    lines.push(
+      `${goal} under ${given}: ${result.status.toUpperCase()}`,
       `No path exists in the model (k-induction closed at depth ${result.proof.depth}).`,
     );
-  else lines.push(`Reason: ${result.reason}. ${result.detail}`);
+  else
+    lines.push(
+      `${goal} under ${given}: UNKNOWN`,
+      `Reason: ${result.reason}. ${result.detail}`,
+    );
   lines.push(
     `Model: ${result.model.id} (${result.model.source}, ${result.model.hash}); slice ${result.stats.slice.variables}/${result.stats.slice.totalVariables} variables, ${result.stats.slice.actions}/${result.stats.slice.totalActions} actions; ${result.stats.solverCalls} solver calls, ${result.stats.durationMs} ms.`,
   );
@@ -1115,7 +1173,7 @@ async function runReason(
     lines.push(
       `Model coverage: ${transitions.total} transitions (${transitions.deterministic} deterministic, ${transitions.tests} from tests, ${transitions.semanticOnly} semantic-only); ${extraction.uncertainties.length} uncertainties.`,
     );
-    if (result.status === "unreachable")
+    if (result.status === "unreachable" || result.status === "impossible")
       lines.push(
         "Unreachable in the extracted model; review its uncertainties and verify in the browser before relying on it.",
       );

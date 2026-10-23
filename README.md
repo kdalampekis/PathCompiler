@@ -1029,6 +1029,7 @@ See [ADR 0036](docs/decisions/0036-formal-abstraction-rules.md).
 ```bash
 pnpm pathcompiler reason reachable clients.created fixtures/next-demo --context role=editor
 pnpm pathcompiler reason reachable clients.created --model model.json --context role=viewer --json
+pnpm pathcompiler reason plan plans.structure_changed fixtures/next-demo --context role=editor
 ```
 
 `@pathcompiler/reasoner-core` (phase R2) answers "can goal G be reached under
@@ -1045,6 +1046,15 @@ language with no Z3 types. The first backend is `@pathcompiler/solver-z3`
 model, that report includes the model's coverage and uncertainties, because an
 unreachable answer holds only within the model.
 See [ADR 0037](docs/decisions/0037-solver-backend-and-reachability.md).
+
+`findPlan` (phase R3) returns the shortest plan. Among equally short plans it
+picks the one with the lexicographically smallest action sequence, so plans
+stay stable across solver versions. Each plan reports its total cost and
+whether it is the cheapest. `evaluatePlan` replays a plan and compares its major
+steps with a reviewed workflow. `reason plan` writes
+`reports/reasoning/plans/<goal>.json`, and compares the plan with the approved
+`workflows/<capability>.yaml` when one exists.
+See [ADR 0038](docs/decisions/0038-planning-semantics.md).
 
 ## Packages
 
@@ -1084,8 +1094,8 @@ Analysis packages:
 | `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
 | `@pathcompiler/solver-provider` | `SolverProvider`, `SolverProblem`, `SolverTerm`, `SolverCheckResult`, `SolverProblemSchema`, `parseSolverProblem` |
 | `@pathcompiler/solver-z3` | `createZ3SolverProvider` (only package importing Z3) |
-| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable/plan`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

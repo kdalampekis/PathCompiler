@@ -1,10 +1,12 @@
 import {
   type FormalAction,
   type FormalExpr,
+  type FormalGoal,
   type FormalProductModel,
   type FormalStateVariable,
   type FormalTerm,
   formalModelHash,
+  normalizeFormalModel,
   parseFormalModel,
 } from "@pathcompiler/formal-model";
 import type {
@@ -80,11 +82,41 @@ export type ReachabilityResult =
       proof: { method: "k-induction"; depth: number };
     })
   | (ResultBase & { status: "unknown"; reason: UnknownReason; detail: string });
+export type PlanStep = ReasoningTraceStep & { cost: number };
+export type Plan = {
+  goal: string;
+  context: FormalStateSnapshot;
+  initialState: FormalStateSnapshot;
+  steps: PlanStep[];
+  length: number;
+  cost: number;
+};
+export type PlanResult =
+  | (ResultBase & {
+      status: "found";
+      plan: Plan;
+      /** Shortest by length; cheapest only when every action in the slice costs the same (R7 optimizes cost). */
+      optimality: { length: "optimal"; cost: "optimal" | "not-guaranteed" };
+    })
+  | (ResultBase & {
+      status: "impossible";
+      proof: { method: "k-induction"; depth: number };
+    })
+  | (ResultBase & { status: "unknown"; reason: UnknownReason; detail: string });
 export interface ProductReasoner {
   checkReachability(
     model: FormalProductModel,
     query: ReachabilityQuery,
   ): Promise<ReachabilityResult>;
+  /**
+   * Shortest plan to the goal. Among equally short plans it returns the one with
+   * the lexicographically smallest action sequence (by action ID), so plans do
+   * not depend on solver choices.
+   */
+  findPlan(
+    model: FormalProductModel,
+    query: ReachabilityQuery,
+  ): Promise<PlanResult>;
 }
 export class ReasoningQueryError extends Error {
   override name = "ReasoningQueryError";
@@ -231,415 +263,600 @@ const variable = (name: string): SolverTerm => ({ op: "var", name });
 /** Bounded model checking for witnesses, k-induction for unreachability proofs. */
 export function createProductReasoner(solver: SolverProvider): ProductReasoner {
   return {
-    async checkReachability(input, query) {
-      const started = Date.now();
-      const full = parseFormalModel(input);
-      const match = full.goals.find((item) => item.id === query.goal);
-      if (!match)
-        throw new ReasoningQueryError(
-          `Unknown goal ${query.goal}. Known goals: ${full.goals.map((item) => item.id).join(", ") || "none"}.`,
-        );
-      const goal = match;
-      const maxDepth = query.maxDepth ?? DEFAULT_MAX_DEPTH;
-      const timeoutMs = query.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      if (!Number.isInteger(maxDepth) || maxDepth < 0 || maxDepth > 200)
-        throw new ReasoningQueryError(
-          "maxDepth must be an integer from 0 to 200.",
-        );
-      if (!Number.isInteger(timeoutMs) || timeoutMs <= 0)
-        throw new ReasoningQueryError("timeoutMs must be a positive integer.");
-      const declared = new Map(full.variables.map((item) => [item.id, item]));
-      const context = query.context ?? {};
-      for (const [id, value] of Object.entries(context)) {
-        const item = declared.get(id);
-        if (item?.scope !== "context")
-          throw new ReasoningQueryError(
-            `${id} is not a context variable. Context variables: ${
-              full.variables
-                .filter((entry) => entry.scope === "context")
-                .map((entry) => entry.id)
-                .join(", ") || "none"
-            }.`,
-          );
-        const valid =
-          item.type === "boolean"
-            ? typeof value === "boolean"
-            : item.type === "enum"
-              ? typeof value === "string" && item.values.includes(value)
-              : item.type === "integer"
-                ? Number.isInteger(value) &&
-                  (item.min === undefined || (value as number) >= item.min) &&
-                  (item.max === undefined || (value as number) <= item.max)
-                : typeof value === "string";
-        if (!valid)
-          throw new ReasoningQueryError(
-            `${JSON.stringify(value)} is not a valid value for ${id} (${item.type === "enum" ? `one of ${item.values.join(", ")}` : item.type}).`,
-          );
-      }
-
-      const model = sliceFormalModel(full, [
-        ...formalExprVariables(goal.condition),
-        ...Object.keys(context),
-      ]);
-      const variables = new Map(model.variables.map((item) => [item.id, item]));
-      const stateIds = model.variables
-        .filter((item) => item.scope === "state")
-        .map((item) => item.id);
-      const dynamic = new Set(
-        model.actions.flatMap((action) =>
-          action.effects.map((effect) => effect.variable),
+    checkReachability: (model, query) => search(solver, model, query, false),
+    async findPlan(input, query) {
+      const result = await search(solver, input, query, true);
+      if (result.status === "unknown") return result;
+      if (result.status === "unreachable")
+        return { ...result, status: "impossible" };
+      const { trace, ...common } = result;
+      const model = parseFormalModel(input);
+      const actions = new Map(model.actions.map((item) => [item.id, item]));
+      const steps = trace.actions.map((step) => ({
+        ...step,
+        cost: actions.get(step.actionId)?.cost ?? 1,
+      }));
+      const slice = sliceFormalModel(model, [
+        ...formalExprVariables(
+          (model.goals.find((item) => item.id === trace.goal) as FormalGoal)
+            .condition,
         ),
-      );
-      // Enum values and string literals share one code table, so equality is by value.
-      const literals = new Set<string>();
-      const collect = (term: FormalTerm) => {
-        if (term.type === "const" && typeof term.value === "string")
-          literals.add(term.value);
-      };
-      const exprs = [
-        model.initial,
-        goal.condition,
-        ...model.actions.map((action) => action.precondition),
-      ];
-      const visit = (item: FormalExpr): void => {
-        if (item.type === "not") visit(item.expr);
-        else if (item.type === "and" || item.type === "or")
-          for (const entry of item.expressions) visit(entry);
-        else if (item.type !== "bool" && item.type !== "var") {
-          collect(item.left);
-          collect(item.right);
-        }
-      };
-      for (const item of exprs) visit(item);
-      for (const action of model.actions)
-        for (const effect of action.effects) collect(effect.value);
-      for (const item of model.variables)
-        if (item.type === "enum")
-          for (const value of item.values) literals.add(value);
-      for (const value of Object.values(context))
-        if (typeof value === "string") literals.add(value);
-      const table = [...literals].sort(compareText);
-      const code = (value: string) => table.indexOf(value);
-      const decodeString = (value: number) =>
-        table[value] ?? `<value ${value}>`;
-
-      const name = (id: string, step: number) =>
-        variables.get(id)?.scope === "context" ? `c:${id}` : `s${step}:${id}`;
-      const encodeConst = (value: FormalValue): SolverTerm =>
-        typeof value === "boolean"
-          ? { op: "bool", value }
-          : typeof value === "number"
-            ? int(value)
-            : int(code(value));
-      const term = (item: FormalTerm, step: number): SolverTerm =>
-        item.type === "var"
-          ? variable(name(item.id, step))
-          : encodeConst(item.value);
-      const expr = (item: FormalExpr, step: number): SolverTerm => {
-        switch (item.type) {
-          case "bool":
-            return { op: "bool", value: item.value };
-          case "var":
-            return variable(name(item.id, step));
-          case "not":
-            return not(expr(item.expr, step));
-          case "and":
-            return and(item.expressions.map((entry) => expr(entry, step)));
-          case "or":
-            return or(item.expressions.map((entry) => expr(entry, step)));
-          case "eq":
-            return eq(term(item.left, step), term(item.right, step));
-          case "lt":
-            return {
-              op: "lt",
-              left: term(item.left, step),
-              right: term(item.right, step),
-            };
-          case "lte":
-            return {
-              op: "le",
-              left: term(item.left, step),
-              right: term(item.right, step),
-            };
-          case "gt":
-            return {
-              op: "lt",
-              left: term(item.right, step),
-              right: term(item.left, step),
-            };
-          case "gte":
-            return {
-              op: "le",
-              left: term(item.right, step),
-              right: term(item.left, step),
-            };
-        }
-      };
-      const sort = (item: FormalStateVariable) =>
-        item.type === "boolean" ? ("bool" as const) : ("int" as const);
-      const domain = (
-        item: FormalStateVariable,
-        step: number,
-      ): SolverTerm[] => {
-        const own = variable(name(item.id, step));
-        if (item.type === "enum")
-          return [or(item.values.map((value) => eq(own, int(code(value)))))];
-        if (item.type === "integer")
-          return [
-            ...(item.min === undefined
-              ? []
-              : [{ op: "le", left: int(item.min), right: own } as SolverTerm]),
-            ...(item.max === undefined
-              ? []
-              : [{ op: "le", left: own, right: int(item.max) } as SolverTerm]),
-          ];
-        return [];
-      };
-      // Variables only the initial constraint mentions are declared at step 0 only.
-      const used = new Set([
-        ...formalExprVariables(goal.condition),
-        ...model.actions.flatMap((action) => [
-          ...formalExprVariables(action.precondition),
-          ...action.effects.flatMap((effect) => [
-            effect.variable,
-            ...(effect.value.type === "var" ? [effect.value.id] : []),
-          ]),
-        ]),
+        ...Object.keys(result.context),
       ]);
-      const tracked = stateIds.filter((id) => used.has(id));
-      const stepIds = (step: number) => (step === 0 ? stateIds : tracked);
-      const declare = (steps: number) => {
-        const declarations: SolverProblem["variables"] = [];
-        const constraints: SolverTerm[] = [];
-        for (const item of model.variables.filter(
-          (entry) => entry.scope === "context",
-        )) {
-          declarations.push({ name: name(item.id, 0), sort: sort(item) });
-          constraints.push(...domain(item, 0));
-        }
-        for (let step = 0; step <= steps; step += 1)
-          for (const id of stepIds(step)) {
-            const item = variables.get(id) as FormalStateVariable;
-            declarations.push({ name: name(id, step), sort: sort(item) });
-            constraints.push(...domain(item, step));
-          }
-        for (const [id, value] of Object.entries(context))
-          if (variables.has(id))
-            constraints.push(eq(variable(name(id, 0)), encodeConst(value)));
-        for (let step = 0; step < steps; step += 1) {
-          declarations.push({ name: `a${step}`, sort: "int" });
-          constraints.push(transition(step));
-        }
-        return { declarations, constraints };
+      const uniform =
+        new Set(slice.actions.map((item) => item.cost ?? 1)).size <= 1;
+      return {
+        ...common,
+        status: "found",
+        plan: {
+          goal: trace.goal,
+          context: trace.context,
+          initialState: trace.initialState,
+          steps,
+          length: steps.length,
+          cost: steps.reduce((total, step) => total + step.cost, 0),
+        },
+        optimality: {
+          length: "optimal",
+          cost: uniform ? "optimal" : "not-guaranteed",
+        },
       };
-      const transition = (step: number): SolverTerm => {
-        if (model.actions.length === 0) return { op: "bool", value: false };
-        const choice = variable(`a${step}`);
-        return and([
-          { op: "le", left: int(0), right: choice },
-          { op: "lt", left: choice, right: int(model.actions.length) },
-          ...model.actions.map((action, index) => {
-            const assigned = new Map(
-              action.effects.map((effect) => [effect.variable, effect.value]),
-            );
-            return implies(
-              eq(choice, int(index)),
-              and([
-                expr(action.precondition, step),
-                ...tracked.map((id) => {
-                  const value = assigned.get(id);
-                  return eq(
-                    variable(name(id, step + 1)),
-                    value ? term(value, step) : variable(name(id, step)),
-                  );
-                }),
-              ]),
-            );
-          }),
-        ]);
-      };
-      // Variables no action assigns keep their initial values; their initial
-      // conjuncts therefore hold in every reachable state.
-      const frozen = conjuncts(model.initial).filter((item) =>
-        formalExprVariables(item).every(
-          (id) => variables.get(id)?.scope === "context" || !dynamic.has(id),
-        ),
-      );
+    },
+  };
+}
 
-      let solverCalls = 0;
-      let constraintCount = 0;
-      let bound = 0;
-      const sliceStats = {
-        variables: model.variables.length,
-        actions: model.actions.length,
-        totalVariables: full.variables.length,
-        totalActions: full.actions.length,
-      };
-      const base = (): ResultBase => ({
-        goal: goal.id,
-        context: { ...context },
-        model: {
-          id: full.id,
-          hash: formalModelHash(full),
-          repositoryCommit: full.metadata.repositoryCommit,
-          source: full.metadata.source,
-        },
-        stats: {
-          solver: solver.name,
-          bound,
-          solverCalls,
-          constraintCount,
-          durationMs: Date.now() - started,
-          slice: sliceStats,
-        },
-      });
-      const run = async (
-        problem: Omit<SolverProblem, "timeoutMs">,
-      ): Promise<
-        | { status: "sat"; model: Record<string, SolverValue> }
-        | { status: "unsat" }
-        | ReachabilityResult
-      > => {
-        const remaining = started + timeoutMs - Date.now();
-        if (remaining <= 0)
-          return {
-            ...base(),
-            status: "unknown",
-            reason: "timeout",
-            detail: `The ${timeoutMs} ms budget ran out at bound ${bound}.`,
-          };
-        solverCalls += 1;
-        constraintCount = problem.assertions.length;
-        const result = await solver.check({ ...problem, timeoutMs: remaining });
-        if (result.status !== "unknown") return result;
-        const timedOut = /timeout|canceled/i.test(result.reason);
+async function search(
+  solver: SolverProvider,
+  input: FormalProductModel,
+  query: ReachabilityQuery,
+  canonical: boolean,
+): Promise<ReachabilityResult> {
+  const started = Date.now();
+  // Normalized order makes action indices, and so canonical plans, independent of authoring order.
+  const full = normalizeFormalModel(input);
+  const match = full.goals.find((item) => item.id === query.goal);
+  if (!match)
+    throw new ReasoningQueryError(
+      `Unknown goal ${query.goal}. Known goals: ${full.goals.map((item) => item.id).join(", ") || "none"}.`,
+    );
+  const goal = match;
+  const maxDepth = query.maxDepth ?? DEFAULT_MAX_DEPTH;
+  const timeoutMs = query.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (!Number.isInteger(maxDepth) || maxDepth < 0 || maxDepth > 200)
+    throw new ReasoningQueryError("maxDepth must be an integer from 0 to 200.");
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0)
+    throw new ReasoningQueryError("timeoutMs must be a positive integer.");
+  const declared = new Map(full.variables.map((item) => [item.id, item]));
+  const context = query.context ?? {};
+  for (const [id, value] of Object.entries(context)) {
+    const item = declared.get(id);
+    if (item?.scope !== "context")
+      throw new ReasoningQueryError(
+        `${id} is not a context variable. Context variables: ${
+          full.variables
+            .filter((entry) => entry.scope === "context")
+            .map((entry) => entry.id)
+            .join(", ") || "none"
+        }.`,
+      );
+    const valid =
+      item.type === "boolean"
+        ? typeof value === "boolean"
+        : item.type === "enum"
+          ? typeof value === "string" && item.values.includes(value)
+          : item.type === "integer"
+            ? Number.isInteger(value) &&
+              (item.min === undefined || (value as number) >= item.min) &&
+              (item.max === undefined || (value as number) <= item.max)
+            : typeof value === "string";
+    if (!valid)
+      throw new ReasoningQueryError(
+        `${JSON.stringify(value)} is not a valid value for ${id} (${item.type === "enum" ? `one of ${item.values.join(", ")}` : item.type}).`,
+      );
+  }
+
+  const model = sliceFormalModel(full, [
+    ...formalExprVariables(goal.condition),
+    ...Object.keys(context),
+  ]);
+  const variables = new Map(model.variables.map((item) => [item.id, item]));
+  const stateIds = model.variables
+    .filter((item) => item.scope === "state")
+    .map((item) => item.id);
+  const dynamic = new Set(
+    model.actions.flatMap((action) =>
+      action.effects.map((effect) => effect.variable),
+    ),
+  );
+  // Enum values and string literals share one code table, so equality is by value.
+  const literals = new Set<string>();
+  const collect = (term: FormalTerm) => {
+    if (term.type === "const" && typeof term.value === "string")
+      literals.add(term.value);
+  };
+  const exprs = [
+    model.initial,
+    goal.condition,
+    ...model.actions.map((action) => action.precondition),
+  ];
+  const visit = (item: FormalExpr): void => {
+    if (item.type === "not") visit(item.expr);
+    else if (item.type === "and" || item.type === "or")
+      for (const entry of item.expressions) visit(entry);
+    else if (item.type !== "bool" && item.type !== "var") {
+      collect(item.left);
+      collect(item.right);
+    }
+  };
+  for (const item of exprs) visit(item);
+  for (const action of model.actions)
+    for (const effect of action.effects) collect(effect.value);
+  for (const item of model.variables)
+    if (item.type === "enum")
+      for (const value of item.values) literals.add(value);
+  for (const value of Object.values(context))
+    if (typeof value === "string") literals.add(value);
+  const table = [...literals].sort(compareText);
+  const code = (value: string) => table.indexOf(value);
+  const decodeString = (value: number) => table[value] ?? `<value ${value}>`;
+
+  const name = (id: string, step: number) =>
+    variables.get(id)?.scope === "context" ? `c:${id}` : `s${step}:${id}`;
+  const encodeConst = (value: FormalValue): SolverTerm =>
+    typeof value === "boolean"
+      ? { op: "bool", value }
+      : typeof value === "number"
+        ? int(value)
+        : int(code(value));
+  const term = (item: FormalTerm, step: number): SolverTerm =>
+    item.type === "var"
+      ? variable(name(item.id, step))
+      : encodeConst(item.value);
+  const expr = (item: FormalExpr, step: number): SolverTerm => {
+    switch (item.type) {
+      case "bool":
+        return { op: "bool", value: item.value };
+      case "var":
+        return variable(name(item.id, step));
+      case "not":
+        return not(expr(item.expr, step));
+      case "and":
+        return and(item.expressions.map((entry) => expr(entry, step)));
+      case "or":
+        return or(item.expressions.map((entry) => expr(entry, step)));
+      case "eq":
+        return eq(term(item.left, step), term(item.right, step));
+      case "lt":
         return {
-          ...base(),
-          status: "unknown",
-          reason: timedOut ? "timeout" : "solver-unknown",
-          detail: `Solver returned unknown at bound ${bound}: ${result.reason}`,
+          op: "lt",
+          left: term(item.left, step),
+          right: term(item.right, step),
         };
-      };
-
-      for (let depth = 0; depth <= maxDepth; depth += 1) {
-        bound = depth;
-        const witness = declare(depth);
-        const found = await run({
-          variables: witness.declarations,
-          assertions: [
-            ...witness.constraints,
-            expr(model.initial, 0),
-            expr(goal.condition, depth),
-          ],
-        });
-        if ("goal" in found) return found;
-        if (found.status === "sat")
-          return {
-            ...base(),
-            status: "reachable",
-            trace: decode(found.model, depth),
-          };
-        const step = declare(depth + 1);
-        const distinct: SolverTerm[] = [];
-        for (let i = 0; i <= depth + 1; i += 1)
-          for (let j = i + 1; j <= depth + 1; j += 1)
-            distinct.push(
-              or(
-                tracked.map((id) =>
-                  not(eq(variable(name(id, i)), variable(name(id, j)))),
-                ),
-              ),
-            );
-        const closed = await run({
-          variables: step.declarations,
-          assertions: [
-            ...step.constraints,
-            ...frozen.map((item) => expr(item, 0)),
-            ...Array.from({ length: depth + 1 }, (_, index) =>
-              not(expr(goal.condition, index)),
-            ),
-            expr(goal.condition, depth + 1),
-            ...distinct,
-          ],
-        });
-        if ("goal" in closed) return closed;
-        if (closed.status === "unsat")
-          return {
-            ...base(),
-            status: "unreachable",
-            proof: { method: "k-induction", depth },
-          };
+      case "lte":
+        return {
+          op: "le",
+          left: term(item.left, step),
+          right: term(item.right, step),
+        };
+      case "gt":
+        return {
+          op: "lt",
+          left: term(item.right, step),
+          right: term(item.left, step),
+        };
+      case "gte":
+        return {
+          op: "le",
+          left: term(item.right, step),
+          right: term(item.left, step),
+        };
+    }
+  };
+  const sort = (item: FormalStateVariable) =>
+    item.type === "boolean" ? ("bool" as const) : ("int" as const);
+  const domain = (item: FormalStateVariable, step: number): SolverTerm[] => {
+    const own = variable(name(item.id, step));
+    if (item.type === "enum")
+      return [or(item.values.map((value) => eq(own, int(code(value)))))];
+    if (item.type === "integer")
+      return [
+        ...(item.min === undefined
+          ? []
+          : [{ op: "le", left: int(item.min), right: own } as SolverTerm]),
+        ...(item.max === undefined
+          ? []
+          : [{ op: "le", left: own, right: int(item.max) } as SolverTerm]),
+      ];
+    return [];
+  };
+  // Variables only the initial constraint mentions are declared at step 0 only.
+  const used = new Set([
+    ...formalExprVariables(goal.condition),
+    ...model.actions.flatMap((action) => [
+      ...formalExprVariables(action.precondition),
+      ...action.effects.flatMap((effect) => [
+        effect.variable,
+        ...(effect.value.type === "var" ? [effect.value.id] : []),
+      ]),
+    ]),
+  ]);
+  const tracked = stateIds.filter((id) => used.has(id));
+  const stepIds = (step: number) => (step === 0 ? stateIds : tracked);
+  const declare = (steps: number) => {
+    const declarations: SolverProblem["variables"] = [];
+    const constraints: SolverTerm[] = [];
+    for (const item of model.variables.filter(
+      (entry) => entry.scope === "context",
+    )) {
+      declarations.push({ name: name(item.id, 0), sort: sort(item) });
+      constraints.push(...domain(item, 0));
+    }
+    for (let step = 0; step <= steps; step += 1)
+      for (const id of stepIds(step)) {
+        const item = variables.get(id) as FormalStateVariable;
+        declarations.push({ name: name(id, step), sort: sort(item) });
+        constraints.push(...domain(item, step));
       }
+    for (const [id, value] of Object.entries(context))
+      if (variables.has(id))
+        constraints.push(eq(variable(name(id, 0)), encodeConst(value)));
+    for (let step = 0; step < steps; step += 1) {
+      declarations.push({ name: `a${step}`, sort: "int" });
+      constraints.push(transition(step));
+    }
+    return { declarations, constraints };
+  };
+  const transition = (step: number): SolverTerm => {
+    if (model.actions.length === 0) return { op: "bool", value: false };
+    const choice = variable(`a${step}`);
+    return and([
+      { op: "le", left: int(0), right: choice },
+      { op: "lt", left: choice, right: int(model.actions.length) },
+      ...model.actions.map((action, index) => {
+        const assigned = new Map(
+          action.effects.map((effect) => [effect.variable, effect.value]),
+        );
+        return implies(
+          eq(choice, int(index)),
+          and([
+            expr(action.precondition, step),
+            ...tracked.map((id) => {
+              const value = assigned.get(id);
+              return eq(
+                variable(name(id, step + 1)),
+                value ? term(value, step) : variable(name(id, step)),
+              );
+            }),
+          ]),
+        );
+      }),
+    ]);
+  };
+  // Variables no action assigns keep their initial values; their initial
+  // conjuncts therefore hold in every reachable state.
+  const frozen = conjuncts(model.initial).filter((item) =>
+    formalExprVariables(item).every(
+      (id) => variables.get(id)?.scope === "context" || !dynamic.has(id),
+    ),
+  );
+
+  let solverCalls = 0;
+  let constraintCount = 0;
+  let bound = 0;
+  const sliceStats = {
+    variables: model.variables.length,
+    actions: model.actions.length,
+    totalVariables: full.variables.length,
+    totalActions: full.actions.length,
+  };
+  const base = (): ResultBase => ({
+    goal: goal.id,
+    context: { ...context },
+    model: {
+      id: full.id,
+      hash: formalModelHash(full),
+      repositoryCommit: full.metadata.repositoryCommit,
+      source: full.metadata.source,
+    },
+    stats: {
+      solver: solver.name,
+      bound,
+      solverCalls,
+      constraintCount,
+      durationMs: Date.now() - started,
+      slice: sliceStats,
+    },
+  });
+  const run = async (
+    problem: Omit<SolverProblem, "timeoutMs">,
+  ): Promise<
+    | { status: "sat"; model: Record<string, SolverValue> }
+    | { status: "unsat" }
+    | ReachabilityResult
+  > => {
+    const remaining = started + timeoutMs - Date.now();
+    if (remaining <= 0)
       return {
         ...base(),
         status: "unknown",
-        reason: "bound-insufficient",
-        detail: `No witness within ${maxDepth} steps, and induction did not close at that depth. Raise maxDepth or add constraints.`,
+        reason: "timeout",
+        detail: `The ${timeoutMs} ms budget ran out at bound ${bound}.`,
       };
+    solverCalls += 1;
+    constraintCount = problem.assertions.length;
+    const result = await solver.check({ ...problem, timeoutMs: remaining });
+    if (result.status !== "unknown") return result;
+    const timedOut = /timeout|canceled/i.test(result.reason);
+    return {
+      ...base(),
+      status: "unknown",
+      reason: timedOut ? "timeout" : "solver-unknown",
+      detail: `Solver returned unknown at bound ${bound}: ${result.reason}`,
+    };
+  };
 
-      function decode(
-        values: Record<string, SolverValue>,
-        depth: number,
-      ): ReasoningTrace {
-        const read = (item: FormalStateVariable, step: number): FormalValue => {
-          const raw = values[name(item.id, step)];
-          if (raw === undefined)
-            throw new Error(
-              `Solver model has no value for ${name(item.id, step)}`,
-            );
-          return item.type === "enum" || item.type === "string"
-            ? decodeString(raw as number)
-            : raw;
-        };
-        const contextValues: FormalStateSnapshot = {};
-        const initialState: FormalStateSnapshot = {};
-        for (const item of model.variables)
-          if (item.scope === "context") contextValues[item.id] = read(item, 0);
-          else initialState[item.id] = read(item, 0);
-        let state = { ...contextValues, ...initialState };
-        if (!evaluateFormalExpr(model.initial, state))
-          throw new Error(
-            "Internal reasoning error: witness initial state is not admissible.",
-          );
-        const steps: ReasoningTraceStep[] = [];
+  for (let depth = 0; depth <= maxDepth; depth += 1) {
+    bound = depth;
+    const witness = declare(depth);
+    const found = await run({
+      variables: witness.declarations,
+      assertions: [
+        ...witness.constraints,
+        expr(model.initial, 0),
+        expr(goal.condition, depth),
+      ],
+    });
+    if ("goal" in found) return found;
+    if (found.status === "sat") {
+      let values = found.model;
+      if (canonical) {
+        // Binary-search the smallest action index per step. The current
+        // model always realizes `high`, so `values` stays consistent.
+        const fixed: SolverTerm[] = [];
         for (let index = 0; index < depth; index += 1) {
-          const action = model.actions[values[`a${index}`] as number];
-          if (!action || !evaluateFormalExpr(action.precondition, state))
-            throw new Error(
-              `Internal reasoning error: witness step ${index} does not replay.`,
-            );
-          const original = full.actions.find(
-            (item) => item.id === action.id,
-          ) as FormalAction;
-          const next = applyFormalAction(action, state);
-          const changes: FormalStateSnapshot = {};
-          for (const id of Object.keys(next).sort(compareText))
-            if (next[id] !== state[id]) changes[id] = next[id] as FormalValue;
-          steps.push({
-            index,
-            actionId: action.id,
-            ...(original.semanticTarget
-              ? { semanticTarget: original.semanticTarget }
-              : {}),
-            ...(original.capabilityId
-              ? { capabilityId: original.capabilityId }
-              : {}),
-            evidence: original.evidence,
-            changes,
-          });
-          state = next;
+          const choice = variable(`a${index}`);
+          let low = 0;
+          let high = values[`a${index}`] as number;
+          while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            const probe = await run({
+              variables: witness.declarations,
+              assertions: [
+                ...witness.constraints,
+                expr(model.initial, 0),
+                expr(goal.condition, depth),
+                ...fixed,
+                { op: "le", left: choice, right: int(middle) },
+              ],
+            });
+            if ("goal" in probe) return probe;
+            if (probe.status === "sat") {
+              values = probe.model;
+              high = values[`a${index}`] as number;
+            } else low = middle + 1;
+          }
+          fixed.push(eq(choice, int(low)));
         }
-        if (!evaluateFormalExpr(goal.condition, state))
-          throw new Error(
-            "Internal reasoning error: witness does not reach the goal.",
-          );
-        return {
-          goal: goal.id,
-          context: contextValues,
-          initialState,
-          actions: steps,
-        };
       }
+      return {
+        ...base(),
+        status: "reachable",
+        trace: decode(values, depth),
+      };
+    }
+    const step = declare(depth + 1);
+    const distinct: SolverTerm[] = [];
+    for (let i = 0; i <= depth + 1; i += 1)
+      for (let j = i + 1; j <= depth + 1; j += 1)
+        distinct.push(
+          or(
+            tracked.map((id) =>
+              not(eq(variable(name(id, i)), variable(name(id, j)))),
+            ),
+          ),
+        );
+    const closed = await run({
+      variables: step.declarations,
+      assertions: [
+        ...step.constraints,
+        ...frozen.map((item) => expr(item, 0)),
+        ...Array.from({ length: depth + 1 }, (_, index) =>
+          not(expr(goal.condition, index)),
+        ),
+        expr(goal.condition, depth + 1),
+        ...distinct,
+      ],
+    });
+    if ("goal" in closed) return closed;
+    if (closed.status === "unsat")
+      return {
+        ...base(),
+        status: "unreachable",
+        proof: { method: "k-induction", depth },
+      };
+  }
+  return {
+    ...base(),
+    status: "unknown",
+    reason: "bound-insufficient",
+    detail: `No witness within ${maxDepth} steps, and induction did not close at that depth. Raise maxDepth or add constraints.`,
+  };
+
+  function decode(
+    values: Record<string, SolverValue>,
+    depth: number,
+  ): ReasoningTrace {
+    const read = (item: FormalStateVariable, step: number): FormalValue => {
+      const raw = values[name(item.id, step)];
+      if (raw === undefined)
+        throw new Error(`Solver model has no value for ${name(item.id, step)}`);
+      return item.type === "enum" || item.type === "string"
+        ? decodeString(raw as number)
+        : raw;
+    };
+    const contextValues: FormalStateSnapshot = {};
+    const initialState: FormalStateSnapshot = {};
+    for (const item of model.variables)
+      if (item.scope === "context") contextValues[item.id] = read(item, 0);
+      else initialState[item.id] = read(item, 0);
+    let state = { ...contextValues, ...initialState };
+    if (!evaluateFormalExpr(model.initial, state))
+      throw new Error(
+        "Internal reasoning error: witness initial state is not admissible.",
+      );
+    const steps: ReasoningTraceStep[] = [];
+    for (let index = 0; index < depth; index += 1) {
+      const action = model.actions[values[`a${index}`] as number];
+      if (!action || !evaluateFormalExpr(action.precondition, state))
+        throw new Error(
+          `Internal reasoning error: witness step ${index} does not replay.`,
+        );
+      const original = full.actions.find(
+        (item) => item.id === action.id,
+      ) as FormalAction;
+      const next = applyFormalAction(action, state);
+      const changes: FormalStateSnapshot = {};
+      for (const id of Object.keys(next).sort(compareText))
+        if (next[id] !== state[id]) changes[id] = next[id] as FormalValue;
+      steps.push({
+        index,
+        actionId: action.id,
+        ...(original.semanticTarget
+          ? { semanticTarget: original.semanticTarget }
+          : {}),
+        ...(original.capabilityId
+          ? { capabilityId: original.capabilityId }
+          : {}),
+        evidence: original.evidence,
+        changes,
+      });
+      state = next;
+    }
+    if (!evaluateFormalExpr(goal.condition, state))
+      throw new Error(
+        "Internal reasoning error: witness does not reach the goal.",
+      );
+    return {
+      goal: goal.id,
+      context: contextValues,
+      initialState,
+      actions: steps,
+    };
+  }
+}
+
+export type PlanEvaluation = {
+  /** The plan replays from its initial state and ends in the goal. */
+  goalReached: boolean;
+  /** Steps that are unknown to the model or whose precondition fails on replay. */
+  invalidActionCount: number;
+  /** Comparison with a reviewed workflow's steps, when one is given (spec §89). */
+  majorSteps?: {
+    expected: string[];
+    planned: string[];
+    matched: number;
+    score: number;
+    missing: string[];
+    extra: string[];
+  };
+};
+type WorkflowSteps = {
+  steps: { target?: string | undefined; action: { type: string } }[];
+};
+
+/**
+ * Replays a plan against a model and, optionally, compares its capability steps
+ * with a workflow. Navigation (steps without a capability) maps to workflow
+ * entrypoints and is not compared. Runs of adjacent input/select steps are
+ * order-insensitive on both sides.
+ */
+export function evaluatePlan(
+  input: FormalProductModel,
+  plan: Plan,
+  workflow?: WorkflowSteps,
+): PlanEvaluation {
+  const model = parseFormalModel(input);
+  const goal = model.goals.find((item) => item.id === plan.goal);
+  const actions = new Map(model.actions.map((item) => [item.id, item]));
+  let state: FormalStateSnapshot = { ...plan.context, ...plan.initialState };
+  let invalidActionCount = 0;
+  const known = (expr: FormalExpr) =>
+    formalExprVariables(expr).every((id) => id in state);
+  for (const step of plan.steps) {
+    const action = actions.get(step.actionId);
+    if (
+      !action ||
+      !known(action.precondition) ||
+      !evaluateFormalExpr(action.precondition, state)
+    ) {
+      invalidActionCount += 1;
+      continue;
+    }
+    const next = { ...state };
+    for (const effect of action.effects)
+      if (effect.value.type === "var" && !(effect.value.id in state))
+        delete next[effect.variable];
+      else next[effect.variable] = termValue(effect.value, state);
+    state = next;
+  }
+  const goalReached =
+    goal !== undefined &&
+    known(goal.condition) &&
+    evaluateFormalExpr(goal.condition, state);
+  if (!workflow) return { goalReached, invalidActionCount };
+  const targeted = workflow.steps.flatMap((step) =>
+    step.target ? [{ target: step.target, type: step.action.type }] : [],
+  );
+  const inputs = new Set(
+    targeted
+      .filter((step) => step.type === "input" || step.type === "select")
+      .map((step) => step.target),
+  );
+  const normalize = (targets: string[]) => {
+    const result: string[] = [];
+    let run: string[] = [];
+    for (const target of [...targets, ""]) {
+      if (target !== "" && inputs.has(target)) {
+        run.push(target);
+        continue;
+      }
+      result.push(...run.sort(compareText));
+      run = [];
+      if (target !== "") result.push(target);
+    }
+    return result;
+  };
+  const expected = normalize(targeted.map((step) => step.target));
+  const planned = normalize(
+    plan.steps.flatMap((step) =>
+      step.capabilityId && step.semanticTarget ? [step.semanticTarget] : [],
+    ),
+  );
+  const table = Array.from({ length: expected.length + 1 }, () =>
+    new Array<number>(planned.length + 1).fill(0),
+  );
+  for (let i = 1; i <= expected.length; i += 1)
+    for (let j = 1; j <= planned.length; j += 1)
+      (table[i] as number[])[j] =
+        expected[i - 1] === planned[j - 1]
+          ? ((table[i - 1] as number[])[j - 1] as number) + 1
+          : Math.max(
+              (table[i - 1] as number[])[j] as number,
+              (table[i] as number[])[j - 1] as number,
+            );
+  const matched = (table[expected.length] as number[])[
+    planned.length
+  ] as number;
+  return {
+    goalReached,
+    invalidActionCount,
+    majorSteps: {
+      expected,
+      planned,
+      matched,
+      score: expected.length === 0 ? 1 : matched / expected.length,
+      missing: expected.filter((target) => !planned.includes(target)),
+      extra: planned.filter((target) => !expected.includes(target)),
     },
   };
 }

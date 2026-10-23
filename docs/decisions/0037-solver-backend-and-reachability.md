@@ -29,9 +29,12 @@ Model (ADR 0035), hand-encoded or extracted (ADR 0036). Reasoning spec §16 and
   package graph enforces.
 - **Backend:** `z3-solver` 5.2.0, the official Z3 WebAssembly build (MIT,
   released 2026-08-21). It needs no native toolchain and runs in Node 22.
-  - Each check uses a fresh solver with Z3's `timeout` parameter.
-  - The solver and model are released eagerly, because the WASM heap is bounded
-    and finalizers run late. Without this, a long session exhausted memory.
+  - Each check runs in its own low-level Z3 context with the `timeout`
+    parameter, and the context is deleted afterwards. The WASM heap is bounded
+    (2 GB) and the high-level API frees AST nodes only through garbage-collection
+    finalizers. Under R3's planning workload that exhausted the heap even with
+    eager solver and model release. (Amended in R3; the first R2 version used the
+    high-level API.)
   - `close()` terminates Z3's worker threads so CLI processes exit.
 - **Encoding.**
   - State variables get one solver variable per step. Context variables get one

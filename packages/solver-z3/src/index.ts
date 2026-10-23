@@ -5,99 +5,135 @@ import {
   type SolverTerm,
   type SolverValue,
 } from "@pathcompiler/solver-provider";
-import {
-  init,
-  killThreads,
-  type Arith as Z3Arith,
-  type Bool as Z3Bool,
-} from "z3-solver";
+import { init, killThreads, type Z3_ast, Z3_lbool } from "z3-solver";
 
-const NAME = "pathcompiler";
-type Bool = Z3Bool<typeof NAME>;
-type Arith = Z3Arith<typeof NAME>;
+const MAX_TIMEOUT_MS = 2 ** 32 - 1;
 
 /**
  * Z3 (WASM) backend. Z3 objects never leave this module: problems arrive as
- * solver-neutral terms and results return plain values.
+ * solver-neutral terms and results return plain values. Each check runs in its
+ * own Z3 context, deleted afterwards, so memory does not depend on JavaScript
+ * garbage collection (the WASM heap is bounded).
  */
 export async function createZ3SolverProvider(): Promise<SolverProvider> {
-  const z3 = await init();
-  const context = new z3.Context(NAME);
+  const { Z3, em, getVersionString } = await init();
   let closed = false;
   return {
-    name: `z3 ${z3.getVersionString()}`,
+    name: `z3 ${getVersionString()}`,
     async check(input): Promise<SolverCheckResult> {
       if (closed) throw new Error("The Z3 solver provider is closed.");
       const problem = parseSolverProblem(input);
-      const bools = new Map<string, Bool>();
-      const ints = new Map<string, Arith>();
-      for (const variable of problem.variables)
-        if (variable.sort === "bool")
-          bools.set(variable.name, context.Bool.const(variable.name));
-        else ints.set(variable.name, context.Int.const(variable.name));
-      const bool = (term: SolverTerm): Bool => {
-        switch (term.op) {
-          case "bool":
-            return context.Bool.val(term.value);
-          case "var":
-            return bools.get(term.name) as Bool;
-          case "not":
-            return context.Not(bool(term.arg));
-          case "and":
-            return context.And(...term.args.map(bool));
-          case "or":
-            return context.Or(...term.args.map(bool));
-          case "eq":
-            return isBool(term.left)
-              ? bool(term.left).eq(bool(term.right))
-              : int(term.left).eq(int(term.right));
-          case "lt":
-            return int(term.left).lt(int(term.right));
-          case "le":
-            return int(term.left).le(int(term.right));
-          default:
-            throw new Error(`Not a boolean term: ${term.op}`);
-        }
-      };
-      const int = (term: SolverTerm): Arith => {
-        if (term.op === "int") return context.Int.val(term.value);
-        if (term.op === "var") return ints.get(term.name) as Arith;
-        throw new Error(`Not an integer term: ${term.op}`);
-      };
-      const isBool = (term: SolverTerm) =>
-        term.op === "var" ? bools.has(term.name) : term.op !== "int";
-      const solver = new context.Solver();
+      const config = Z3.mk_config();
+      const context = Z3.mk_context(config);
+      Z3.del_config(config);
       try {
-        solver.set("timeout", problem.timeoutMs);
-        for (const assertion of problem.assertions) solver.add(bool(assertion));
-        const status = await solver.check();
-        if (status === "unsat") return { status: "unsat" };
-        if (status === "unknown")
-          return { status: "unknown", reason: solver.reasonUnknown() };
-        const model = solver.model();
-        try {
-          const values: Record<string, SolverValue> = {};
-          for (const [key, value] of bools)
-            values[key] = context.isTrue(model.eval(value, true));
-          for (const [key, value] of ints) {
-            const evaluated = model.eval(value, true);
-            if (!context.isIntVal(evaluated))
-              throw new Error(`Z3 returned a non-integer value for ${key}`);
-            values[key] = Number(evaluated.value());
+        const sorts = {
+          bool: Z3.mk_bool_sort(context),
+          int: Z3.mk_int_sort(context),
+        };
+        const constants = new Map<string, Z3_ast>();
+        for (const variable of problem.variables)
+          constants.set(
+            variable.name,
+            Z3.mk_const(
+              context,
+              Z3.mk_string_symbol(context, variable.name),
+              sorts[variable.sort],
+            ),
+          );
+        const translate = (term: SolverTerm): Z3_ast => {
+          switch (term.op) {
+            case "bool":
+              return term.value ? Z3.mk_true(context) : Z3.mk_false(context);
+            case "int":
+              return Z3.mk_numeral(context, String(term.value), sorts.int);
+            case "var":
+              return constants.get(term.name) as Z3_ast;
+            case "not":
+              return Z3.mk_not(context, translate(term.arg));
+            case "and":
+              return term.args.length === 0
+                ? Z3.mk_true(context)
+                : Z3.mk_and(context, term.args.map(translate));
+            case "or":
+              return term.args.length === 0
+                ? Z3.mk_false(context)
+                : Z3.mk_or(context, term.args.map(translate));
+            case "eq":
+              return Z3.mk_eq(
+                context,
+                translate(term.left),
+                translate(term.right),
+              );
+            case "lt":
+              return Z3.mk_lt(
+                context,
+                translate(term.left),
+                translate(term.right),
+              );
+            case "le":
+              return Z3.mk_le(
+                context,
+                translate(term.left),
+                translate(term.right),
+              );
           }
-          return { status: "sat", model: values };
+        };
+        const solver = Z3.mk_solver(context);
+        Z3.solver_inc_ref(context, solver);
+        try {
+          const params = Z3.mk_params(context);
+          Z3.params_inc_ref(context, params);
+          Z3.params_set_uint(
+            context,
+            params,
+            Z3.mk_string_symbol(context, "timeout"),
+            Math.min(problem.timeoutMs, MAX_TIMEOUT_MS),
+          );
+          Z3.solver_set_params(context, solver, params);
+          Z3.params_dec_ref(context, params);
+          for (const assertion of problem.assertions)
+            Z3.solver_assert(context, solver, translate(assertion));
+          const status = await Z3.solver_check(context, solver);
+          if (status === Z3_lbool.Z3_L_FALSE) return { status: "unsat" };
+          if (status === Z3_lbool.Z3_L_UNDEF)
+            return {
+              status: "unknown",
+              reason: Z3.solver_get_reason_unknown(context, solver),
+            };
+          const model = Z3.solver_get_model(context, solver);
+          Z3.model_inc_ref(context, model);
+          try {
+            const values: Record<string, SolverValue> = {};
+            for (const variable of problem.variables) {
+              const value = Z3.model_eval(
+                context,
+                model,
+                constants.get(variable.name) as Z3_ast,
+                true,
+              );
+              if (value === null)
+                throw new Error(`Z3 could not evaluate ${variable.name}`);
+              values[variable.name] =
+                variable.sort === "bool"
+                  ? Z3.get_bool_value(context, value) === Z3_lbool.Z3_L_TRUE
+                  : Number(Z3.get_numeral_string(context, value));
+            }
+            return { status: "sat", model: values };
+          } finally {
+            Z3.model_dec_ref(context, model);
+          }
         } finally {
-          model.release();
+          Z3.solver_dec_ref(context, solver);
         }
       } finally {
-        // Release eagerly: the WASM heap is bounded and finalizers run late.
-        solver.release();
+        Z3.del_context(context);
       }
     },
     async close() {
       if (closed) return;
       closed = true;
-      await killThreads(z3.em);
+      await killThreads(em);
     },
   };
 }

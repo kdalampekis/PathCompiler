@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,6 +116,63 @@ describe("pathcompiler reason reachable", () => {
     ]);
     expect(bounded).toContain("UNKNOWN");
     expect(bounded).toContain("Reason: bound-insufficient.");
+  });
+
+  it("plans a goal and compares the plan with the approved workflow", async () => {
+    const out = await directory();
+    const file = path.join(out, "model.json");
+    await writeFile(file, JSON.stringify(nextDemoFormalModel("abc")));
+    const args = [
+      "reason",
+      "plan",
+      "clients.created",
+      "--model",
+      file,
+      "--out",
+      out,
+    ];
+    const alone = await runCli([...args, "--context", "role=editor"]);
+    expect(alone).toContain(
+      "clients.created under role=editor: PLAN FOUND (5 steps, cost 5; shortest and cheapest)",
+    );
+    expect(alone).toContain("1. nav.open_clients [nav.clients]");
+    expect(alone).toContain("No approved workflow to compare with.");
+    await mkdir(path.join(out, "workflows"), { recursive: true });
+    await copyFile(
+      fileURLToPath(
+        new URL(
+          "../../../examples/custom-assistant/.pathcompiler/workflows/clients.create.yaml",
+          import.meta.url,
+        ),
+      ),
+      path.join(out, "workflows/clients.create.yaml"),
+    );
+    const compared = await runCli([...args, "--context", "role=editor"]);
+    expect(compared).toContain(
+      "Approved workflow clients.create: 4/4 major steps matched.",
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(out, "reports/reasoning/plans/clients.created.json"),
+        "utf8",
+      ),
+    );
+    expect(report).toMatchObject({
+      type: "plan_result",
+      comparedWorkflow: "clients.create",
+      evaluation: {
+        goalReached: true,
+        invalidActionCount: 0,
+        majorSteps: { score: 1 },
+      },
+      result: {
+        status: "found",
+        optimality: { length: "optimal", cost: "optimal" },
+      },
+    });
+    expect(await runCli([...args, "--context", "role=viewer"])).toContain(
+      "clients.created under role=viewer: IMPOSSIBLE",
+    );
   });
 
   it("rejects malformed invocations with actionable errors", async () => {

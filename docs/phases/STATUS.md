@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after R2)
+## Current state (updated 2026-10-23, after R3)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R3** (next), R4, R8, R9, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R4** (next), R7, R8, R9, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability** (2026-10-23) |
-| Next recommended phase | **R3 — Planning** (`MASTER_ROADMAP.md` §7), then R4. Parallel candidates: C1, then C2, C3, C5. |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning** (2026-10-23) |
+| Next recommended phase | **R4 — UNSAT Explanation** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5. |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -1947,3 +1947,73 @@ were 0 unknown answers.
   R7).
 - `z3-solver` adds about 30 MB of WASM to installs that include the CLI.
 - Next recommended phase: R3 — Planning.
+
+---
+
+## Phase R3 — Planning
+
+Complete — verified locally on 2026-10-23.
+
+- Added `ProductReasoner.findPlan(model, query)` → `found` (plan), `impossible`
+  (k-induction proof) or `unknown`.
+  - Plans are shortest by length. Among those, the result is the
+    lexicographically smallest action sequence in normalized (ID) order, found
+    by binary search per step, so plans do not depend on solver choices.
+  - Each plan reports its total cost. It is marked cheapest only when the
+    slice's action costs are uniform; cost optimization is R7.
+- Added `evaluatePlan(model, plan, workflow?)`. It replays the plan and
+  reports `goalReached` and `invalidActionCount`. Given a workflow, it compares
+  major steps:
+  - navigation is excluded, because it maps to workflow entrypoints;
+  - adjacent input/select steps are order-insensitive;
+  - the result has a longest-common-subsequence score plus missing and extra
+    targets.
+- Added `pathcompiler reason plan <goal> [directory]`, which writes
+  `reports/reasoning/plans/<goal>.json`. When the approved
+  `workflows/<capability>.yaml` exists, the CLI compares the plan with it.
+- **Z3 backend amended (ADR 0037).** Each check now runs in its own low-level
+  Z3 context, deleted afterwards. Planning's extra solver calls exhausted the
+  2 GB WASM heap under the high-level API, whose AST nodes are freed only by GC
+  finalizers. The failure appeared as an OOM abort followed by bogus sort
+  errors. A stress run of 680 checks now stays at about 250 MB RSS.
+- Recorded in ADR 0038 and documented in the README. Default discovery,
+  compiled artifacts and runtime are unchanged.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 289 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 230 files |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 295 tests passed across 40 suites (5 planning, 1 CLI plan) |
+| CLI binary | `reason plan plans.created fixtures/next-demo --context role=editor` gives a 5-step plan in about 1.2 s |
+| `git diff --check` | Passed |
+
+Planning metrics (spec §89) on the fixture. Goal reached is true and the
+invalid action count is 0 for every plan.
+
+| Goal (model) | Plan | Major steps vs. discovered workflow |
+| --- | --- | --- |
+| clients.created (hand) | nav.open_clients → open_create_form → enter_email → enter_name → submit_create | 4/4 |
+| clients.created (extracted) | navigate.nav_clients → clients.create.open → enter_email → enter_name → submit | 4/4 |
+| plans.structure_changed (hand) | nav.open_plans → open_structure_editor → select_weekly → save_structure | 3/3 |
+| plans.structure_changed (extracted) | navigate.nav_plans → open → submit | 2/3, missing `plan.structure.selector` (ADR 0036, value-not-persisted) |
+| plans.created (extracted) | navigate.nav_plans → open → enter_client → enter_title → submit | 4/4 |
+| clients.created as a viewer | Impossible (k-induction) | — |
+
+Further tests:
+- `maxDepth` 2 gives unknown (insufficient bound);
+- with non-uniform costs, cost optimality is "not guaranteed";
+- tampered plans are detected (goal not reached, invalid steps counted);
+- CLI plan output, the comparison with an approved workflow, and the report
+  shape are checked.
+
+### Scope notes and limitations
+
+- Plans are not cost-optimized (R7). Free initial and context values come from
+  the solver model: deterministic for a given Z3 version, but not canonical.
+- The extracted model's shortcut plans show where the abstraction is too loose.
+  R-WI must report such gaps rather than turn shortcut plans into workflows.
+- Next recommended phase: R4 — UNSAT Explanation.

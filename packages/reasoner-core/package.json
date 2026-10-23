@@ -27,6 +27,7 @@
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/formal-abstraction": "workspace:*",
     "@pathcompiler/solver-z3": "workspace:*",
-    "@pathcompiler/test-miner-playwright": "workspace:*"
+    "@pathcompiler/test-miner-playwright": "workspace:*",
+    "@pathcompiler/workflow-discovery": "workspace:*"
   }
 }

@@ -592,6 +592,9 @@ importers:
       "@pathcompiler/test-miner-playwright":
         specifier: workspace:*
         version: link:../test-miner-playwright
+      "@pathcompiler/workflow-discovery":
+        specifier: workspace:*
+        version: link:../workflow-discovery
 
   packages/resolver:
     dependencies:
