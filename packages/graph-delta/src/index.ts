@@ -17,7 +17,11 @@ import {
   GraphNodeSchema,
   type ProductGraph,
 } from "@pathcompiler/graph-core";
-import { compareText, readSourceProject } from "@pathcompiler/source-model";
+import {
+  compareText,
+  readSourceProject,
+  type SourceProject,
+} from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import { z } from "zod";
 
@@ -203,12 +207,26 @@ export type CommitRangeOptions = {
 export async function analyzeCommitRange(
   options: CommitRangeOptions,
 ): Promise<GraphDelta> {
+  return (await analyzeCommitRangeDetailed(options)).delta;
+}
+
+export type CommitAnalysis = {
+  commit: string;
+  project: SourceProject;
+  /** Source plus Playwright evidence graph and the mined trace report. */
+  mined: ReturnType<typeof minePlaywrightTests>;
+};
+
+/** Like `analyzeCommitRange`, also returning the head analysis for rediscovery. */
+export async function analyzeCommitRangeDetailed(
+  options: CommitRangeOptions,
+): Promise<{ delta: GraphDelta; head: CommitAnalysis }> {
   const git = await openGitRepository(options.directory);
   const workspace = await mkdtemp(
     path.join(os.tmpdir(), "pathcompiler-delta-"),
   );
   try {
-    const snapshots = [];
+    const snapshots: (CommitAnalysis & { directory: string })[] = [];
     for (const [name, revision] of [
       ["base", options.base],
       ["head", options.head],
@@ -220,21 +238,24 @@ export async function analyzeCommitRange(
         exclude: options.exclude ?? [],
         snapshot: { commit },
       });
-      const graph = minePlaywrightTests(
+      const mined = minePlaywrightTests(
         project,
         analyzeNextProject(project).graph,
-      ).graph;
-      snapshots.push({ commit, directory, graph });
+      );
+      snapshots.push({ commit, directory, project, mined });
     }
     const [base, head] = snapshots;
     if (!base || !head) throw new Error("Unreachable: two snapshots expected");
     const files = await changedFiles(base.directory, head.directory);
-    return GraphDeltaSchema.parse({
-      schemaVersion: 1,
-      base: { commit: base.commit },
-      head: { commit: head.commit },
-      ...computeGraphDelta(base.graph, head.graph, files),
-    });
+    return {
+      delta: GraphDeltaSchema.parse({
+        schemaVersion: 1,
+        base: { commit: base.commit },
+        head: { commit: head.commit },
+        ...computeGraphDelta(base.mined.graph, head.mined.graph, files),
+      }),
+      head: { commit: head.commit, project: head.project, mined: head.mined },
+    };
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

@@ -34,6 +34,7 @@
     "@pathcompiler/workflow-compiler": "workspace:*",
     "@pathcompiler/workflow-discovery": "workspace:*",
     "@pathcompiler/workflow-ir": "workspace:*",
+    "@pathcompiler/workflow-proposals": "workspace:*",
     "@pathcompiler/workflow-review": "workspace:*",
     "@pathcompiler/workflow-validator": "workspace:*"
   },

@@ -790,6 +790,35 @@ routes and evidence node IDs. No model is used; models may later supplement thes
 rules but not replace them. `analyzeWorkflowImpact(delta, approvedRecords)` is the
 pure core. See [ADR 0022](docs/decisions/0022-deterministic-workflow-impact.md).
 
+## Workflow update proposals
+
+```sh
+pnpm pathcompiler proposals generate <approved-commit> HEAD ./fixtures/next-demo
+pnpm pathcompiler proposals list
+pnpm pathcompiler proposals show plans.change_structure.<head-sha>
+pnpm pathcompiler proposals accept plans.change_structure.<head-sha> ./fixtures/next-demo --by "Ana"
+pnpm pathcompiler proposals reject|ignore plans.change_structure.<head-sha> --by "Ana" --reason "…"
+```
+
+For each medium/high impact, `generate` rediscovers workflows at the head commit
+and matches the approved workflow: by the same ID, then the same intent, then a
+unique best match with at least 50% shared step targets. It writes
+`.pathcompiler/proposals/<id>.<head-sha>.yaml` containing the impact reasons, the
+proposed workflow (approved ID kept, `status: candidate`, bound to the head
+commit), its validation against the head graph, changed files, date-bounded
+commits touching them, and a human-readable diff of approved versus proposed
+semantics (evidence summarized as counts). Existing proposal files are never
+overwritten. If nothing matches, `proposed` is null and the reviewer writes it by
+hand.
+
+Review modes: `accept` re-validates the proposal on a clean checkout of its head
+commit and only then replaces the approved record (new
+`approvedBy/approvedAt/approvedCommit`). The mode is recorded as `edit` when
+`proposed` was changed by hand. `reject` and `ignore` (ignore for this change)
+record the decision and leave the approved workflow untouched. Decided proposals
+cannot be decided again. Generation never modifies approved files.
+See [ADR 0023](docs/decisions/0023-reviewed-workflow-update-proposals.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -819,9 +848,10 @@ Analysis packages:
 | `@pathcompiler/ui` | `ProductHelpCard`, `WorkflowChecklist`, `GuideOverlay`, `WorkflowSearch`, `defaultLabels` |
 | `@pathcompiler/mcp-server` | `createPathCompilerMcpServer`, `serveStdio`, `MCP_TOOL_NAMES` |
 | `@pathcompiler/http-service` | `createHttpService`, `createRequestHandler`, `HttpServiceOptions` |
-| `@pathcompiler/graph-delta` | `computeGraphDelta`, `analyzeCommitRange`, `GraphDeltaSchema`, `GraphNodeChangeSchema` and types |
+| `@pathcompiler/graph-delta` | `computeGraphDelta`, `analyzeCommitRange`, `analyzeCommitRangeDetailed`, `GraphDeltaSchema`, `GraphNodeChangeSchema` and types |
 | `@pathcompiler/impact-analysis` | `analyzeWorkflowImpact`, impact reason/impact/report schemas and types |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `diff`, `impact`, `build`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `decideProposal`, `workflowDiff`, `proposalFileName`, proposal schema and YAML serialize/parse, `ProposalError` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

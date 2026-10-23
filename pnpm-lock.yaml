@@ -144,6 +144,9 @@ importers:
       "@pathcompiler/workflow-ir":
         specifier: workspace:*
         version: link:../workflow-ir
+      "@pathcompiler/workflow-proposals":
+        specifier: workspace:*
+        version: link:../workflow-proposals
       "@pathcompiler/workflow-review":
         specifier: workspace:*
         version: link:../workflow-review
@@ -586,6 +589,49 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/workflow-proposals:
+    dependencies:
+      "@pathcompiler/impact-analysis":
+        specifier: workspace:*
+        version: link:../impact-analysis
+      "@pathcompiler/workflow-compiler":
+        specifier: workspace:*
+        version: link:../workflow-compiler
+      "@pathcompiler/workflow-discovery":
+        specifier: workspace:*
+        version: link:../workflow-discovery
+      "@pathcompiler/workflow-ir":
+        specifier: workspace:*
+        version: link:../workflow-ir
+      "@pathcompiler/workflow-review":
+        specifier: workspace:*
+        version: link:../workflow-review
+      "@pathcompiler/workflow-validator":
+        specifier: workspace:*
+        version: link:../workflow-validator
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/graph-delta":
+        specifier: workspace:*
+        version: link:../graph-delta
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
 
   packages/workflow-review:
     dependencies:

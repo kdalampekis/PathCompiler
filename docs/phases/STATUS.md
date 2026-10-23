@@ -1191,3 +1191,51 @@ reports high impact and leaves the approved YAML byte-identical.
 - Impact is evidence-based. Behavior changes in code not cited as evidence (for
   example an unreferenced helper) surface only as unexplained file changes.
 - Twenty-one phases are complete (0–20), leaving 10 (21–30).
+
+## Phase 21 — Workflow Update Proposals
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/workflow-proposals` (pure, validation injected):
+  `generateProposals` for medium/high impacts, `acceptProposal`, `decideProposal`
+  (reject or ignore for this change), `workflowDiff` and versioned YAML.
+- Proposals (`.pathcompiler/proposals/<id>.<head-sha>.yaml`) carry impact reasons,
+  the head-commit rediscovered workflow under the approved ID (matched by ID, intent
+  or unique ≥50% step-target overlap), its validation against the head graph,
+  changed files, commit subjects and a human-readable semantic diff.
+- Approved workflows change only through `accept`. It requires a clean checkout at
+  the proposal's head commit and a fresh valid validation, and records `accept` or
+  `edit` (hand-edited) mode. Generation never overwrites proposals or approved files.
+- Added `analyzeCommitRangeDetailed` to graph-delta (returns the head analysis) and
+  `pathcompiler proposals generate/list/show/accept/reject/ignore`.
+- Documented in README and ADR 0023.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 20 baseline lint/typecheck/tests | Passed before edits; 223 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 162 files |
+| `pnpm typecheck` | Passed, twenty-five package builds, root tests and fixture |
+| `pnpm test` | 229 tests passed across twenty-nine suites |
+| `git diff --check` | Passed |
+
+In a temporary fixture repository, renaming `plans.change_structure` in the
+component and its tests produces exactly one high-impact proposal, matched by ID.
+Its head-commit workflow is valid, keeps the approved ID, uses `plans.restructure`,
+and the diff shows `- target: plans.change_structure` / `+ target: plans.restructure`.
+Accept rebinds the approved record to the head commit. Hand edits record `edit`.
+Stale, dirty, invalid, empty and ID-changing acceptances are refused. Reject and
+ignore leave approvals untouched, and decisions are final. Through the built CLI:
+generate, list, show, dirty-tree refusal, accept, final-decision refusal and
+non-overwriting regeneration.
+
+### Scope notes and limitations
+
+- All Phase 21 scope is implemented. GitHub PR evidence is not fetched during
+  generation (it needs a token; `github inspect` remains available).
+- Commit evidence is file-history based and bounded by the base commit's date.
+- Twenty-two phases are complete (0–21), leaving 9 (22–30).

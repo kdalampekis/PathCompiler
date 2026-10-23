@@ -24,8 +24,12 @@ import {
   associatePullRequest,
   enrichNodeHistory,
   openGitRepository,
+  openGitRepository as openRepository,
 } from "@pathcompiler/git-intelligence";
-import { analyzeCommitRange } from "@pathcompiler/graph-delta";
+import {
+  analyzeCommitRange,
+  analyzeCommitRangeDetailed,
+} from "@pathcompiler/graph-delta";
 import { createHttpService } from "@pathcompiler/http-service";
 import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
@@ -42,6 +46,15 @@ import {
   serializeCandidateYaml,
 } from "@pathcompiler/workflow-discovery";
 import type { WorkflowV1 } from "@pathcompiler/workflow-ir";
+import {
+  acceptProposal,
+  decideProposal,
+  generateProposals,
+  ProposalError,
+  parseProposalYaml,
+  proposalFileName,
+  serializeProposalYaml,
+} from "@pathcompiler/workflow-proposals";
 import {
   type ApprovedWorkflow,
   approveCandidate,
@@ -72,6 +85,11 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler workflows reject <id> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler diff <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler impact <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler proposals generate <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler proposals list [--out <directory>] [--json]
+       pathcompiler proposals show <proposal> [--out <directory>]
+       pathcompiler proposals accept <proposal> [directory] [--by <name>] [--reason <text>] [--out <directory>]
+       pathcompiler proposals reject|ignore <proposal> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler build [--out <directory>]
        pathcompiler mcp [--out <directory>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
@@ -106,6 +124,10 @@ diff exports both commits read-only, re-analyzes each and writes reports/graph-d
 with changed files, symbols, routes, semantic targets and APIs plus the node/edge delta.
 impact applies deterministic rules to that delta for every approved workflow and writes
 reports/workflow-impact.json (severity none/low/medium/high, reasons, affected steps).
+proposals generate writes proposals/<id>.<head-sha>.yaml for medium/high impact: the
+head-commit rediscovery, validation, evidence and a readable diff. Approved files change
+only through proposals accept (re-validated on a clean checkout of that head commit).
+<proposal> is the file name without .yaml.
 build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
 generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
 mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
@@ -114,47 +136,64 @@ requires PATHCOMPILER_API_TOKEN (Authorization: Bearer <token>).
 No repository code is executed and no source is sent to a model or network service.
 `;
 
+const CLI_OPTIONS = {
+  help: { type: "boolean", short: "h" },
+  out: { type: "string" },
+  json: { type: "boolean" },
+  exclude: { type: "string", multiple: true },
+  node: { type: "string" },
+  limit: { type: "string" },
+  repo: { type: "string" },
+  pr: { type: "string" },
+  commit: { type: "string" },
+  expect: { type: "string" },
+  by: { type: "string" },
+  reason: { type: "string" },
+  port: { type: "string" },
+  host: { type: "string" },
+} as const;
+const parse = (args: string[]) =>
+  parseArgs({
+    args,
+    allowPositionals: true,
+    strict: true,
+    options: CLI_OPTIONS,
+  });
+
 export async function runCli(
   args: string[],
   cwd = process.cwd(),
 ): Promise<string> {
-  const { values, positionals } = parseArgs({
-    args,
-    allowPositionals: true,
-    strict: true,
-    options: {
-      help: { type: "boolean", short: "h" },
-      out: { type: "string" },
-      json: { type: "boolean" },
-      exclude: { type: "string", multiple: true },
-      node: { type: "string" },
-      limit: { type: "string" },
-      repo: { type: "string" },
-      pr: { type: "string" },
-      commit: { type: "string" },
-      expect: { type: "string" },
-      by: { type: "string" },
-      reason: { type: "string" },
-      port: { type: "string" },
-      host: { type: "string" },
-    },
-  });
+  const { values, positionals } = parse(args);
   if (values.help) return HELP;
   if (
     (values.port !== undefined || values.host !== undefined) &&
     !["serve", "mcp"].includes(positionals[0] ?? "")
   )
     throw new Error("--port and --host are only supported by serve.");
+  const proposalDecision =
+    positionals[0] === "proposals" &&
+    ["accept", "reject", "ignore"].includes(positionals[1] ?? "");
   const review =
-    positionals[0] === "workflows" &&
-    (positionals[1] === "approve" || positionals[1] === "reject");
+    proposalDecision ||
+    (positionals[0] === "workflows" &&
+      (positionals[1] === "approve" || positionals[1] === "reject"));
   if (values.by !== undefined && !review)
-    throw new Error("--by is only supported by workflows approve and reject.");
+    throw new Error(
+      "--by is only supported by workflows approve/reject and proposals accept/reject/ignore.",
+    );
   if (
     values.reason !== undefined &&
-    !(positionals[0] === "workflows" && positionals[1] === "reject")
+    !(
+      proposalDecision ||
+      (positionals[0] === "workflows" && positionals[1] === "reject")
+    )
   )
-    throw new Error("--reason is only supported by workflows reject.");
+    throw new Error(
+      "--reason is only supported by workflows reject and proposals accept/reject/ignore.",
+    );
+  if (positionals[0] === "proposals")
+    return runProposals(positionals, values, cwd);
   if (
     positionals[0] === "workflows" &&
     (positionals[1] === "list" || positionals[1] === "show")
@@ -746,7 +785,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, diff, impact, build, mcp, or serve. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, diff, impact, proposals, build, mcp, or serve. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],
@@ -940,6 +979,246 @@ async function listWorkflows(output: string) {
   return [...entries.values()].sort((a, b) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
   );
+}
+
+type Values = ReturnType<typeof parse>["values"];
+
+const PROPOSAL_NAME =
+  /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*(?:--[a-f0-9]{12})?\.[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
+
+async function runProposals(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const directory = path.join(output, "proposals");
+  const command = positionals[1];
+  if (command !== "generate" && values.exclude !== undefined)
+    throw new Error("--exclude is only supported by proposals generate.");
+  if (values.json && command !== "list")
+    throw new Error("--json is only supported by proposals list.");
+  if (
+    command === "generate" &&
+    positionals.length >= 4 &&
+    positionals.length <= 5
+  ) {
+    const approved = await readApproved(output);
+    if (!approved.length)
+      throw new Error(
+        `No approved workflows under ${path.join(output, "workflows")}. Approve workflows first.`,
+      );
+    const scanned = path.resolve(cwd, positionals[4] ?? ".");
+    const { delta, head } = await analyzeCommitRangeDetailed({
+      directory: scanned,
+      base: positionals[2] ?? "",
+      head: positionals[3] ?? "",
+      exclude: values.exclude ?? [],
+    });
+    const impact = analyzeWorkflowImpact(delta, approved);
+    const capabilities = discoverCapabilities(head.mined.graph);
+    const candidates = discoverWorkflows(
+      capabilities.graph,
+      capabilities.report,
+      head.mined.report,
+    ).report.candidates;
+    const git = await openRepository(scanned);
+    const baseCommit = await git.getCommit(delta.base.commit);
+    const commits = new Map<
+      string,
+      { sha: string; authorDate: string; message: string }
+    >();
+    for (const file of delta.summary.files.slice(0, 50)) {
+      if (file.status === "removed") continue;
+      const history = await git.getCommitsForPath(file.path, {
+        revision: delta.head.commit,
+        limit: 20,
+      });
+      for (const commit of history.commits)
+        if (
+          commit.sha !== baseCommit.sha &&
+          commit.authorDate >= baseCommit.authorDate
+        )
+          commits.set(commit.sha, commit);
+    }
+    const proposals = generateProposals({
+      impact,
+      approved,
+      candidates,
+      validate: (workflow) =>
+        validateWorkflow(workflow, {
+          graph: head.mined.graph,
+          traces: head.mined.report,
+        }),
+      changedFiles: delta.summary.files,
+      commits: [...commits.values()].sort((a, b) =>
+        a.authorDate < b.authorDate
+          ? 1
+          : a.authorDate > b.authorDate
+            ? -1
+            : a.sha < b.sha
+              ? -1
+              : 1,
+      ),
+    });
+    await writeArtifacts(output, [
+      ["reports/graph-delta.json", `${JSON.stringify(delta, null, 2)}\n`],
+      ["reports/workflow-impact.json", `${JSON.stringify(impact, null, 2)}\n`],
+    ]);
+    const written: string[] = [];
+    const kept: string[] = [];
+    for (const proposal of proposals) {
+      const file = path.join(
+        directory,
+        proposalFileName(proposal.workflowId, proposal.head.commit),
+      );
+      if ((await readOptional(file)) !== undefined) {
+        kept.push(path.basename(file, ".yaml"));
+        continue;
+      }
+      await writeExclusive(file, serializeProposalYaml(proposal));
+      written.push(path.basename(file, ".yaml"));
+    }
+    return `Wrote ${written.length} proposals for medium/high impact${kept.length ? `; kept ${kept.length} existing` : ""}.\n${[...written, ...kept].map((name) => `  ${name}`).join("\n")}${written.length + kept.length ? "\n" : ""}Approved workflows were not changed. Review with proposals show/accept/reject/ignore.\n`;
+  }
+  if (command === "list" && positionals.length === 2) {
+    let names: string[] = [];
+    try {
+      names = (await readdir(directory))
+        .filter((name) => name.endsWith(".yaml"))
+        .sort();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const items = [];
+    for (const name of names) {
+      const proposal = await readProposal(directory, name.slice(0, -5));
+      items.push({
+        name: name.slice(0, -5),
+        workflowId: proposal.workflowId,
+        head: proposal.head.commit,
+        severity: proposal.impact.severity,
+        status: proposal.review.status,
+        match: proposal.match.method,
+        valid: proposal.validation?.valid ?? null,
+      });
+    }
+    if (values.json)
+      return `${JSON.stringify({ schemaVersion: 1, proposals: items }, null, 2)}\n`;
+    return `${items.length} proposals.\n${items
+      .map(
+        (item) =>
+          `${item.status.padEnd(8)} ${item.severity.padEnd(6)} ${item.name}${item.valid === false ? "  (proposed workflow invalid)" : ""}`,
+      )
+      .join("\n")}${items.length ? "\n" : ""}`;
+  }
+  const name = positionals[2] ?? "";
+  if (!PROPOSAL_NAME.test(name))
+    throw new Error(
+      "Proposal must be named <workflow-id>.<head-sha> (its file name without .yaml).",
+    );
+  const file = path.join(directory, `${name}.yaml`);
+  const proposal = await readProposal(directory, name);
+  if (command === "show" && positionals.length === 3)
+    return `${proposal.diff}\n${serializeProposalYaml(proposal)}`;
+  const decidedBy = reviewer(values.by);
+  const decidedAt = new Date().toISOString();
+  const note = values.reason === undefined ? {} : { note: values.reason };
+  try {
+    if (
+      command === "accept" &&
+      positionals.length >= 3 &&
+      positionals.length <= 4
+    ) {
+      if (!proposal.proposed)
+        throw new ProposalError(
+          "no-proposed-workflow",
+          `No candidate matched. Write the updated workflow under \`proposed\` in ${file}, then accept.`,
+        );
+      const project = await readSourceProject(
+        path.resolve(cwd, positionals[3] ?? "."),
+      );
+      const mined = minePlaywrightTests(
+        project,
+        analyzeNextProject(project).graph,
+      );
+      const result = acceptProposal(proposal, {
+        decidedBy,
+        decidedAt,
+        ...note,
+        validation: validateWorkflow(proposal.proposed, {
+          graph: mined.graph,
+          traces: mined.report,
+        }),
+        repository: project.repository,
+      });
+      const approvedFile = path.join(
+        output,
+        reviewPaths(proposal.workflowId).approved,
+      );
+      // The reviewed update path: replace the approved record, then record the decision.
+      await writeArtifacts(output, [
+        [
+          reviewPaths(proposal.workflowId).approved,
+          serializeReviewedYaml(result.approved),
+        ],
+        [path.relative(output, file), serializeProposalYaml(result.proposal)],
+      ]);
+      return `Accepted ${name} (${result.proposal.review.status === "accepted" ? result.proposal.review.mode : ""}) by ${decidedBy}.\nApproved: ${approvedFile}\nCommit the updated approved file and rebuild generated artifacts.\n`;
+    }
+    if (
+      (command === "reject" || command === "ignore") &&
+      positionals.length === 3
+    ) {
+      const decided = decideProposal(
+        proposal,
+        command === "reject" ? "rejected" : "ignored",
+        {
+          decidedBy,
+          decidedAt,
+          ...note,
+        },
+      );
+      await writeArtifacts(output, [
+        [path.relative(output, file), serializeProposalYaml(decided)],
+      ]);
+      return `${command === "reject" ? "Rejected" : "Ignored for this change"}: ${name} by ${decidedBy}. The approved workflow is unchanged.\n`;
+    }
+  } catch (error) {
+    if (error instanceof ProposalError)
+      throw new Error(`${error.message} Proposal: ${file}.`, { cause: error });
+    throw error;
+  }
+  throw new Error(
+    "Expected: proposals generate <base> <head> [directory], list, show <proposal>, accept <proposal> [directory], reject <proposal> or ignore <proposal>.",
+  );
+}
+
+async function readProposal(directory: string, name: string) {
+  const file = path.join(directory, `${name}.yaml`);
+  const content = await readOptional(file);
+  if (content === undefined)
+    throw new Error(
+      `No proposal ${name}. Run proposals list to see available proposals.`,
+    );
+  try {
+    const proposal = parseProposalYaml(content);
+    if (
+      proposalFileName(proposal.workflowId, proposal.head.commit) !==
+      `${name}.yaml`
+    )
+      throw new Error(
+        "Proposal file name does not match its workflow and head commit.",
+      );
+    return proposal;
+  } catch (error) {
+    throw new Error(
+      `Cannot read ${file} as a workflow update proposal. Fix or move it.`,
+      {
+        cause: error,
+      },
+    );
+  }
 }
 
 async function loadGeneratedClient(output: string): Promise<PathCompiler> {

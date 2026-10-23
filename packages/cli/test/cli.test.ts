@@ -487,6 +487,114 @@ describe("pathcompiler CLI", () => {
     expect(await readFile(approvedPath, "utf8")).toBe(approvedYaml);
   }, 60_000);
 
+  it("generates, lists, shows and accepts workflow update proposals", async () => {
+    const cwd = await directory();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.test",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.test",
+    };
+    const app = path.join(cwd, "app");
+    const git = async (...args: string[]) =>
+      (await exec("git", ["-C", app, ...args], { env })).stdout.trim();
+    const tracked = (
+      await exec("git", ["-C", fixture, "ls-files", "-z", "--", "."])
+    ).stdout
+      .split("\0")
+      .filter(Boolean);
+    for (const file of tracked) {
+      await mkdir(path.dirname(path.join(app, file)), { recursive: true });
+      await writeFile(
+        path.join(app, file),
+        await readFile(path.join(fixture, file)),
+      );
+    }
+    await git("init", "--quiet");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "base");
+    const base = await git("rev-parse", "HEAD");
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["workflows", "discover", "app"]);
+    await run([
+      "workflows",
+      "approve",
+      "plans.change_structure",
+      "app",
+      "--by",
+      "Ana",
+    ]);
+    for (const file of ["components/plans.tsx", "tests/workflows.spec.ts"]) {
+      const target = path.join(app, file);
+      await writeFile(
+        target,
+        (await readFile(target, "utf8")).replaceAll(
+          '"plans.change_structure"',
+          '"plans.restructure"',
+        ),
+      );
+    }
+    await git("commit", "--quiet", "-am", "Rename plan structure action");
+    const head = await git("rev-parse", "HEAD");
+    const generated = await run(["proposals", "generate", base, "HEAD", "app"]);
+    const name = `plans.change_structure.${head}`;
+    expect(generated).toContain("Wrote 1 proposals");
+    expect(generated).toContain(name);
+    const listed = JSON.parse(await run(["proposals", "list", "--json"]));
+    expect(listed.proposals).toEqual([
+      expect.objectContaining({
+        name,
+        severity: "high",
+        status: "pending",
+        valid: true,
+      }),
+    ]);
+    const shown = await run(["proposals", "show", name]);
+    expect(shown).toMatch(/^--- approved plans\.change_structure/);
+    expect(shown).toContain(
+      "-     target: plans.change_structure\n+     target: plans.restructure",
+    );
+    const approvedPath = path.join(
+      cwd,
+      "out/workflows/plans.change_structure.yaml",
+    );
+    await writeFile(path.join(app, "scratch.ts"), "export const x = 1;\n");
+    await expect(
+      run(["proposals", "accept", name, "app", "--by", "Bo"]),
+    ).rejects.toThrow("Commit or stash");
+    await rm(path.join(app, "scratch.ts"));
+    const accepted = await run([
+      "proposals",
+      "accept",
+      name,
+      "app",
+      "--by",
+      "Bo",
+    ]);
+    expect(accepted).toContain("Accepted");
+    const record = parseApprovedWorkflowYaml(
+      await readFile(approvedPath, "utf8"),
+    );
+    expect(record.approval).toMatchObject({
+      approvedBy: "Bo",
+      approvedCommit: head,
+    });
+    expect(record.workflow.steps[0]?.target).toBe("plans.restructure");
+    await expect(
+      run(["proposals", "reject", name, "--by", "Bo"]),
+    ).rejects.toThrow("already accepted");
+    expect(await run(["proposals", "generate", base, "HEAD", "app"])).toContain(
+      "kept 1 existing",
+    );
+    for (const invalid of [
+      ["proposals", "show", "bad name"],
+      ["proposals", "list", "--by", "x"],
+      ["proposals", "show", name, "--json"],
+    ])
+      await expect(run(invalid)).rejects.toThrow();
+  }, 90_000);
+
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];
