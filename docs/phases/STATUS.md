@@ -1488,3 +1488,41 @@ build output is unchanged).
 - All Phase 26 scope is implemented. The SDK reads JSON only; YAML and Markdown are
   for people and tooling.
 - Twenty-seven phases are complete (0–26), leaving 4 (27–30).
+
+## Phase 27 — Documentation Export
+
+Complete — verified locally on 2026-10-22.
+
+- Added pure `renderHelpPages` to `@pathcompiler/workflow-compiler`: one escaped
+  Markdown page per approved workflow (where, who, prerequisites, numbered steps
+  with expectations and branches, completion) plus an index grouped by domain. All
+  are derived from compiled documentation records.
+- Every page carries the generated marker with workflow ID, revision and compiler
+  version. Markdown is a renderer, never a source of truth.
+- Added `pathcompiler docs export [--dir docs/help]`. It refuses to replace
+  unmarked (hand-written) files before writing anything, writes pages atomically,
+  removes only marked pages of workflows that are no longer approved, and leaves
+  other files untouched. Documented in README and ADR 0029.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 26 baseline lint/typecheck/tests | Passed before edits; 247 tests |
+| `pnpm lint` | Passed without warnings; 188 files |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 249 tests passed across thirty-one suites |
+| `git diff --check` | Passed |
+
+Tests cover page names and order, markers, index grouping and links, page
+contents, the empty catalog, export of two pages beside a preserved hand-written
+FAQ, byte-identical re-export, removal of a page after its approval is withdrawn,
+refusal (with no changes) to overwrite a hand-written page, custom `--dir`, and a
+misplaced `--dir`.
+
+### Scope notes and limitations
+
+- All Phase 27 scope is implemented. No localization or site-generator front matter.
+- Twenty-eight phases are complete (0–27), leaving 3 (28–30).

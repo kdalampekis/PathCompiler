@@ -124,3 +124,39 @@ export function exportArtifacts(
       ]);
   return files;
 }
+
+/**
+ * Help-center pages: one Markdown file per approved workflow plus an index.
+ * Pages are renderers of approved workflows, never their source of truth.
+ */
+export function renderHelpPages(input: Documentation): [string, string][] {
+  const documentation = DocumentationSchema.parse(input);
+  const header = (what: string) =>
+    `${GENERATED_MARKER} ${COMPILER_VERSION} from ${what}. Do not edit; change the workflow and re-export. -->\n\n`;
+  const pages: [string, string][] = documentation.workflows.map((record) => [
+    `${record.id}.md`,
+    `${header(`approved workflow ${record.id} (${record.revision})`)}${renderWorkflowMarkdown(record)}`,
+  ]);
+  const byDomain = new Map<string, typeof documentation.workflows>();
+  for (const record of documentation.workflows)
+    byDomain.set(record.domain, [
+      ...(byDomain.get(record.domain) ?? []),
+      record,
+    ]);
+  const index = [
+    `${header("approved workflows")}# Help`,
+    "",
+    ...(documentation.workflows.length
+      ? [...byDomain].flatMap(([domain, records]) => [
+          `## ${escapeMarkdown(domain)}`,
+          "",
+          ...records.map(
+            (record) =>
+              `- [${escapeMarkdown(record.title)}](./${record.id}.md)`,
+          ),
+          "",
+        ])
+      : ["No approved workflows yet.", ""]),
+  ].join("\n");
+  return [["index.md", index], ...pages];
+}

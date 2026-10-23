@@ -931,6 +931,54 @@ describe("pathcompiler CLI", () => {
       await expect(run(invalid)).rejects.toThrow("--format");
   }, 30_000);
 
+  it("exports help pages from approved workflows without overwriting hand-written docs", async () => {
+    const cwd = await directory();
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["workflows", "discover", fixture]);
+    await run([
+      "workflows",
+      "approve",
+      "clients.create",
+      fixture,
+      "--by",
+      "Ana",
+    ]);
+    await run(["workflows", "approve", "plans.create", fixture, "--by", "Ana"]);
+    const help = path.join(cwd, "docs/help");
+    await mkdir(help, { recursive: true });
+    await writeFile(path.join(help, "faq.md"), "# FAQ\nHand-written.\n");
+    expect(await run(["docs", "export"])).toContain("Exported 2 help pages");
+    expect((await readdir(help)).sort()).toEqual([
+      "clients.create.md",
+      "faq.md",
+      "index.md",
+      "plans.create.md",
+    ]);
+    const page = await readFile(path.join(help, "clients.create.md"), "utf8");
+    expect(page).toContain("1. Click Create Client");
+    await run(["docs", "export"]);
+    expect(await readFile(path.join(help, "clients.create.md"), "utf8")).toBe(
+      page,
+    );
+    expect(await readFile(path.join(help, "faq.md"), "utf8")).toBe(
+      "# FAQ\nHand-written.\n",
+    );
+    await rm(path.join(cwd, "out/workflows/plans.create.yaml"));
+    expect(await run(["docs", "export"])).toContain("removed 1 pages");
+    expect(await readdir(help)).not.toContain("plans.create.md");
+    await writeFile(path.join(help, "clients.create.md"), "# My own page\n");
+    await expect(run(["docs", "export"])).rejects.toThrow(
+      "Refusing to replace hand-written",
+    );
+    expect(await readFile(path.join(help, "clients.create.md"), "utf8")).toBe(
+      "# My own page\n",
+    );
+    expect(await run(["docs", "export", "--dir", "site/help"])).toContain(
+      path.join(cwd, "site/help"),
+    );
+    await expect(run(["build", "--dir", "x"])).rejects.toThrow("--dir");
+  }, 30_000);
+
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];

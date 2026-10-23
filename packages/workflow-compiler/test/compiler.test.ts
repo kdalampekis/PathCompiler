@@ -19,6 +19,7 @@ import {
   exportArtifacts,
   GENERATED_MARKER,
   RuntimeManifestSchema,
+  renderHelpPages,
   renderWorkflowMarkdown,
   SearchIndexSchema,
 } from "../src/index.js";
@@ -257,5 +258,27 @@ describe("workflow compiler", () => {
     expect(page).toContain("1. Open _(optional)_");
     expect(page).toContain("   - If x appears, continue at step 2.");
     expect(page).not.toContain("<b>");
+  });
+
+  it("renders one marked help page per approved workflow plus an index", () => {
+    const pages = renderHelpPages(compileWorkflows(approved).documentation);
+    expect(pages.map(([file]) => file)).toEqual([
+      "index.md",
+      "clients.create.md",
+      "plans.change_structure.md",
+      "plans.create.md",
+    ]);
+    for (const [, content] of pages)
+      expect(content.startsWith(GENERATED_MARKER)).toBe(true);
+    const index = new Map(pages).get("index.md") ?? "";
+    expect(index).toContain("## clients");
+    expect(index).toContain("- [Create Client](./clients.create.md)");
+    const page = new Map(pages).get("clients.create.md") ?? "";
+    expect(page).toContain("approved workflow clients.create (sha256:");
+    expect(page).toContain("# Create Client");
+    expect(page).toContain("## Steps");
+    expect(renderHelpPages(compileWorkflows([]).documentation)).toEqual([
+      ["index.md", expect.stringContaining("No approved workflows yet.")],
+    ]);
   });
 });

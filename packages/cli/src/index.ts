@@ -51,6 +51,8 @@ import {
   EXPORT_FORMATS,
   type ExportFormat,
   exportArtifacts,
+  GENERATED_MARKER,
+  renderHelpPages,
 } from "@pathcompiler/workflow-compiler";
 import {
   discoverWorkflows,
@@ -108,6 +110,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler proposals accept <proposal> [directory] [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler proposals reject|ignore <proposal> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler build [--out <directory>] [--format json,yaml,markdown]
+       pathcompiler docs export [--dir <directory>] [--out <directory>]
        pathcompiler github-app manifest --name <name> --url <url> --webhook <https-url>
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
@@ -150,6 +153,8 @@ only through proposals accept (re-validated on a clean checkout of that head com
 workflows detect finds capabilities new in base..head with no approved or rejected workflow,
 scores signals (new action, write API, Playwright flow, route/dialog, commit subject) and
 writes reports/new-workflows.json plus candidates backed by two or more signals and a test.
+docs export renders docs/help/<id>.md and index.md from approved workflows. It replaces
+only files it generated and refuses to overwrite hand-written Markdown.
 build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
 generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
 github-app serve verifies GitHub webhooks (GITHUB_WEBHOOK_SECRET), acknowledges push and
@@ -181,6 +186,7 @@ const CLI_OPTIONS = {
   url: { type: "string" },
   webhook: { type: "string" },
   format: { type: "string", multiple: true },
+  dir: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -214,6 +220,51 @@ export async function runCli(
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (values.format !== undefined && positionals[0] !== "build")
     throw new Error("--format is only supported by build.");
+  if (values.dir !== undefined && positionals[0] !== "docs")
+    throw new Error("--dir is only supported by docs export.");
+  if (
+    positionals[0] === "docs" &&
+    positionals[1] === "export" &&
+    positionals.length === 2
+  ) {
+    if (values.exclude !== undefined)
+      throw new Error(
+        "docs export renders approved workflows and does not support --exclude.",
+      );
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const target = path.resolve(cwd, values.dir ?? "docs/help");
+    const pages = renderHelpPages(
+      compileWorkflows(await readApproved(output)).documentation,
+    );
+    const wanted = new Set(pages.map(([file]) => file));
+    let existing: string[] = [];
+    try {
+      existing = (await readdir(target)).filter((name) => name.endsWith(".md"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    // Preflight: never replace or delete hand-written Markdown.
+    const generated: string[] = [];
+    for (const name of existing) {
+      const content = await readFile(path.join(target, name), "utf8");
+      if (!content.startsWith(GENERATED_MARKER)) {
+        if (wanted.has(name))
+          throw new Error(
+            `Refusing to replace hand-written ${path.join(target, name)}. Move it or choose another --dir.`,
+          );
+      } else generated.push(name);
+    }
+    await mkdir(target, { recursive: true });
+    for (const [name, content] of pages) {
+      const file = path.join(target, name);
+      const temporary = `${file}.${process.pid}.tmp`;
+      await writeFile(temporary, content, "utf8");
+      await rename(temporary, file);
+    }
+    const stale = generated.filter((name) => !wanted.has(name));
+    for (const name of stale) await unlink(path.join(target, name));
+    return `Exported ${pages.length - 1} help pages and an index to ${target}${stale.length ? `; removed ${stale.length} pages of workflows no longer approved` : ""}.\nPages are generated from approved workflows; edit workflows, not Markdown.\n`;
+  }
   const proposalDecision =
     positionals[0] === "proposals" &&
     ["accept", "reject", "ignore"].includes(positionals[1] ?? "");
@@ -887,7 +938,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/detect/validate/list/show/approve/reject, diff, impact, proposals, build, github-app, mcp, or serve. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/detect/validate/list/show/approve/reject, diff, impact, proposals, build, docs export, github-app, mcp, or serve. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],
