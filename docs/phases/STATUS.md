@@ -1,5 +1,24 @@
 # Phase status
 
+## Current state (updated 2026-10-23)
+
+| Item | State |
+| --- | --- |
+| Original phases (`CODEX_BUILD_SPEC.md` 0–30) | ✅ all complete against phase acceptance criteria. Baseline re-verified 2026-10-22: lint, typecheck, 258 unit tests, 27 Chromium tests. |
+| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init`, model provider, error taxonomy, logging, eval harness/golden tests, caching, alpha validation. Tracked as C1–C9. |
+| New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
+| Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
+| AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
+| Unblocked | **R0** (next), C1, C2, C3, C4, C5, C6 (needs repositories), C8, P0 |
+| Blocked | All other R, P, O and I phases, plus C7 and C9 (see the roadmap §5) |
+| Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
+| Next recommended phase | **R0 — Formal Model Foundation** (rationale: `MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5. |
+
+Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
+ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
+
+---
+
 ## Phase 0 — Repository Foundation
 
 Complete — verified locally on 2026-10-21.
@@ -1662,3 +1681,46 @@ limitations, carried from the phase notes:
 - **Resolver (Phase 13):** English-only lexical matching with empty aliases.
   Embeddings are not built.
 - **Hosted CI:** not inspected in these sessions.
+
+## Roadmap reconciliation — reasoning, observability and improvement extensions
+
+Planning only — 2026-10-23. No implementation phase was started.
+
+- Read `REASONING_ENGINE_BUILD_SPEC.md` (R0–R11, P0–P5, O0–O13, I0–I10) and
+  `HARNESS_ENGINEERING_HANDOFF.md` in full, and re-read `CODEX_BUILD_SPEC.md`
+  §§43–96. Those sections had not been reconciled during the phase build.
+- Re-verified the baseline and inspected packages, tests, the dependency graph
+  and the fixture's authorization model. Phases 0–30 meet their acceptance
+  criteria. Cross-cutting gaps are recorded as C1–C9 rather than reopening
+  completed phases.
+- Wrote `docs/phases/MASTER_ROADMAP.md`. It is dependency-ordered: every phase
+  states its objective, prerequisites, packages, interfaces, acceptance criteria,
+  tests/evals, runtime impact, what it unblocks and its status. It also has
+  parallel lanes and a deferred list.
+- ADR 0032 reconciles the specs:
+  - Insertion is additive, with no renumbering.
+  - §164's build order is not applied retroactively.
+  - Test-backed discovery remains the baseline until the R-WI evaluation.
+  - Integer `workflowVersion` sits alongside the content-hash revision.
+  - The Runtime Result v1 alignment is scheduled as C1.
+  - Flags require configuration (C2).
+  - There is no second `PathCompilerProvider`.
+  - Workflow IR stays unchanged.
+  - Evidence classes are distinct, and `UNKNOWN` never becomes `UNREACHABLE`.
+  - The two MCP surfaces stay separate, as do the proposal namespaces.
+  - The harness boundary holds, and browser verification is generalized in C8.
+- ADR 0033 sets out the planes and operating modes. Mode 5 evaluates human PRs
+  without the harness contract, so I3 no longer depends on I2. Also: the four
+  trigger classes, the escalation gate (new phase IG), an explained value
+  assessment, budgets, `autonomous_mutation: false` and `no_change` as an outcome.
+- ADR 0034 separates the three AI channels. The original evidence-first,
+  provider-API semantic analysis is kept (C5 boundary, new C9 adapters). No
+  customer needs a coding harness. The enterprise harness-backed analysis mode is
+  deferred.
+- Conflicts found: build order (§164); Runtime Result v1 divergence; numeric vs
+  hash workflow versions; strict RuntimeContext; feature flags without a config
+  file; duplicate React provider name; applicability vs Workflow IR v1; the
+  mismatched discovery baseline; the fixture-only browser verifier blocking I4;
+  and the Phase 28 provider-SDK ban vs future adapters.
+- Next recommended phase: **R0 — Formal Model Foundation**.
+
