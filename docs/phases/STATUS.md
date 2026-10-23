@@ -901,3 +901,58 @@ runtime or fixture code changed.
 - The SDK has not yet been loaded in a real browser bundle; the runtime phases will
   exercise it there.
 - Fifteen phases are complete (0–14), leaving 16 (15–30).
+
+## Phase 15 — React Runtime
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/runtime-core`: framework-independent `createGuideRuntime`
+  over a `GuideEnvironment` interface, plus `createDomEnvironment` for
+  `data-pathcompiler` targets (MutationObserver, capture-phase click/input/change,
+  popstate). The runtime observes only and never acts for the user.
+- The runtime is stateful (explicit statuses), route-aware (entry-route waiting,
+  route templates, navigate steps, SPA route refresh) and page-to-page. It supports
+  explicit stop, pause/resume (observation and timers suspended), step timeouts, and
+  a `target-missing` fallback for zero or repeated matches that keeps instructions
+  available and recovers when the target resolves.
+- Steps advance on the user's interaction, on expected conditions (never from an
+  already-true expectation without interaction), or on `next()` for
+  explain/wait/explicit_next. Branches, app events and permission/flag context are
+  supported. Unmet preconditions fail at start.
+- Added `@pathcompiler/react`: `PathCompilerProvider`, `useProductHelp`,
+  `useWorkflow`, `useGuideRuntime`, `useWorkflowProgress`. It is SSR-safe (runtime
+  created after mount) and React is an adapter only.
+- Added happy-dom (20.14.5) for DOM/React unit tests, plus a runtime browser suite
+  that bundles the runtime with Vite and guides the compiled `clients.create` in the
+  production fixture build. Chained into `pnpm test:e2e` and CI artifacts.
+- Documented in README and ADR 0017.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 14 baseline lint/typecheck/tests | Passed before edits; 175 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 136 files |
+| `pnpm typecheck` | Passed, eighteen package builds, root tests and fixture |
+| `pnpm test` | 191 tests passed across twenty-three suites |
+| `pnpm test:e2e` | 7 fixture, 6 verification and 3 runtime Chromium tests passed |
+| `git diff --check` | Passed |
+
+Real-browser coverage: the compiled `clients.create` guide completes on the
+fixture with real user input and persisted client, waits for `/clients` and resumes
+after client-side navigation, and falls back to `target-missing` for viewers before
+an explicit stop. Unit coverage includes waiting routes, ordered advancement,
+already-true expectations, missing/ambiguous recovery, pause/resume timers,
+timeouts, stop, branches, navigation, explanations, events, preconditions, invalid
+manifests, route templates, DOM snapshots/interaction capture/unsubscribe, React
+hooks, provider requirement and server rendering.
+
+### Scope notes and limitations
+
+- All Phase 15 scope is implemented. The runtime never executes actions for users.
+- Repeated row targets report `many` until scoped targets are designed. Visibility
+  is style-based, not layout-based. No UI rendering (Phase 16).
+- Sixteen phases are complete (0–15), leaving 15 (16–30).

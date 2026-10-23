@@ -631,6 +631,39 @@ no Node.js built-ins: compiler contracts come from the browser-safe
 `@pathcompiler/workflow-compiler/schema` entry. An HTTP transport arrives with the
 HTTP service. See [ADR 0016](docs/decisions/0016-headless-sdk-transports.md).
 
+## React runtime
+
+```ts
+import {
+  PathCompilerProvider, useProductHelp, useWorkflow,
+  useGuideRuntime, useWorkflowProgress,
+} from '@pathcompiler/react';
+
+// Next.js: <PathCompilerProvider client={client} route={usePathname()} context={{ role }}>
+const help = useProductHelp(query);            // { status, data: ProductHelpResult, error }
+const details = useWorkflow('clients.create');
+const guide = useGuideRuntime();               // { state, start(id), pause, resume, stop, next, emit }
+const progress = useWorkflowProgress();        // { status, completed, total, fraction, step }
+```
+
+`@pathcompiler/runtime-core` holds the framework-independent guide engine
+(`createGuideRuntime`) and a DOM observer (`createDomEnvironment`) for
+`data-pathcompiler` targets. The runtime only observes. It never clicks, types or
+navigates for the user. It waits for an entry route (`waiting-route`), tracks one
+step at a time, and advances on the user's own interaction or the step's
+expected condition. Inputs commit on `change`, `navigate` steps on the route, and
+`explain`/`wait` steps on an explicit `next()`. An already-true expectation never
+skips an untouched step. Branches, application events (`emit`) and
+permission/feature-flag context are supported.
+
+A target that does not resolve to exactly one visible element becomes
+`target-missing` after a grace period, keeping the step's instruction available
+as a fallback. It recovers when the target appears. `pause`/`resume` stop
+observation and timers. `stop` is explicit. A step without progress becomes
+`timed-out`. The React provider creates the runtime after mount, so server
+rendering is safe and reports `idle`. Pass the router's route so SPA navigation
+is observed. See [ADR 0017](docs/decisions/0017-observing-guide-runtime.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -655,6 +688,8 @@ Analysis packages:
 | `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types; `./schema`: browser-safe schemas only |
 | `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, request/result schemas and types |
 | `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
+| `@pathcompiler/runtime-core` | `createGuideRuntime`, `createDomEnvironment`, `routeMatches`, `idleGuideState`, environment/state types |
+| `@pathcompiler/react` | `PathCompilerProvider`, `useProductHelp`, `useWorkflow`, `useGuideRuntime`, `useWorkflowProgress` |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after

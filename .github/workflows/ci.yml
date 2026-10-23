@@ -28,4 +28,5 @@ jobs:
           path: |
             fixtures/next-demo/test-results/
             packages/workflow-validator/test-results/
+            packages/runtime-core/test-results/
           if-no-files-found: ignore
