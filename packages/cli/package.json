@@ -27,6 +27,8 @@
     "@pathcompiler/source-model": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*",
     "@pathcompiler/workflow-discovery": "workspace:*",
+    "@pathcompiler/workflow-ir": "workspace:*",
+    "@pathcompiler/workflow-review": "workspace:*",
     "@pathcompiler/workflow-validator": "workspace:*"
   }
 }

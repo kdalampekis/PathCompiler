@@ -521,6 +521,30 @@ and a structured failure (`target-not-found`, `ambiguous-target`, stage and step
 It is not a general browser automation engine.
 See [ADR 0012](docs/decisions/0012-fixture-browser-verification.md).
 
+## Review workflows
+
+```sh
+pnpm pathcompiler workflows list
+pnpm pathcompiler workflows show clients.create
+pnpm pathcompiler workflows approve clients.create ./fixtures/next-demo --by "Ana"
+pnpm pathcompiler workflows reject plans.create --by "Ana" --reason "Covered elsewhere"
+```
+
+Approval rescans the repository, re-runs static validation (writing the report)
+and refuses failed, stale or uncommitted candidates. It writes
+`.pathcompiler/workflows/<id>.yaml` with `approvedBy`, `approvedAt` and
+`approvedCommit`. Commit that file: it is the repository-visible runtime source
+of truth. Rejection writes `.pathcompiler/workflows/rejected/<id>.yaml` with the
+reviewer, time, candidate commit and optional reason. The reviewer comes from
+`--by` or `PATHCOMPILER_USER`.
+
+Decisions are never replaced: approving or rejecting an already reviewed ID fails,
+and discovery leaves approved files untouched. Candidates stay under
+`workflows/candidates/` as regenerable discovery cache. `list` shows each ID once
+(approved over rejected over candidate); `list`/`show` accept `--json`. Changing an
+approved workflow requires the later proposal/deprecation phases.
+See [ADR 0013](docs/decisions/0013-file-based-workflow-review.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -541,7 +565,8 @@ Analysis packages:
 | `@pathcompiler/capability-engine` | `discoverProductSurfaces`, `discoverCapabilities`, `evaluateCapabilities`, surface/capability/evaluation schemas, `SemanticModel`, classification/summary schemas and output parsers |
 | `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
 | `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types; `./browser`: `verifyFixtureWorkflow`, browser verification report schema |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover`, `workflows validate`, `runCli` |
+| `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected record schemas, YAML serialize/parse, `ReviewError` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

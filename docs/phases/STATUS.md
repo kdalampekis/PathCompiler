@@ -708,3 +708,54 @@ bindings are refused without opening the app.
   viewer-session test expectation was corrected (`resolve`, not `action`) because
   the fixture does not render the create control for viewers.
 - Eleven phases are complete (0–10), leaving 20 (11–30).
+
+## Phase 11 — Human Review Model
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/workflow-review`: pure `approveCandidate`/`rejectCandidate`,
+  approved/rejected record schemas, strict YAML serialize/parse, `reviewPaths` and a
+  typed `ReviewError`. File access stays in the CLI.
+- Approved records live at `.pathcompiler/workflows/<id>.yaml` and record
+  `approvedBy`, `approvedAt` and `approvedCommit` (equal to the workflow's
+  repository commit). Rejections live at `workflows/rejected/<id>.yaml` with
+  reviewer, time, candidate commit and optional reason.
+- Added `workflows list`, `show`, `approve` and `reject`. `list`/`show` support
+  `--json`. Approval rescans, re-runs static validation, writes the report and
+  refuses mismatched reports, stale candidates, failed validation and dirty or
+  unknown source state. The reviewer comes from `--by` or `PATHCOMPILER_USER`.
+- Decisions are created atomically and never replaced; re-approving or rejecting
+  a reviewed ID fails, and rediscovery leaves approved files byte-identical.
+  Candidates remain as discovery cache.
+- `workflows validate` now shares the candidate-loading/validation helper and
+  gives an actionable error when the candidate file is missing.
+- Documented in README and ADR 0013.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 10 baseline lint/typecheck/tests | Passed before edits; 153 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 107 files |
+| `pnpm typecheck` | Passed, thirteen package builds, root tests and fixture |
+| `pnpm test` | 159 tests passed across sixteen suites |
+| `pnpm test:e2e` | 7 fixture and 6 verification Chromium tests passed |
+| Manual built-CLI discover → approve → reject → list → show | Passed |
+| `git diff --check` | Passed |
+
+Focused regressions cover reviewer validation, missing reviewer, failed/mismatched/
+stale/dirty approvals, non-candidate input, commit-binding refinements, YAML aliases
+and extra keys, unsafe IDs, repeated decisions, rediscovery after approval, list
+precedence and JSON/text show output.
+
+### Scope notes and limitations
+
+- All Phase 11 scope is implemented. No visual editor was built, as specified.
+- `approvedBy` is a configured string, not authentication. Editing, merging and
+  internal-only marking from the architecture's reviewer actions are not built.
+- Changing or withdrawing an approved workflow is unsupported until proposals
+  (Phase 21) and deprecation (Phase 23). Rejections are undone by deleting the record.
+- Twelve phases are complete (0–11), leaving 19 (12–30).

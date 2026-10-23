@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { parseCandidateYaml } from "@pathcompiler/workflow-discovery";
+import { parseApprovedWorkflowYaml } from "@pathcompiler/workflow-review";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../src/index.js";
 
@@ -87,6 +88,119 @@ describe("pathcompiler CLI", () => {
       runCli(["workflows", "validate", "../secret", fixture], cwd),
     ).rejects.toThrow("Workflow ID");
   }, 20_000);
+
+  it("approves, rejects, lists and shows reviewed workflows without replacing decisions", async () => {
+    const cwd = await directory();
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["workflows", "discover", fixture]);
+    const base = path.join(cwd, "out/workflows");
+    const candidatePath = path.join(base, "candidates/clients.create.yaml");
+    const candidate = await readFile(candidatePath, "utf8");
+    const previous = process.env.PATHCOMPILER_USER;
+    delete process.env.PATHCOMPILER_USER;
+    try {
+      await expect(
+        run(["workflows", "approve", "clients.create", fixture]),
+      ).rejects.toThrow("PATHCOMPILER_USER");
+    } finally {
+      if (previous !== undefined) process.env.PATHCOMPILER_USER = previous;
+    }
+    await expect(
+      run(["workflows", "approve", "clients.create", fixture, "--by", " x"]),
+    ).rejects.toThrow("Reviewer");
+    const stale = candidate.replaceAll(
+      parseCandidateYaml(candidate).workflow.repository.commit,
+      "f".repeat(40),
+    );
+    await writeFile(candidatePath, stale);
+    await expect(
+      run(["workflows", "approve", "clients.create", fixture, "--by", "Ana"]),
+    ).rejects.toThrow("different commit");
+    await writeFile(candidatePath, candidate);
+    expect(await readdir(base)).not.toContain("clients.create.yaml");
+
+    const approved = await run([
+      "workflows",
+      "approve",
+      "clients.create",
+      fixture,
+      "--by",
+      "Ana",
+    ]);
+    expect(approved).toContain("Approved clients.create");
+    const approvedPath = path.join(base, "clients.create.yaml");
+    const approvedYaml = await readFile(approvedPath, "utf8");
+    const record = parseApprovedWorkflowYaml(approvedYaml);
+    expect(record.approval.approvedBy).toBe("Ana");
+    expect(record.approval.approvedCommit).toBe(
+      parseCandidateYaml(candidate).workflow.repository.commit,
+    );
+    expect(Date.parse(record.approval.approvedAt)).not.toBeNaN();
+    expect(record.workflow.status).toBe("approved");
+    expect(await readFile(candidatePath, "utf8")).toBe(candidate);
+    for (const repeat of [
+      ["workflows", "approve", "clients.create", fixture, "--by", "Bo"],
+      ["workflows", "reject", "clients.create", "--by", "Bo"],
+    ])
+      await expect(run(repeat)).rejects.toThrow("already approved");
+    await run(["workflows", "discover", fixture]);
+    expect(await readFile(approvedPath, "utf8")).toBe(approvedYaml);
+
+    await run([
+      "workflows",
+      "reject",
+      "plans.create",
+      "--by",
+      "Ana",
+      "--reason",
+      "Covered by onboarding",
+    ]);
+    await expect(
+      run(["workflows", "reject", "plans.create", "--by", "Ana"]),
+    ).rejects.toThrow("already rejected");
+    const listed = JSON.parse(await run(["workflows", "list", "--json"]));
+    expect(
+      listed.workflows.map((item: { id: string; state: string }) => [
+        item.id,
+        item.state,
+      ]),
+    ).toEqual([
+      ["clients.create", "approved"],
+      ["plans.change_structure", "candidate"],
+      ["plans.create", "rejected"],
+    ]);
+    expect(await run(["workflows", "list"])).toContain(
+      "1 approved, 1 rejected, 1 candidates",
+    );
+    const shown = JSON.parse(
+      await run(["workflows", "show", "plans.create", "--json"]),
+    );
+    expect(shown.state).toBe("rejected");
+    expect(shown.artifact.rejection.reason).toBe("Covered by onboarding");
+    expect(await run(["workflows", "show", "clients.create"])).toContain(
+      approvedYaml,
+    );
+    for (const invalid of [
+      ["workflows", "show", "clients.missing"],
+      ["workflows", "show", "../secret"],
+      ["workflows", "list", "--by", "Ana"],
+      ["workflows", "approve", "plans.change_structure", "--reason", "x"],
+      [
+        "workflows",
+        "reject",
+        "plans.change_structure",
+        "--by",
+        "Ana",
+        "--reason",
+        "",
+      ],
+      ["workflows", "list", "--exclude", "tests"],
+    ])
+      await expect(run(invalid)).rejects.toThrow();
+    expect(await readdir(path.join(base, "rejected"))).toEqual([
+      "plans.create.yaml",
+    ]);
+  }, 30_000);
 
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();

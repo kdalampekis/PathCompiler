@@ -1,4 +1,12 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  link,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { createGitHubProvider } from "@pathcompiler/adapter-github";
@@ -24,6 +32,20 @@ import {
   parseCandidateYaml,
   serializeCandidateYaml,
 } from "@pathcompiler/workflow-discovery";
+import type { WorkflowV1 } from "@pathcompiler/workflow-ir";
+import {
+  type ApprovedWorkflow,
+  approveCandidate,
+  parseApprovedWorkflowYaml,
+  parseRejectedWorkflowYaml,
+  type RejectedWorkflow,
+  ReviewError,
+  ReviewerSchema,
+  rejectCandidate,
+  reviewPaths,
+  serializeReviewedYaml,
+  WorkflowIdSchema,
+} from "@pathcompiler/workflow-review";
 import { validateWorkflow } from "@pathcompiler/workflow-validator";
 
 export const HELP = `PathCompiler — local Next.js source analysis
@@ -35,6 +57,10 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler capabilities discover [directory] [--expect <json-file>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows discover [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows validate <id> [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler workflows list [--out <directory>] [--json]
+       pathcompiler workflows show <id> [--out <directory>] [--json]
+       pathcompiler workflows approve <id> [directory] [--by <name>] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler workflows reject <id> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
@@ -58,6 +84,10 @@ workflows discover writes workflows/candidates/*.yaml, reports/workflow-candidat
 and graph/workflow-graph.json. Candidates require review; browser validation has not run.
 workflows validate reads the candidate under .pathcompiler (or --out), rescans the
 repository, and writes reports/validation/<id>.json. Failed checks exit nonzero.
+workflows approve re-validates a clean, current candidate and writes workflows/<id>.yaml
+with approvedBy/approvedAt/approvedCommit; commit that file. workflows reject writes
+workflows/rejected/<id>.yaml. Both take the reviewer from --by or PATHCOMPILER_USER and
+never replace an existing review decision. Candidate YAML remains as discovery cache.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -80,9 +110,82 @@ export async function runCli(
       pr: { type: "string" },
       commit: { type: "string" },
       expect: { type: "string" },
+      by: { type: "string" },
+      reason: { type: "string" },
     },
   });
   if (values.help) return HELP;
+  const review =
+    positionals[0] === "workflows" &&
+    (positionals[1] === "approve" || positionals[1] === "reject");
+  if (values.by !== undefined && !review)
+    throw new Error("--by is only supported by workflows approve and reject.");
+  if (
+    values.reason !== undefined &&
+    !(positionals[0] === "workflows" && positionals[1] === "reject")
+  )
+    throw new Error("--reason is only supported by workflows reject.");
+  if (
+    positionals[0] === "workflows" &&
+    (positionals[1] === "list" || positionals[1] === "show")
+  ) {
+    if (values.exclude !== undefined)
+      throw new Error(
+        "workflows list and show read stored artifacts and do not support --exclude.",
+      );
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    if (positionals[1] === "list" && positionals.length === 2) {
+      const workflows = await listWorkflows(output);
+      if (values.json)
+        return `${JSON.stringify({ schemaVersion: 1, workflows }, null, 2)}\n`;
+      const count = (state: string) =>
+        workflows.filter((item) => item.state === state).length;
+      return `${workflows.length} workflows: ${count("approved")} approved, ${count("rejected")} rejected, ${count("candidate")} candidates.\n${workflows
+        .map(
+          (item) =>
+            `${item.state.padEnd(9)} ${item.id}  ${item.title}  (commit ${item.commit.slice(0, 12)})`,
+        )
+        .join("\n")}${workflows.length ? "\n" : ""}`;
+    }
+    if (positionals[1] === "show" && positionals.length === 3) {
+      const id = workflowId(positionals[2]);
+      const stored = await readReviewState(output, id);
+      const [state, relative, content, artifact] =
+        stored.approved !== undefined
+          ? ([
+              "approved",
+              stored.paths.approved,
+              stored.approved,
+              parseStored(stored.approved, id, parseApprovedWorkflowYaml),
+            ] as const)
+          : stored.rejected !== undefined
+            ? ([
+                "rejected",
+                stored.paths.rejected,
+                stored.rejected,
+                parseStored(stored.rejected, id, parseRejectedWorkflowYaml),
+              ] as const)
+            : stored.candidate !== undefined
+              ? ([
+                  "candidate",
+                  stored.paths.candidate,
+                  stored.candidate,
+                  parseStored(stored.candidate, id, parseCandidateYaml),
+                ] as const)
+              : [];
+      if (!state)
+        throw new Error(
+          `No workflow ${id} under ${output}. Run workflows discover, or pass the --out used earlier.`,
+        );
+      const file = path.join(output, relative);
+      if (values.json)
+        return `${JSON.stringify({ schemaVersion: 1, state, path: file, artifact }, null, 2)}\n`;
+      return `Workflow ${id}: ${state}\nFile: ${file}\n\n${content}`;
+    }
+    throw new Error(
+      "Expected: workflows list, or workflows show <id>. Use --help for arguments and options.",
+    );
+  }
   if (
     values.expect !== undefined &&
     !(positionals[0] === "capabilities" && positionals[1] === "discover")
@@ -270,46 +373,100 @@ export async function runCli(
     return `Mined ${result.report.traces.length} Playwright tests (${partial} partial traces).\nArtifacts: ${output}\nStatic evidence only; tests were not executed. See test-traces.json for diagnostics.\n`;
   }
   if (values.json)
-    throw new Error("--json is only supported by targets suggest.");
+    throw new Error(
+      "--json is only supported by targets suggest, workflows list and workflows show.",
+    );
+  if (
+    positionals[0] === "workflows" &&
+    positionals[1] === "approve" &&
+    positionals.length >= 3 &&
+    positionals.length <= 4
+  ) {
+    const id = workflowId(positionals[2]);
+    const approvedBy = reviewer(values.by);
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const stored = await readReviewState(output, id);
+    refuseReviewed(stored, id, output);
+    const { candidate, report, project, reportPath } = await validateStored(
+      output,
+      id,
+      path.resolve(cwd, positionals[3] ?? "."),
+      values.exclude ?? [],
+    );
+    let record: ApprovedWorkflow;
+    try {
+      record = approveCandidate(candidate, {
+        approvedBy,
+        approvedAt: new Date().toISOString(),
+        validation: report,
+        repository: project.repository,
+      });
+    } catch (error) {
+      if (error instanceof ReviewError)
+        throw new Error(`${error.message} Validation report: ${reportPath}.`, {
+          cause: error,
+        });
+      throw error;
+    }
+    const file = path.join(output, stored.paths.approved);
+    await writeExclusive(file, serializeReviewedYaml(record));
+    return `Approved ${id} at commit ${record.approval.approvedCommit} by ${approvedBy}.\nArtifact: ${file}\nValidation warnings reviewed: ${report.warnings.length} (see ${reportPath}).\nCommit the approved file; it is the runtime source of truth. Browser verification is separate.\n`;
+  }
+  if (
+    positionals[0] === "workflows" &&
+    positionals[1] === "reject" &&
+    positionals.length === 3
+  ) {
+    if (values.exclude !== undefined)
+      throw new Error(
+        "workflows reject does not rescan and does not support --exclude.",
+      );
+    const id = workflowId(positionals[2]);
+    const rejectedBy = reviewer(values.by);
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const stored = await readReviewState(output, id);
+    refuseReviewed(stored, id, output);
+    if (stored.candidate === undefined)
+      throw new Error(
+        `No candidate ${id} under ${output}. Run workflows discover first.`,
+      );
+    const candidate = parseStored(stored.candidate, id, parseCandidateYaml);
+    let record: RejectedWorkflow;
+    try {
+      record = rejectCandidate(candidate, {
+        rejectedBy,
+        rejectedAt: new Date().toISOString(),
+        ...(values.reason === undefined ? {} : { reason: values.reason }),
+      });
+    } catch (error) {
+      throw new Error(
+        "Cannot record the rejection. --reason must be 1–500 characters.",
+        { cause: error },
+      );
+    }
+    const file = path.join(output, stored.paths.rejected);
+    await writeExclusive(file, serializeReviewedYaml(record));
+    return `Rejected ${id} by ${rejectedBy}.\nRecord: ${file}\nThe candidate stays in discovery cache; remove the record to review it again.\n`;
+  }
   if (
     positionals[0] === "workflows" &&
     positionals[1] === "validate" &&
     positionals.length >= 3 &&
     positionals.length <= 4
   ) {
-    const id = positionals[2] ?? "";
-    if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*(?:--[a-f0-9]{12})?$/.test(id))
-      throw new Error(
-        "Workflow ID must be a discovered domain.action ID, optionally followed by its variant hash.",
-      );
+    const id = workflowId(positionals[2]);
     const output = path.resolve(cwd, values.out ?? ".pathcompiler");
-    const candidate = parseCandidateYaml(
-      await readFile(
-        path.join(output, `workflows/candidates/${id}.yaml`),
-        "utf8",
-      ),
-    );
-    if (candidate.workflow.id !== id)
-      throw new Error("Candidate filename and workflow ID disagree.");
-    const project = await readSourceProject(
+    const { report, reportPath } = await validateStored(
+      output,
+      id,
       path.resolve(cwd, positionals[3] ?? "."),
-      { exclude: values.exclude ?? [] },
+      values.exclude ?? [],
     );
-    const source = analyzeNextProject(project);
-    const mined = minePlaywrightTests(project, source.graph);
-    const report = validateWorkflow(candidate.workflow, {
-      graph: mined.graph,
-      traces: mined.report,
-    });
-    const reportPath = `reports/validation/${id}.json`;
-    await writeArtifacts(output, [
-      [reportPath, `${JSON.stringify(report, null, 2)}\n`],
-    ]);
     if (!report.valid)
       throw new Error(
-        `Workflow ${id} failed validation (${report.errors.length} errors). See ${path.join(output, reportPath)}.`,
+        `Workflow ${id} failed validation (${report.errors.length} errors). See ${reportPath}.`,
       );
-    return `Workflow ${id} passed static validation (${report.warnings.length} warnings).\nReport: ${path.join(output, reportPath)}\nBrowser verification has not run. Review warnings before approval or execution.\n`;
+    return `Workflow ${id} passed static validation (${report.warnings.length} warnings).\nReport: ${reportPath}\nBrowser verification has not run. Review warnings before approval or execution.\n`;
   }
   if (
     positionals[0] === "workflows" &&
@@ -440,7 +597,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover, or workflows validate. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, or workflows discover/validate/list/show/approve/reject. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],
@@ -467,5 +624,190 @@ async function writeArtifacts(
     const temporary = `${target}.${process.pid}.tmp`;
     await writeFile(temporary, content, "utf8");
     await rename(temporary, target);
+  }
+}
+
+function workflowId(value: string | undefined): string {
+  const parsed = WorkflowIdSchema.safeParse(value ?? "");
+  if (!parsed.success)
+    throw new Error(
+      "Workflow ID must be a discovered domain.action ID, optionally followed by its variant hash.",
+    );
+  return parsed.data;
+}
+
+function reviewer(flag: string | undefined): string {
+  const value = flag ?? process.env.PATHCOMPILER_USER;
+  if (value === undefined)
+    throw new Error(
+      "Record who is reviewing: pass --by <name> or set PATHCOMPILER_USER.",
+    );
+  const parsed = ReviewerSchema.safeParse(value);
+  if (!parsed.success)
+    throw new Error(
+      "Reviewer must be 1–120 characters on one line, without leading/trailing whitespace.",
+    );
+  return parsed.data;
+}
+
+async function readOptional(file: string): Promise<string | undefined> {
+  try {
+    return await readFile(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+async function readReviewState(output: string, id: string) {
+  const paths = reviewPaths(id);
+  const [candidate, approved, rejected] = await Promise.all([
+    readOptional(path.join(output, paths.candidate)),
+    readOptional(path.join(output, paths.approved)),
+    readOptional(path.join(output, paths.rejected)),
+  ]);
+  return { paths, candidate, approved, rejected };
+}
+
+function refuseReviewed(
+  stored: Awaited<ReturnType<typeof readReviewState>>,
+  id: string,
+  output: string,
+): void {
+  if (stored.approved !== undefined)
+    throw new Error(
+      `Workflow ${id} is already approved (${path.join(output, stored.paths.approved)}). Approved workflows change only through reviewed proposals.`,
+    );
+  if (stored.rejected !== undefined)
+    throw new Error(
+      `Workflow ${id} was already rejected (${path.join(output, stored.paths.rejected)}). Remove that record to review it again.`,
+    );
+}
+
+function parseStored<T extends { workflow: { id: string } }>(
+  content: string,
+  id: string,
+  parse: (input: string) => T,
+): T {
+  const artifact = parse(content);
+  if (artifact.workflow.id !== id)
+    throw new Error(`Stored workflow filename and ID disagree for ${id}.`);
+  return artifact;
+}
+
+async function validateStored(
+  output: string,
+  id: string,
+  directory: string,
+  exclude: string[],
+) {
+  const content = await readOptional(
+    path.join(output, reviewPaths(id).candidate),
+  );
+  if (content === undefined)
+    throw new Error(
+      `No candidate ${id} under ${output}. Run workflows discover first.`,
+    );
+  const candidate = parseStored(content, id, parseCandidateYaml);
+  const project = await readSourceProject(directory, { exclude });
+  const source = analyzeNextProject(project);
+  const mined = minePlaywrightTests(project, source.graph);
+  const report = validateWorkflow(candidate.workflow, {
+    graph: mined.graph,
+    traces: mined.report,
+  });
+  const relative = `reports/validation/${id}.json`;
+  await writeArtifacts(output, [
+    [relative, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  return {
+    candidate,
+    report,
+    project,
+    reportPath: path.join(output, relative),
+  };
+}
+
+async function listWorkflows(output: string) {
+  const entries = new Map<
+    string,
+    {
+      id: string;
+      state: "candidate" | "approved" | "rejected";
+      title: string;
+      confidence: number;
+      commit: string;
+      path: string;
+    }
+  >();
+  const sources: [
+    "candidate" | "approved" | "rejected",
+    string,
+    (input: string) => { workflow: WorkflowV1 },
+  ][] = [
+    ["candidate", "workflows/candidates", parseCandidateYaml],
+    ["rejected", "workflows/rejected", parseRejectedWorkflowYaml],
+    ["approved", "workflows", parseApprovedWorkflowYaml],
+  ];
+  // Later sources take precedence: approved > rejected > candidate.
+  for (const [state, relative, parse] of sources) {
+    let names: string[];
+    try {
+      names = (
+        await readdir(path.join(output, relative), { withFileTypes: true })
+      )
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".yaml"))
+        .map((entry) => entry.name);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+    for (const name of names) {
+      const file = path.join(output, relative, name);
+      const id = workflowId(name.slice(0, -".yaml".length));
+      let workflow: WorkflowV1;
+      try {
+        workflow = parseStored(
+          await readFile(file, "utf8"),
+          id,
+          parse,
+        ).workflow;
+      } catch (error) {
+        throw new Error(
+          `Cannot read ${file} as a ${state} workflow. Fix or move it, then retry.`,
+          { cause: error },
+        );
+      }
+      entries.set(id, {
+        id,
+        state,
+        title: workflow.title,
+        confidence: workflow.confidence.overall,
+        commit: workflow.repository.commit,
+        path: file,
+      });
+    }
+  }
+  return [...entries.values()].sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  );
+}
+
+/** Atomically creates a new file; never replaces an existing review decision. */
+async function writeExclusive(target: string, content: string): Promise<void> {
+  await mkdir(path.dirname(target), { recursive: true });
+  const temporary = `${target}.${process.pid}.tmp`;
+  await writeFile(temporary, content, { encoding: "utf8", flag: "wx" });
+  try {
+    await link(temporary, target);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST")
+      throw new Error(
+        `Refusing to replace existing review decision ${target}.`,
+        { cause: error },
+      );
+    throw error;
+  } finally {
+    await unlink(temporary);
   }
 }
