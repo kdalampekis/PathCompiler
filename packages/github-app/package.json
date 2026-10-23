@@ -20,6 +20,8 @@
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/graph-delta": "workspace:*",
     "@pathcompiler/impact-analysis": "workspace:*",
+    "@pathcompiler/semantic-change": "workspace:*",
+    "@pathcompiler/solver-provider": "workspace:*",
     "@pathcompiler/workflow-discovery": "workspace:*",
     "@pathcompiler/workflow-proposals": "workspace:*",
     "@pathcompiler/workflow-review": "workspace:*",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/solver-z3": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*",
     "@pathcompiler/workflow-validator": "workspace:*"

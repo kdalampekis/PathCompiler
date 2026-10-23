@@ -1,0 +1,32 @@
+{
+  "name": "@pathcompiler/semantic-change",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pathcompiler/capability-engine": "workspace:*",
+    "@pathcompiler/formal-abstraction": "workspace:*",
+    "@pathcompiler/graph-delta": "workspace:*",
+    "@pathcompiler/reasoner-core": "workspace:*",
+    "@pathcompiler/solver-provider": "workspace:*",
+    "@pathcompiler/source-model": "workspace:*",
+    "@pathcompiler/workflow-ir": "workspace:*"
+  },
+  "devDependencies": {
+    "@pathcompiler/git-intelligence": "workspace:*",
+    "@pathcompiler/solver-z3": "workspace:*"
+  }
+}

@@ -1031,6 +1031,8 @@ pnpm pathcompiler reason reachable clients.created fixtures/next-demo --context 
 pnpm pathcompiler reason reachable clients.created --model model.json --context role=viewer --json
 pnpm pathcompiler reason plan plans.structure_changed fixtures/next-demo --context role=editor
 pnpm pathcompiler reason why-not clients.created fixtures/next-demo --context role=unlisted
+pnpm pathcompiler reason diff <base> <head> [directory]
+pnpm pathcompiler proposals generate <base> <head> [directory] --reasoning
 ```
 
 `@pathcompiler/reasoner-core` (phase R2) answers "can goal G be reached under
@@ -1064,6 +1066,19 @@ requires role = editor". Each constraint carries source evidence, such as
 `symbol:lib/session.ts#requireEditor` and the API handler, never solver labels.
 `reason why-not` writes `reports/reasoning/why-not/<goal>.json`.
 See [ADR 0039](docs/decisions/0039-unsat-explanations.md).
+
+`compareModels` and `@pathcompiler/semantic-change` (phase R11) diff the models
+of two commits. Each goal is checked under every enumerable context, giving
+reports such as:
+- "clients.created is no longer reachable for role=editor:
+  clients.create.submit requires role = owner (changed in lib/session.ts)";
+- "clients.created is newly reachable for role=owner".
+
+`reason diff` writes `reports/semantic-change.json`. With `--reasoning`,
+`impact` and `proposals generate` add these findings as impact reasons, and
+lost reachability is high severity. The GitHub App config's `"reasoning": true`
+adds a "Product logic" section to the check. All of this is opt-in.
+See [ADR 0040](docs/decisions/0040-semantic-change-reasoning.md).
 
 ## Packages
 
@@ -1103,8 +1118,9 @@ Analysis packages:
 | `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
 | `@pathcompiler/solver-provider` | `SolverProvider` (assumptions, unsat cores), `SolverProblem`, `SolverTerm`, `SolverCheckResult`, `SolverProblemSchema`, `parseSolverProblem` |
 | `@pathcompiler/solver-z3` | `createZ3SolverProvider` (only package importing Z3) |
-| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable/plan/why-not`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ProductReasoner.compareModels`, `ModelComparison`, `ReachabilityChange`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
+| `@pathcompiler/semantic-change` | `analyzeSemanticChange`, `buildCommitModel`, `summarizeSemanticChange`, `collapseContexts`, `describeContext`, `SemanticChangeReport`, `SemanticWorkflowImpact` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable/plan/why-not/diff`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

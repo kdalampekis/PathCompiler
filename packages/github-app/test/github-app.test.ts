@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { analyzeNextProject } from "@pathcompiler/adapter-nextjs";
 import { discoverCapabilities } from "@pathcompiler/capability-engine";
+import type { SemanticChangeReport } from "@pathcompiler/semantic-change";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import { discoverWorkflows } from "@pathcompiler/workflow-discovery";
@@ -354,6 +355,76 @@ describe("GitHub App", () => {
         "✓ 2 workflows unaffected\n⚠ 1 workflow requires review\n+ 0 possible new workflows",
     });
     expect(check.text).toContain("x.one (high): Gone.");
+  });
+
+  it("adds an optional product logic section", () => {
+    const impact = {
+      schemaVersion: 1 as const,
+      base: { commit: a },
+      head: { commit: b },
+      method: "deterministic-rules+bounded-smt" as const,
+      impacts: [],
+    };
+    const detections = {
+      schemaVersion: 1 as const,
+      base: { commit: a },
+      head: { commit: b },
+      detections: [],
+    };
+    const empty = { added: [], removed: [], changed: [] };
+    const model = {
+      id: "product",
+      hash: "sha256:x",
+      repositoryCommit: a,
+      source: "extracted" as const,
+      transitions: {
+        total: 1,
+        deterministic: 1,
+        tests: 0,
+        runtime: 0,
+        semanticOnly: 0,
+      },
+      uncertainties: 0,
+    };
+    const semantic: SemanticChangeReport = {
+      schemaVersion: 1,
+      type: "semantic_change_report",
+      commitRange: { base: a, head: b },
+      method: "bounded-smt",
+      newReachability: [],
+      removedReachability: [],
+      changedApplicability: [],
+      changedProperties: [],
+      modelDiff: {
+        variables: empty,
+        actions: empty,
+        goals: empty,
+        invariants: empty,
+      },
+      affectedWorkflows: [
+        {
+          capabilityId: "clients.create",
+          goal: "clients.created",
+          code: "reachability-removed",
+          message: "clients.created is no longer reachable for role=editor.",
+        },
+      ],
+      models: { base: model, head: { ...model, repositoryCommit: b } },
+      uncertainty: [],
+      stats: { queries: 1, solverCalls: 1, durationMs: 1 },
+    };
+    expect(summarizeWorkflowCheck(impact, detections, semantic).text).toBe(
+      [
+        "PathCompiler Product Logic",
+        "REMOVED REACHABILITY",
+        "- clients.created is no longer reachable for role=editor.",
+        "WORKFLOW IMPACT",
+        "1 capability requires review: clients.create",
+      ].join("\n"),
+    );
+    expect(summarizeWorkflowCheck(impact, detections).text).toBe(
+      "No approved workflow is affected by this change.",
+    );
   });
 
   it("analyzes a pushed change end to end and publishes the check", async () => {

@@ -552,7 +552,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   the seeded bug yields a counterexample.
 - **Runtime change:** No.
 - **Unblocks:** R10, I1/I2 protected behaviors, I3, P5.
-- **Status:** 🟢 unblocked.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### R9 — Dead feature and missing transition detection
 - **Prerequisites:** R1, R2. **Packages:** `reasoner-core`.
@@ -581,7 +581,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Tests/evals:** true-change recall; false-positive rate.
 - **Runtime change:** No (reports only).
 - **Unblocks:** I2 (`SemanticChangeIntent` vocabulary), I3, P4, O12.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `compareModels`, `@pathcompiler/semantic-change`, `reason diff`, `--reasoning` impact and proposals, optional GitHub check section, ADR 0040.
 
 #### R12 — Developer reasoning surfaces
 - **Objective:** `/v1/reason/*` endpoints (§73) and a separate developer
@@ -796,7 +796,7 @@ Shared rules:
 - **Acceptance:** a human PR is evaluated with no recommendation present. The
   "unexpected regression" demo (§254) fails a candidate even though the harness
   claims success.
-- **Status:** 🔒 blocked on R8, R11.
+- **Status:** 🔒 blocked on R8.
 
 #### I4 — Browser candidate verification
 - **Prerequisites:** I3, C8. **Status:** 🔒 blocked.
@@ -825,13 +825,13 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **R11** (next), R5, R7, R8, R9, R12, C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅ | C9 (C5, C2, C3) · R6 (C7) · R10 (R8) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0, R11) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0, R11) · IG (I0, C2) · I1 (IG, R8) · I2 (I1, R11) · I3 (R8, R11) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R8** (next), R5, R7, R9, R12, C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP) | C9 (C5, C2, C3) · R6 (C7) · R10 (R8) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0) · IG (I0, C2) · I1 (IG, R8) · I2 (I1) · I3 (R8) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
 | Lane | Sequence | Notes |
 | --- | --- | --- |
-| A — formal core (critical path) | R0 ✅ → R1 ✅ → R2 ✅ → R3 ✅ / R4 ✅ → R11 | Longest dependency chain; gates the reasoning MVP and the I track. |
+| A — formal core (critical path) | R0 ✅ → R1 ✅ → R2 ✅ → R3 ✅ / R4 ✅ → R11 ✅; then R8 → I3 | Longest dependency chain; gates the reasoning MVP and the I track. |
 | B — contracts and infrastructure | C1, C2, C3, C5, C8 (independent of each other and of lane A), then C9 | C1 gates O; C2 and C3 gate R-WI, C9 and IG; C8 gates I4, P3 and mode-5 browser checks. |
 | C — uncertainty | P0 (any time) → P1 after R1 + C9 | Independent of A until P1. |
 | D — observability | O0 after C1 → O1 → O3/O4/O5 → O6 → O7 | O8+ joins lane A outputs. |
@@ -839,20 +839,24 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: R11 — Commit semantic reasoning
+## 7. Next implementation phase: R8 — Bounded model checking
 
-R0–R4 are complete. R11 closes the reasoning MVP (spec §94, steps 6–10). It
-compares the formal models of two commits and reports reachability and
-applicability changes, such as "clients.create is no longer reachable for an
-editor". It traces each change to the permission rule and the commit
-(§25). It unblocks I0, I2, I3 and P4, the path to mode 5 (Evaluate) and mode 4
-(Recommend). R5, R7, R8, R9 and R12 are also unblocked. C1 remains the parallel
-candidate for lane D (observability).
+The reasoning MVP (spec §94: R0–R4 and R11) is complete. R8 is the last
+reasoning prerequisite of I3 (Candidate Evaluation, which delivers mode 5:
+Evaluate human PRs). It also feeds I1 protected behaviors, R10 and P5.
+- It adds a small property language, such as "a viewer can never hold an
+  editing form open" or "viewer can never create a client".
+- It adds bounded checking with counterexample traces, and `reason verify`.
+- It finally checks the invariants that R0 and R1 only declare.
 
-R4 (2026-10-23) explains unreachable answers with deletion-minimized unsat
-cores over labeled product constraints (ADR 0039). For "viewer creates a
-client", the explanation is the role, the `requireEditor`-backed precondition
-and the initial state.
+R5, R7, R9 and R12 are also unblocked. P0 now gates I0. C1 remains the
+parallel candidate for lane D (observability).
+
+R11 (2026-10-23) reports semantic product diffs between commits (ADR 0040).
+For example, changing `requireEditor` to `owner` removes editor reachability
+on all five guarded capabilities, each traced to `lib/session.ts`. It also
+feeds high-severity reasons into impact analysis and proposals
+(`--reasoning`). A copy-only change gives no findings.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

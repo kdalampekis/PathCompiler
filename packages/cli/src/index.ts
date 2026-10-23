@@ -57,6 +57,11 @@ import {
   type ReachabilityResult,
 } from "@pathcompiler/reasoner-core";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
+import {
+  analyzeSemanticChange,
+  type SemanticChangeReport,
+  summarizeSemanticChange,
+} from "@pathcompiler/semantic-change";
 import { createZ3SolverProvider } from "@pathcompiler/solver-z3";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
@@ -118,8 +123,8 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler workflows approve <id> [directory] [--by <name>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows reject <id> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler diff <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
-       pathcompiler impact <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
-       pathcompiler proposals generate <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler impact <base> <head> [directory] [--reasoning] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler proposals generate <base> <head> [directory] [--reasoning] [--out <directory>] [--exclude <directory> ...]
        pathcompiler proposals list [--out <directory>] [--json]
        pathcompiler proposals show <proposal> [--out <directory>]
        pathcompiler proposals accept <proposal> [directory] [--by <name>] [--reason <text>] [--out <directory>]
@@ -132,6 +137,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason reachable|plan|why-not <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
 
 Writes .pathcompiler/graph/source-graph.json and .pathcompiler/reports/scan-summary.json
@@ -189,6 +195,10 @@ model coverage and uncertainties it reports. reason plan returns the shortest pl
 approved workflow exists, writing reports/reasoning/plans/<goal>.json. reason why-not explains an
 unreachable goal with a minimal set of product constraints (context, preconditions, initial
 state) and their source evidence, writing reports/reasoning/why-not/<goal>.json.
+reason diff builds both commits' models and reports goals that became reachable or
+unreachable per context, with root causes traced to changed files, in
+reports/semantic-change.json. impact and proposals generate accept --reasoning to add
+those findings as impact reasons (reachability-removed is high severity).
 Reasoning output is for developers only.
 No repository code is executed and no source is sent to a model or network service.
 `;
@@ -218,6 +228,7 @@ const CLI_OPTIONS = {
   "max-depth": { type: "string" },
   "timeout-ms": { type: "string" },
   model: { type: "string" },
+  reasoning: { type: "boolean" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -258,7 +269,19 @@ export async function runCli(
     throw new Error(
       "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable, plan and why-not.",
     );
+  if (
+    values.reasoning &&
+    !(
+      positionals[0] === "impact" ||
+      (positionals[0] === "proposals" && positionals[1] === "generate")
+    )
+  )
+    throw new Error(
+      "--reasoning is only supported by impact and proposals generate.",
+    );
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
+  if (positionals[0] === "reason" && positionals[1] === "diff")
+    return runSemanticDiff(positionals, values, cwd);
   if (positionals[0] === "reason") return runReason(positionals, values, cwd);
   if (values.format !== undefined && positionals[0] !== "build")
     throw new Error("--format is only supported by build.");
@@ -714,16 +737,35 @@ export async function runCli(
       throw new Error(
         `No approved workflows under ${path.join(output, "workflows")}. Approve workflows before analyzing impact.`,
       );
-    const delta = await analyzeCommitRange({
+    const range = {
       directory: path.resolve(cwd, positionals[3] ?? "."),
       base: positionals[1] ?? "",
       head: positionals[2] ?? "",
       exclude: values.exclude ?? [],
-    });
-    const report = analyzeWorkflowImpact(delta, approved);
+    };
+    let delta: Awaited<ReturnType<typeof analyzeCommitRange>>;
+    let semantic: SemanticChangeReport | undefined;
+    if (values.reasoning) {
+      const detailed = await analyzeCommitRangeDetailed(range);
+      delta = detailed.delta;
+      semantic = await semanticChange(detailed);
+    } else delta = await analyzeCommitRange(range);
+    const report = analyzeWorkflowImpact(
+      delta,
+      approved,
+      semantic ? { semantic: semantic.affectedWorkflows } : {},
+    );
     await writeArtifacts(output, [
       ["reports/graph-delta.json", `${JSON.stringify(delta, null, 2)}\n`],
       ["reports/workflow-impact.json", `${JSON.stringify(report, null, 2)}\n`],
+      ...(semantic
+        ? ([
+            [
+              "reports/semantic-change.json",
+              `${JSON.stringify(semantic, null, 2)}\n`,
+            ],
+          ] as const)
+        : []),
     ]);
     const lines = report.impacts.map(
       (item) =>
@@ -1227,6 +1269,58 @@ async function runReason(
   return `${lines.join("\n")}\n`;
 }
 
+async function semanticChange(
+  range: Parameters<typeof analyzeSemanticChange>[0],
+): Promise<SemanticChangeReport> {
+  const solver = await createZ3SolverProvider();
+  try {
+    return await analyzeSemanticChange(range, solver);
+  } finally {
+    await solver.close();
+  }
+}
+
+async function runSemanticDiff(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length < 4 || positionals.length > 5)
+    throw new Error(
+      "Expected: pathcompiler reason diff <base> <head> [directory]. Use --help for options.",
+    );
+  if (
+    values.context ||
+    values.model ||
+    values["max-depth"] ||
+    values["timeout-ms"]
+  )
+    throw new Error(
+      "reason diff compares every enumerable context itself; --context, --model, --max-depth and --timeout-ms do not apply.",
+    );
+  const range = await analyzeCommitRangeDetailed({
+    directory: path.resolve(cwd, positionals[4] ?? "."),
+    base: positionals[2] ?? "",
+    head: positionals[3] ?? "",
+    exclude: values.exclude ?? [],
+  });
+  const report = await semanticChange(range);
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = "reports/semantic-change.json";
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  const { base, head } = report.models;
+  return `${[
+    `PathCompiler Product Logic ${report.commitRange.base.slice(0, 12)}..${report.commitRange.head.slice(0, 12)}`,
+    ...summarizeSemanticChange(report),
+    `Models: ${base.transitions.total} → ${head.transitions.total} transitions (extracted; ${head.uncertainties} uncertainties at head); ${report.stats.queries} queries, ${report.stats.solverCalls} solver calls, ${report.stats.durationMs} ms.`,
+    "Reachability is checked in the extracted models; verify important changes in the browser.",
+    `Report: ${path.join(output, file)}`,
+  ].join("\n")}\n`;
+}
+
 async function writeArtifacts(
   output: string,
   artifacts: readonly (readonly [string, string])[],
@@ -1446,7 +1540,14 @@ async function runProposals(
       head: positionals[3] ?? "",
       exclude: values.exclude ?? [],
     });
-    const impact = analyzeWorkflowImpact(delta, approved);
+    const semantic = values.reasoning
+      ? await semanticChange({ delta, base, head })
+      : undefined;
+    const impact = analyzeWorkflowImpact(
+      delta,
+      approved,
+      semantic ? { semantic: semantic.affectedWorkflows } : {},
+    );
     const capabilities = discoverCapabilities(head.mined.graph);
     const existing = new Set(
       discoverCapabilities(base.mined.graph).report.capabilities.map(
@@ -1483,6 +1584,14 @@ async function runProposals(
     await writeArtifacts(output, [
       ["reports/graph-delta.json", `${JSON.stringify(delta, null, 2)}\n`],
       ["reports/workflow-impact.json", `${JSON.stringify(impact, null, 2)}\n`],
+      ...(semantic
+        ? ([
+            [
+              "reports/semantic-change.json",
+              `${JSON.stringify(semantic, null, 2)}\n`,
+            ],
+          ] as const)
+        : []),
     ]);
     const written: string[] = [];
     const kept: string[] = [];
@@ -1727,6 +1836,8 @@ const GitHubAppConfigSchema = z.strictObject({
       }),
     )
     .refine((value) => Object.keys(value).length > 0, "Configure a repository"),
+  /** Adds the product logic (semantic reachability) section to checks. */
+  reasoning: z.boolean().optional(),
 });
 
 async function runGitHubApp(positionals: string[], values: Values) {
@@ -1779,6 +1890,9 @@ async function runGitHubApp(positionals: string[], values: Values) {
         ]),
       ),
     ),
+    ...(config.reasoning
+      ? { reasoning: { solver: createZ3SolverProvider } }
+      : {}),
   });
   const queue = createJobQueue(
     async (job) => {

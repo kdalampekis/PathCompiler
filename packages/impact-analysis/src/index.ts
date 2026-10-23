@@ -38,6 +38,10 @@ export const ImpactReasonSchema = z.strictObject({
     "implementation-changed",
     "test-evidence-changed",
     "source-file-changed",
+    // Reasoning-derived (R11), present only when a semantic change report is supplied.
+    "reachability-removed",
+    "reachability-added",
+    "applicability-changed",
   ]),
   severity: severity.exclude(["none"]),
   message: z.string(),
@@ -54,26 +58,44 @@ export const WorkflowImpactReportSchema = z.strictObject({
   schemaVersion: z.literal(1),
   base: z.strictObject({ commit: z.string() }),
   head: z.strictObject({ commit: z.string() }),
-  /** Deterministic rules only; no model inference. */
-  method: z.literal("deterministic-rules"),
+  /** Deterministic rules, plus bounded SMT reasoning when semantic findings are supplied; no model inference. */
+  method: z.enum(["deterministic-rules", "deterministic-rules+bounded-smt"]),
   impacts: z.array(WorkflowImpactSchema),
 });
 export type ImpactReason = z.infer<typeof ImpactReasonSchema>;
 export type WorkflowImpact = z.infer<typeof WorkflowImpactSchema>;
 export type WorkflowImpactReport = z.infer<typeof WorkflowImpactReportSchema>;
 
+/** A reasoning finding for a capability (see `@pathcompiler/semantic-change`). */
+export type SemanticFinding = {
+  capabilityId: string;
+  code: "reachability-removed" | "reachability-added" | "applicability-changed";
+  message: string;
+};
+const SEMANTIC_SEVERITY: Record<SemanticFinding["code"], "medium" | "high"> = {
+  "reachability-removed": "high",
+  "reachability-added": "medium",
+  "applicability-changed": "medium",
+};
+
 /**
  * Pure: applies deterministic impact rules to a graph delta for each approved
- * workflow. Sorted by severity (highest first), then workflow ID.
+ * workflow, adding any supplied semantic findings for the workflow's
+ * capability. Sorted by severity (highest first), then workflow ID.
  */
 export function analyzeWorkflowImpact(
   deltaInput: unknown,
   approved: readonly unknown[],
+  options: { semantic?: readonly SemanticFinding[] } = {},
 ): WorkflowImpactReport {
   const delta = GraphDeltaSchema.parse(deltaInput);
   const impacts = approved
     .map((record) =>
-      impactFor(ApprovedWorkflowSchema.parse(record).workflow, delta),
+      impactFor(
+        ApprovedWorkflowSchema.parse(record).workflow,
+        delta,
+        options.semantic ?? [],
+      ),
     )
     .sort(
       (a, b) =>
@@ -84,7 +106,9 @@ export function analyzeWorkflowImpact(
     schemaVersion: 1,
     base: delta.base,
     head: delta.head,
-    method: "deterministic-rules",
+    method: options.semantic
+      ? "deterministic-rules+bounded-smt"
+      : "deterministic-rules",
     impacts,
   });
 }
@@ -154,7 +178,11 @@ function copyOnly(change: GraphNodeChange): boolean {
   return JSON.stringify(before) === JSON.stringify(after);
 }
 
-function impactFor(workflow: WorkflowV1, delta: GraphDelta): WorkflowImpact {
+function impactFor(
+  workflow: WorkflowV1,
+  delta: GraphDelta,
+  semantic: readonly SemanticFinding[],
+): WorkflowImpact {
   const ALL = "*";
   const stepTargets: Uses = new Map();
   const conditionUses: Uses = new Map();
@@ -392,6 +420,20 @@ function impactFor(workflow: WorkflowV1, delta: GraphDelta): WorkflowImpact {
         "source-file-changed",
         "low",
         `Workflow source file ${file.path} was ${file.status}; no specific workflow element changed. Review if behavior moved within the file.`,
+        undefined,
+        [],
+      );
+
+  // Workflow IDs are the capability ID, optionally with a variant hash.
+  for (const finding of semantic)
+    if (
+      workflow.id === finding.capabilityId ||
+      workflow.id.startsWith(`${finding.capabilityId}--`)
+    )
+      reason(
+        finding.code,
+        SEMANTIC_SEVERITY[finding.code],
+        finding.message,
         undefined,
         [],
       );

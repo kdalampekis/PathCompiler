@@ -262,6 +262,44 @@ describe("workflow impact analysis", () => {
     });
   });
 
+  it("adds semantic reasoning findings to the matching workflow", () => {
+    const record = client();
+    const variant = {
+      ...record,
+      workflow: { ...record.workflow, id: "clients.create--0123456789ab" },
+    };
+    const report = analyzeWorkflowImpact(synthetic({}), [record, variant], {
+      semantic: [
+        {
+          capabilityId: "clients.create",
+          code: "reachability-removed",
+          message: "clients.created is no longer reachable for role=editor.",
+        },
+        {
+          capabilityId: "plans.create",
+          code: "reachability-added",
+          message: "plans.created is newly reachable for role=owner.",
+        },
+      ],
+    });
+    expect(report.method).toBe("deterministic-rules+bounded-smt");
+    for (const impact of report.impacts) {
+      expect(impact.severity).toBe("high");
+      expect(impact.reasons).toContainEqual({
+        code: "reachability-removed",
+        severity: "high",
+        message: "clients.created is no longer reachable for role=editor.",
+        stepIds: [],
+      });
+      expect(impact.reasons.map((item) => item.code)).not.toContain(
+        "reachability-added",
+      );
+    }
+    expect(analyzeWorkflowImpact(synthetic({}), [record]).method).toBe(
+      "deterministic-rules",
+    );
+  });
+
   it("validates its inputs", () => {
     expect(() => analyzeWorkflowImpact({}, approved)).toThrow();
     expect(() =>

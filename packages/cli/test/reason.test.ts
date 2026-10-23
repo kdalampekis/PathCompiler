@@ -1,7 +1,9 @@
+import { execFile } from "node:child_process";
 import {
   copyFile,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   writeFile,
@@ -9,6 +11,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { nextDemoFormalModel } from "../../formal-model/test/next-demo-model.js";
 import { runCli } from "../src/index.js";
@@ -16,6 +19,7 @@ import { runCli } from "../src/index.js";
 const fixture = fileURLToPath(
   new URL("../../../fixtures/next-demo/", import.meta.url),
 );
+const exec = promisify(execFile);
 const temporary: string[] = [];
 afterEach(async () => {
   await Promise.all(
@@ -208,6 +212,95 @@ describe("pathcompiler reason reachable", () => {
       result: { status: "unreachable", explanation: { minimal: true } },
     });
   });
+
+  it("reports a permission change semantically and feeds it into proposals", async () => {
+    const cwd = await directory();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.test",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.test",
+    };
+    const app = path.join(cwd, "app");
+    const git = async (...args: string[]) =>
+      (await exec("git", ["-C", app, ...args], { env })).stdout.trim();
+    const tracked = (
+      await exec("git", ["-C", fixture, "ls-files", "-z", "--", "."])
+    ).stdout
+      .split("\0")
+      .filter(Boolean);
+    for (const file of tracked) {
+      await mkdir(path.dirname(path.join(app, file)), { recursive: true });
+      await writeFile(
+        path.join(app, file),
+        await readFile(path.join(fixture, file)),
+      );
+    }
+    await git("init", "--quiet");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "base");
+    const base = await git("rev-parse", "HEAD");
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["workflows", "discover", "app"]);
+    await run(["workflows", "approve", "clients.create", "app", "--by", "Ana"]);
+    const session = path.join(app, "lib/session.ts");
+    await writeFile(
+      session,
+      (await readFile(session, "utf8")).replace(
+        'session.role !== "editor"',
+        'session.role !== "owner"',
+      ),
+    );
+    await git("commit", "--quiet", "-am", "Only owners may edit");
+    const head = await git("rev-parse", "HEAD");
+
+    const diff = await run(["reason", "diff", base, "HEAD", "app"]);
+    expect(diff).toContain(
+      `PathCompiler Product Logic ${base.slice(0, 12)}..${head.slice(0, 12)}`,
+    );
+    expect(diff).toContain(
+      "- clients.created is no longer reachable for role=editor: clients.create.submit requires role = owner (changed in lib/session.ts).",
+    );
+    expect(diff).toContain(
+      "+ clients.created is newly reachable for role=owner.",
+    );
+    expect(diff).toContain("5 capabilities require review");
+
+    const generated = await run([
+      "proposals",
+      "generate",
+      base,
+      "HEAD",
+      "app",
+      "--reasoning",
+    ]);
+    expect(generated).toContain(`clients.create.${head}`);
+    const proposal = await readFile(
+      path.join(cwd, "out/proposals", `clients.create.${head}.yaml`),
+      "utf8",
+    );
+    expect(proposal).toContain("code: reachability-removed");
+    expect(proposal).toContain(
+      "clients.created is no longer reachable for role=editor",
+    );
+    const impact = JSON.parse(
+      await readFile(
+        path.join(cwd, "out/reports/workflow-impact.json"),
+        "utf8",
+      ),
+    );
+    expect(impact).toMatchObject({
+      method: "deterministic-rules+bounded-smt",
+      impacts: [{ workflowId: "clients.create", severity: "high" }],
+    });
+    expect(await readdir(path.join(cwd, "out/reports"))).toContain(
+      "semantic-change.json",
+    );
+    await expect(run(["scan", "app", "--reasoning"])).rejects.toThrow(
+      /--reasoning is only supported by impact and proposals generate/,
+    );
+  }, 300_000);
 
   it("rejects malformed invocations with actionable errors", async () => {
     const out = await directory();

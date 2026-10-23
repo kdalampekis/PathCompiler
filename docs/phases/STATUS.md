@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after R4)
+## Current state (updated 2026-10-23, after R11)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R11** (next), R5, R7, R8, R9, R12, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R8** (next), R5, R7, R9, R12, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation** (2026-10-23) |
-| Next recommended phase | **R11 — Commit semantic reasoning** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5. |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning** (2026-10-23). The reasoning MVP (spec §94) is complete. |
+| Next recommended phase | **R8 — Bounded model checking** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5, P0. |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2083,3 +2083,78 @@ unreachable under explicit-state search, and every explanation is minimal.
   variables; the conjunct is not mapped to a single source line. The extracted
   model's guard evidence covers every guard on the API handler.
 - Next recommended phase: R11 — Commit semantic reasoning.
+
+---
+
+## Phase R11 — Commit semantic reasoning
+
+Complete — verified locally on 2026-10-23.
+
+- **`ProductReasoner.compareModels(before, after, options)`** checks every goal
+  in both models under every enumerable context: booleans, and enums as the
+  union of both models' values. A value one model lacks maps to its
+  `otherValue` (default `unlisted`). At most 64 combinations are checked per
+  goal.
+  - **New reachability** comes with the witness.
+  - **Lost reachability** comes with the R4 explanation on the after model,
+    its **root cause** (the explanation constraints the before model does not
+    contain) and any goal-setting actions that disappeared.
+  - The comparison also reports changed applicability, a structural model diff
+    that ignores evidence, invariant changes (checked in R8) and uncertainty
+    for unknown answers.
+- **New `@pathcompiler/semantic-change`.** `analyzeSemanticChange({ delta,
+  base, head }, solver)` extracts both commits' models (R1) and compares them.
+  It traces root causes to changed files (`changedAt`) and groups findings per
+  goal into `affectedWorkflows`, collapsing context lists to the variables
+  that matter. `summarizeSemanticChange` renders the §42 "Product Logic"
+  format.
+- **Impact analysis (opt-in).** `analyzeWorkflowImpact(delta, approved,
+  { semantic })` adds the reasons `reachability-removed` (high),
+  `reachability-added` (medium) and `applicability-changed` (medium) to the
+  workflows of the affected capability, including variants. The report's
+  method becomes `deterministic-rules+bounded-smt`.
+- **CLI.** Added `pathcompiler reason diff <base> <head> [directory]`, which
+  writes `reports/semantic-change.json`. `impact` and `proposals generate`
+  accept `--reasoning`.
+- **GitHub App.** The config's `"reasoning": true` adds a "Product logic"
+  section to the check. The solver is injected, so `github-app` does not
+  import Z3, and the deterministic summary is unchanged.
+- Recorded in ADR 0040 and documented in the README. Default behavior is
+  unchanged: reasoning is opt-in everywhere.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 302 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 236 files |
+| `pnpm typecheck` | Passed, including the new package |
+| `pnpm test` | 309 tests passed across 42 suites (4 semantic-change, 1 impact, 1 GitHub check section, 1 CLI end to end) |
+| `git diff --check` | Passed |
+
+Reasoning-MVP steps 6–10 (§94) on the fixture. In a temporary repository, a
+commit changes `requireEditor` from `editor` to `owner`:
+
+- `reason diff` reports, among others: "clients.created is no longer reachable
+  for role=editor: clients.create.submit requires role = owner (changed in
+  lib/session.ts)" and "clients.created is newly reachable for role=owner".
+- True-change recall: all five editor-guarded capabilities (`clients.create`,
+  `clients.edit`, `clients.deactivate`, `plans.create`,
+  `plans.change_structure`) lose reachability for editors. Each root cause is
+  traced to `symbol:lib/session.ts#requireEditor` and `lib/session.ts`, at the
+  head commit.
+- `proposals generate --reasoning` writes the `clients.create` proposal with a
+  high-severity `reachability-removed` reason.
+- False-positive rate: a copy-only commit ("Create Client" → "Add Client")
+  produces no semantic findings.
+
+### Scope notes and limitations
+
+- Conclusions hold in the extracted models. Each report carries both models'
+  transition coverage and uncertainty counts.
+- Invariants are diffed structurally only; checking them is R8.
+- Reasoning is opt-in until C2 adds project-level configuration. A comparison
+  costs two extractions plus about 6 queries per goal: about 10 s for the
+  fixture.
+- Next recommended phase: R8 — Bounded model checking.

@@ -5,6 +5,7 @@ import {
   type FormalProductModel,
   type FormalStateVariable,
   type FormalTerm,
+  f,
   formalModelHash,
   normalizeFormalModel,
   parseFormalModel,
@@ -110,6 +111,8 @@ export type ConstraintProvenance = {
   kind: "context" | "precondition" | "initial";
   /** Product-semantic sentence, never a solver label. */
   description: string;
+  /** The constraint itself, for machine comparison (e.g. across commits). */
+  condition: FormalExpr;
   actionId?: string;
   capabilityId?: string;
   semanticTarget?: string;
@@ -150,7 +153,106 @@ export interface ProductReasoner {
     model: FormalProductModel,
     query: ReachabilityQuery,
   ): Promise<ExplanationResult>;
+  /**
+   * Semantic diff of two models (reasoning spec §38): goal reachability under
+   * every enumerable context, before and after, with root causes for lost
+   * reachability.
+   */
+  compareModels(
+    before: FormalProductModel,
+    after: FormalProductModel,
+    options?: ComparisonOptions,
+  ): Promise<ModelComparison>;
 }
+
+export type ComparisonStatus =
+  | "reachable"
+  | "unreachable"
+  | "unknown"
+  /** The model has no such goal. */
+  | "absent"
+  /** The context value does not exist in this model. */
+  | "not-applicable";
+export type ComparisonOptions = {
+  goals?: string[];
+  /**
+   * Value an enum context falls back to when the other model has a value this
+   * one lacks. The formal-abstraction role enum uses "unlisted".
+   */
+  otherValue?: string;
+  /** Context combinations evaluated per goal; more are reported, not checked. */
+  maxContexts?: number;
+  maxDepth?: number;
+  /** Budget for each reachability query. */
+  timeoutMs?: number;
+};
+export type ModelSummary = ResultBase["model"];
+export type ReachabilityChange = {
+  goal: string;
+  capabilityId?: string;
+  context: FormalStateSnapshot;
+  before: ComparisonStatus;
+  after: ComparisonStatus;
+  /** New reachability: the after-model witness. */
+  witness?: ReasoningTrace;
+  /** Lost reachability: why the after model cannot reach the goal. */
+  explanation?: UnreachableExplanation;
+  /** Explanation constraints that the before model does not contain. */
+  rootCause?: ConstraintProvenance[];
+  /** Goal-setting actions that existed before and are gone after. */
+  removedGoalSetters?: string[];
+};
+export type ApplicabilityChange = {
+  goal: string;
+  capabilityId?: string;
+  /** Contexts under which the goal is reachable. */
+  before: FormalStateSnapshot[];
+  after: FormalStateSnapshot[];
+};
+export type ObjectDiff = {
+  added: string[];
+  removed: string[];
+  changed: string[];
+};
+export type ComparisonUncertainty = {
+  kind:
+    | "unknown-result"
+    | "context-not-enumerated"
+    | "context-not-applicable"
+    | "too-many-contexts";
+  goal?: string;
+  context?: FormalStateSnapshot;
+  message: string;
+};
+export type ModelComparison = {
+  before: ModelSummary;
+  after: ModelSummary;
+  goals: {
+    goal: string;
+    capabilityId?: string;
+    contexts: {
+      context: FormalStateSnapshot;
+      before: ComparisonStatus;
+      after: ComparisonStatus;
+    }[];
+  }[];
+  newReachability: ReachabilityChange[];
+  removedReachability: ReachabilityChange[];
+  changedApplicability: ApplicabilityChange[];
+  modelDiff: {
+    variables: ObjectDiff;
+    actions: ObjectDiff;
+    goals: ObjectDiff;
+    invariants: ObjectDiff;
+  };
+  /** Invariant changes; checking them is R8. */
+  changedProperties: {
+    invariant: string;
+    change: "added" | "removed" | "changed";
+  }[];
+  uncertainty: ComparisonUncertainty[];
+  stats: { queries: number; solverCalls: number; durationMs: number };
+};
 export class ReasoningQueryError extends Error {
   override name = "ReasoningQueryError";
 }
@@ -330,6 +432,8 @@ export function createProductReasoner(solver: SolverProvider): ProductReasoner {
     // Explain mode always attaches an explanation to unreachable results.
     explainUnreachable: (model, query) =>
       search(solver, model, query, "explain") as Promise<ExplanationResult>,
+    compareModels: (before, after, options) =>
+      compare(solver, before, after, options ?? {}),
     async findPlan(input, query) {
       const result = await search(solver, input, query, "plan");
       if (result.status === "unknown") return result;
@@ -578,6 +682,7 @@ async function search(
           id: `context:${id}`,
           kind: "context",
           description: `Context fixes ${id} = ${String(value)}`,
+          condition: f.is(id, value),
           variables: [id],
           evidence: evidenceOf([id]),
         }),
@@ -596,6 +701,7 @@ async function search(
           id: `precondition:${action.id}#${index + 1}`,
           kind: "precondition",
           description: `${action.id} requires ${describeFormalExpr(item)}`,
+          condition: item,
           actionId: action.id,
           ...(original.capabilityId
             ? { capabilityId: original.capabilityId }
@@ -620,6 +726,7 @@ async function search(
         id: `initial#${index + 1}`,
         kind: "initial",
         description: `Initially ${describeFormalExpr(item)}`,
+        condition: item,
         variables: ids,
         evidence: evidenceOf(ids),
       }),
@@ -1094,4 +1201,308 @@ export function evaluatePlan(
       extra: planned.filter((target) => !expected.includes(target)),
     },
   };
+}
+
+const summary = (model: FormalProductModel): ModelSummary => ({
+  id: model.id,
+  hash: formalModelHash(model),
+  repositoryCommit: model.metadata.repositoryCommit,
+  source: model.metadata.source,
+});
+const canonical = (value: unknown): string =>
+  JSON.stringify(value, (_, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.entries(item).sort(([a], [b]) => compareText(a, b)),
+        )
+      : item,
+  );
+function objectDiff<T extends { id: string; evidence?: unknown }>(
+  before: T[],
+  after: T[],
+): ObjectDiff {
+  // Evidence carries the commit, so it differs for every object; compare semantics.
+  const strip = ({ evidence: _, ...rest }: T) => canonical(rest);
+  const old = new Map(before.map((item) => [item.id, strip(item)]));
+  const next = new Map(after.map((item) => [item.id, strip(item)]));
+  return {
+    added: [...next.keys()].filter((id) => !old.has(id)).sort(compareText),
+    removed: [...old.keys()].filter((id) => !next.has(id)).sort(compareText),
+    changed: [...next.keys()]
+      .filter((id) => old.has(id) && old.get(id) !== next.get(id))
+      .sort(compareText),
+  };
+}
+
+async function compare(
+  solver: SolverProvider,
+  beforeInput: FormalProductModel,
+  afterInput: FormalProductModel,
+  options: ComparisonOptions,
+): Promise<ModelComparison> {
+  const started = Date.now();
+  const before = normalizeFormalModel(beforeInput);
+  const after = normalizeFormalModel(afterInput);
+  const otherValue = options.otherValue ?? "unlisted";
+  const maxContexts = options.maxContexts ?? 64;
+  const reasoner = createProductReasoner(solver);
+  const query = {
+    ...(options.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
+    ...(options.timeoutMs === undefined
+      ? {}
+      : { timeoutMs: options.timeoutMs }),
+  };
+  const goalIds =
+    options.goals ??
+    [...new Set([...before.goals, ...after.goals].map((item) => item.id))].sort(
+      compareText,
+    );
+  const uncertainty: ComparisonUncertainty[] = [];
+  const goals: ModelComparison["goals"] = [];
+  const newReachability: ReachabilityChange[] = [];
+  const removedReachability: ReachabilityChange[] = [];
+  const changedApplicability: ApplicabilityChange[] = [];
+  let queries = 0;
+  let solverCalls = 0;
+  const notEnumerated = new Set<string>();
+
+  for (const goalId of goalIds) {
+    const sides = [before, after].map((model) => ({
+      model,
+      goal: model.goals.find((item) => item.id === goalId),
+    }));
+    const capabilityId = (sides[1]?.goal ?? sides[0]?.goal)?.capabilityId;
+    const contextVariables = new Map<string, FormalStateVariable[]>();
+    for (const { model, goal } of sides) {
+      if (!goal) continue;
+      for (const item of sliceFormalModel(
+        model,
+        formalExprVariables(goal.condition),
+      ).variables)
+        if (item.scope === "context")
+          contextVariables.set(item.id, [
+            ...(contextVariables.get(item.id) ?? []),
+            item,
+          ]);
+    }
+    const axes: [string, FormalValue[]][] = [];
+    for (const [id, declarations] of [...contextVariables].sort(([a], [b]) =>
+      compareText(a, b),
+    )) {
+      if (declarations.every((item) => item.type === "boolean"))
+        axes.push([id, [false, true]]);
+      else if (declarations.every((item) => item.type === "enum"))
+        axes.push([
+          id,
+          [
+            ...new Set(
+              declarations.flatMap((item) =>
+                item.type === "enum" ? item.values : [],
+              ),
+            ),
+          ].sort(compareText),
+        ]);
+      else if (!notEnumerated.has(id)) {
+        notEnumerated.add(id);
+        uncertainty.push({
+          kind: "context-not-enumerated",
+          message: `Context ${id} is not boolean or enum in both models; it is left free.`,
+        });
+      }
+    }
+    let combinations: FormalStateSnapshot[] = [{}];
+    for (const [id, values] of axes)
+      combinations = combinations.flatMap((combination) =>
+        values.map((value) => ({ ...combination, [id]: value })),
+      );
+    if (combinations.length > maxContexts) {
+      uncertainty.push({
+        kind: "too-many-contexts",
+        goal: goalId,
+        message: `${goalId} has ${combinations.length} context combinations (limit ${maxContexts}); it was not compared.`,
+      });
+      continue;
+    }
+    const rows: ModelComparison["goals"][number]["contexts"] = [];
+    const reachableIn: [FormalStateSnapshot[], FormalStateSnapshot[]] = [
+      [],
+      [],
+    ];
+    for (const combination of combinations) {
+      const statuses: ComparisonStatus[] = [];
+      const results: (ReachabilityResult | undefined)[] = [];
+      const mapped: (FormalStateSnapshot | undefined)[] = [];
+      for (const [index, { model, goal }] of sides.entries()) {
+        if (!goal) {
+          statuses.push("absent");
+          results.push(undefined);
+          mapped.push(undefined);
+          continue;
+        }
+        let applicable = true;
+        const context: FormalStateSnapshot = {};
+        for (const [id, value] of Object.entries(combination)) {
+          const declared = model.variables.find((item) => item.id === id);
+          if (!declared) continue;
+          if (
+            declared.type === "enum" &&
+            !declared.values.includes(value as string)
+          ) {
+            if (declared.values.includes(otherValue)) context[id] = otherValue;
+            else applicable = false;
+          } else context[id] = value;
+        }
+        if (!applicable) {
+          statuses.push("not-applicable");
+          results.push(undefined);
+          mapped.push(undefined);
+          uncertainty.push({
+            kind: "context-not-applicable",
+            goal: goalId,
+            context: combination,
+            message: `The ${index === 0 ? "before" : "after"} model has no matching value for this context.`,
+          });
+          continue;
+        }
+        const result = await reasoner.checkReachability(model, {
+          goal: goalId,
+          context,
+          ...query,
+        });
+        queries += 1;
+        solverCalls += result.stats.solverCalls;
+        statuses.push(result.status);
+        results.push(result);
+        mapped.push(context);
+        if (result.status === "reachable")
+          reachableIn[index]?.push(combination);
+        if (result.status === "unknown")
+          uncertainty.push({
+            kind: "unknown-result",
+            goal: goalId,
+            context: combination,
+            message: `${index === 0 ? "Before" : "After"}: ${result.reason}. ${result.detail}`,
+          });
+      }
+      const [was, now] = statuses as [ComparisonStatus, ComparisonStatus];
+      rows.push({ context: combination, before: was, after: now });
+      const lost =
+        was === "reachable" && (now === "unreachable" || now === "absent");
+      const gained =
+        (was === "unreachable" || was === "absent") && now === "reachable";
+      if (gained) {
+        const result = results[1];
+        newReachability.push({
+          goal: goalId,
+          ...(capabilityId ? { capabilityId } : {}),
+          context: combination,
+          before: was,
+          after: now,
+          ...(result?.status === "reachable" ? { witness: result.trace } : {}),
+        });
+      }
+      if (lost) {
+        const change: ReachabilityChange = {
+          goal: goalId,
+          ...(capabilityId ? { capabilityId } : {}),
+          context: combination,
+          before: was,
+          after: now,
+        };
+        if (now === "unreachable") {
+          const explained = await reasoner.explainUnreachable(after, {
+            goal: goalId,
+            context: mapped[1] ?? {},
+            ...query,
+          });
+          solverCalls += explained.stats.solverCalls;
+          if (explained.status === "unreachable") {
+            const { explanation } = explained;
+            change.explanation = explanation;
+            change.rootCause = explanation.constraints.filter(
+              (item) => !presentIn(before, item),
+            );
+            const setters = new Set(
+              explanation.goalSetters.map((item) => item.actionId),
+            );
+            const goal = sides[0]?.goal as FormalGoal;
+            const goalVariables = new Set(formalExprVariables(goal.condition));
+            change.removedGoalSetters = before.actions
+              .filter(
+                (action) =>
+                  action.effects.some((effect) =>
+                    goalVariables.has(effect.variable),
+                  ) && !setters.has(action.id),
+              )
+              .map((action) => action.id)
+              .filter(
+                (id) => !after.actions.some((action) => action.id === id),
+              );
+          }
+        }
+        removedReachability.push(change);
+      }
+    }
+    goals.push({
+      goal: goalId,
+      ...(capabilityId ? { capabilityId } : {}),
+      contexts: rows,
+    });
+    const [old, next] = reachableIn.map((list) =>
+      list.map(canonical).sort(compareText),
+    ) as [string[], string[]];
+    if (sides.every((side) => side.goal) && old.join("\n") !== next.join("\n"))
+      changedApplicability.push({
+        goal: goalId,
+        ...(capabilityId ? { capabilityId } : {}),
+        before: reachableIn[0],
+        after: reachableIn[1],
+      });
+  }
+  const invariants = objectDiff(before.invariants, after.invariants);
+  return {
+    before: summary(before),
+    after: summary(after),
+    goals,
+    newReachability,
+    removedReachability,
+    changedApplicability,
+    modelDiff: {
+      variables: objectDiff(before.variables, after.variables),
+      actions: objectDiff(before.actions, after.actions),
+      goals: objectDiff(before.goals, after.goals),
+      invariants,
+    },
+    changedProperties: [
+      ...invariants.added.map((invariant) => ({
+        invariant,
+        change: "added" as const,
+      })),
+      ...invariants.removed.map((invariant) => ({
+        invariant,
+        change: "removed" as const,
+      })),
+      ...invariants.changed.map((invariant) => ({
+        invariant,
+        change: "changed" as const,
+      })),
+    ],
+    uncertainty,
+    stats: { queries, solverCalls, durationMs: Date.now() - started },
+  };
+}
+
+/** Whether the before model already had this constraint (same action and conjunct, or initial fact). */
+function presentIn(
+  model: FormalProductModel,
+  constraint: ConstraintProvenance,
+): boolean {
+  const flatten = (expr: FormalExpr): FormalExpr[] =>
+    expr.type === "and" ? expr.expressions.flatMap(flatten) : [expr];
+  const same = (items: FormalExpr[]) =>
+    items.some((item) => canonical(item) === canonical(constraint.condition));
+  if (constraint.kind === "context") return true;
+  if (constraint.kind === "initial") return same(flatten(model.initial));
+  const action = model.actions.find((item) => item.id === constraint.actionId);
+  return action !== undefined && same(flatten(action.precondition));
 }

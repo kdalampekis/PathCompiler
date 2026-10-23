@@ -8,6 +8,12 @@ import {
   analyzeWorkflowImpact,
   type WorkflowImpactReport,
 } from "@pathcompiler/impact-analysis";
+import {
+  analyzeSemanticChange,
+  type SemanticChangeReport,
+  summarizeSemanticChange,
+} from "@pathcompiler/semantic-change";
+import type { SolverProvider } from "@pathcompiler/solver-provider";
 import { discoverWorkflows } from "@pathcompiler/workflow-discovery";
 import {
   detectNewWorkflows,
@@ -28,6 +34,7 @@ const plural = (count: number, one: string, many: string) =>
 export function summarizeWorkflowCheck(
   impact: WorkflowImpactReport,
   detections: NewWorkflowReport,
+  semantic?: SemanticChangeReport,
 ): CheckSummary {
   const review = impact.impacts.filter(
     (item) => item.severity === "medium" || item.severity === "high",
@@ -53,7 +60,13 @@ export function summarizeWorkflowCheck(
       (item) =>
         `- New: ${item.title} (${item.capabilityId}), ${item.status}, confidence ${item.confidence}`,
     ),
-  ].join("\n");
+    // Optional R11 section; the deterministic summary above is unchanged.
+    ...(semantic
+      ? ["", "PathCompiler Product Logic", ...summarizeSemanticChange(semantic)]
+      : []),
+  ]
+    .join("\n")
+    .trim();
   return {
     conclusion: review.length || fresh.length ? "neutral" : "success",
     title: review.length
@@ -170,6 +183,8 @@ export function createWorkflowCheckWorker(options: {
   auth: Pick<AppAuth, "installationToken">;
   repositories: RepositoryProvider;
   fetch?: typeof fetch;
+  /** Opt-in product logic section: a solver per job for semantic reasoning. */
+  reasoning?: { solver: () => Promise<SolverProvider> };
 }): (job: WorkflowCheckJob) => Promise<CheckSummary> {
   return async (job) => {
     const token = await options.auth.installationToken(job.installationId);
@@ -190,7 +205,20 @@ export function createWorkflowCheckWorker(options: {
         base: job.base,
         head: job.head,
       });
-      const impact = analyzeWorkflowImpact(delta, prepared.approved);
+      let semantic: SemanticChangeReport | undefined;
+      if (options.reasoning) {
+        const solver = await options.reasoning.solver();
+        try {
+          semantic = await analyzeSemanticChange({ delta, base, head }, solver);
+        } finally {
+          await solver.close();
+        }
+      }
+      const impact = analyzeWorkflowImpact(
+        delta,
+        prepared.approved,
+        semantic ? { semantic: semantic.affectedWorkflows } : {},
+      );
       const headCapabilities = discoverCapabilities(head.mined.graph);
       const detections = detectNewWorkflows({
         delta,
@@ -205,7 +233,7 @@ export function createWorkflowCheckWorker(options: {
         approved: prepared.approved,
         rejected: prepared.rejected,
       });
-      check = summarizeWorkflowCheck(impact, detections);
+      check = summarizeWorkflowCheck(impact, detections, semantic);
     } catch (error) {
       await publish({
         conclusion: "failure",

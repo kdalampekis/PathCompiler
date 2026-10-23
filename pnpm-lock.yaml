@@ -231,6 +231,9 @@ importers:
       "@pathcompiler/sdk-js":
         specifier: workspace:*
         version: link:../sdk-js
+      "@pathcompiler/semantic-change":
+        specifier: workspace:*
+        version: link:../semantic-change
       "@pathcompiler/solver-z3":
         specifier: workspace:*
         version: link:../solver-z3
@@ -358,6 +361,12 @@ importers:
       "@pathcompiler/impact-analysis":
         specifier: workspace:*
         version: link:../impact-analysis
+      "@pathcompiler/semantic-change":
+        specifier: workspace:*
+        version: link:../semantic-change
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
       "@pathcompiler/workflow-discovery":
         specifier: workspace:*
         version: link:../workflow-discovery
@@ -374,6 +383,9 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
       "@pathcompiler/source-model":
         specifier: workspace:*
         version: link:../source-model
@@ -697,6 +709,37 @@ importers:
       "@pathcompiler/workflow-validator":
         specifier: workspace:*
         version: link:../workflow-validator
+
+  packages/semantic-change:
+    dependencies:
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/formal-abstraction":
+        specifier: workspace:*
+        version: link:../formal-abstraction
+      "@pathcompiler/graph-delta":
+        specifier: workspace:*
+        version: link:../graph-delta
+      "@pathcompiler/reasoner-core":
+        specifier: workspace:*
+        version: link:../reasoner-core
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/workflow-ir":
+        specifier: workspace:*
+        version: link:../workflow-ir
+    devDependencies:
+      "@pathcompiler/git-intelligence":
+        specifier: workspace:*
+        version: link:../git-intelligence
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
 
   packages/solver-provider:
     dependencies:
