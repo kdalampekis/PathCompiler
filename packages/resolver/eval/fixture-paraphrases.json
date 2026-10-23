@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "description": "Paraphrases for the approved fixture workflows. Written before the matcher was implemented and not used to tune it. Do not edit cases to raise accuracy; add new cases instead.",
+  "targetAccuracy": 0.8,
+  "cases": [
+    {
+      "query": "How do I add a new client?",
+      "expected": { "type": "workflow", "id": "clients.create" }
+    },
+    {
+      "query": "create client",
+      "expected": { "type": "workflow", "id": "clients.create" }
+    },
+    {
+      "query": "Where can I register a client",
+      "expected": { "type": "workflow", "id": "clients.create" }
+    },
+    {
+      "query": "I want to make a new client record",
+      "expected": { "type": "workflow", "id": "clients.create" }
+    },
+    {
+      "query": "How can I onboard a new customer?",
+      "expected": { "type": "workflow", "id": "clients.create" }
+    },
+    {
+      "query": "new client",
+      "expected": { "type": "workflow", "id": "clients.create" }
+    },
+    {
+      "query": "Set up a client account",
+      "expected": { "type": "workflow", "id": "clients.create" }
+    },
+    {
+      "query": "How do I create a plan?",
+      "expected": { "type": "workflow", "id": "plans.create" }
+    },
+    {
+      "query": "add a new plan",
+      "expected": { "type": "workflow", "id": "plans.create" }
+    },
+    {
+      "query": "make plan",
+      "expected": { "type": "workflow", "id": "plans.create" }
+    },
+    {
+      "query": "Can I build a new nutrition plan?",
+      "expected": { "type": "workflow", "id": "plans.create" }
+    },
+    {
+      "query": "start a new plan",
+      "expected": { "type": "workflow", "id": "plans.create" }
+    },
+    {
+      "query": "plan creation",
+      "expected": { "type": "workflow", "id": "plans.create" }
+    },
+    {
+      "query": "How do I change the structure of a plan?",
+      "expected": { "type": "workflow", "id": "plans.change_structure" }
+    },
+    {
+      "query": "modify plan structure",
+      "expected": { "type": "workflow", "id": "plans.change_structure" }
+    },
+    {
+      "query": "update the plan layout",
+      "expected": { "type": "workflow", "id": "plans.change_structure" }
+    },
+    {
+      "query": "switch my plan to a different structure",
+      "expected": { "type": "workflow", "id": "plans.change_structure" }
+    },
+    {
+      "query": "restructure a plan",
+      "expected": { "type": "workflow", "id": "plans.change_structure" }
+    },
+    {
+      "query": "edit plan structure",
+      "expected": { "type": "workflow", "id": "plans.change_structure" }
+    },
+    {
+      "query": "Can I rearrange how my plan is organized?",
+      "expected": { "type": "workflow", "id": "plans.change_structure" }
+    }
+  ],
+  "controls": [
+    { "query": "delete a client", "expected": { "type": "unsupported" } },
+    { "query": "edit client details", "expected": { "type": "unsupported" } },
+    {
+      "query": "what's the weather today",
+      "expected": { "type": "unsupported" }
+    },
+    { "query": "   ", "expected": { "type": "unsupported" } },
+    {
+      "query": "plan",
+      "expected": {
+        "type": "ambiguous",
+        "ids": ["plans.change_structure", "plans.create"]
+      }
+    }
+  ]
+}

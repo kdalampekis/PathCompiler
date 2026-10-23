@@ -808,3 +808,52 @@ rejected exclusion and invalid approved files.
 - `build` does not detect approved workflows that drifted from the current code;
   that belongs to impact analysis (Phase 20).
 - Thirteen phases are complete (0–12), leaving 18 (13–30).
+
+## Phase 13 — Runtime Resolver
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/resolver`: `createResolver(searchIndex)` validates the
+  compiled index once and exposes deterministic `resolveProductHelp({query,
+  context})`. No graph traversal, network or model access.
+- Retrieval: lexical normalization, alias sequence matching, entity requirement,
+  generic action-verb groups with action compatibility, qualifier scoring and a
+  route tie-breaker. Results are `workflow`, `ambiguous` or `unsupported`, with
+  schemas exported for the SDK.
+- Role, permission and feature-flag filters apply only when the caller supplies
+  that context. Fully excluded matches return `unavailable-in-context` with the
+  unmet requirements.
+- Added `evaluateResolver` and `eval/fixture-paraphrases.json` (20 paraphrases,
+  5 controls, 80% target), saved before the matcher was written.
+- Documented in README and ADR 0015.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 12 baseline lint/typecheck/tests | Passed before edits; 165 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 117 files |
+| `pnpm typecheck` | Passed, fifteen package builds, root tests and fixture |
+| `pnpm test` | 170 tests passed across eighteen suites |
+| Paraphrase evaluation on compiled fixture workflows | 17/20 (85%) ≥ 80% target; 5/5 controls |
+| `git diff --check` | Passed |
+
+Manual review of the evaluation: the three misses were predicted before the first
+run. "onboard a new customer" (no entity synonym) is unsupported. "restructure a
+plan" and "rearrange how my plan is organized" (verbs outside the generic lexicon)
+are ambiguous between the two plan workflows. No paraphrase returned a wrong
+workflow. Synthetic tests separately cover verbs, action mismatch, aliases,
+entity-only confirmation, context exclusions, route tie-breaks, normalization and
+boundary validation. Browser suites were not rerun because no runtime or fixture
+code changed.
+
+### Scope notes and limitations
+
+- All Phase 13 scope is implemented except the optional embedding adapter, which
+  was not built.
+- English only. Recall for product-specific phrasing depends on approved aliases,
+  which are currently always empty.
+- Fourteen phases are complete (0–13), leaving 17 (14–30).

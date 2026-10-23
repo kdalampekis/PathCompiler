@@ -574,6 +574,35 @@ and the compiler does not re-validate approved files against newer commits.
 Aliases are empty until alias generation exists.
 See [ADR 0014](docs/decisions/0014-deterministic-workflow-compiler.md).
 
+## Resolve product help
+
+```ts
+import { createResolver } from '@pathcompiler/resolver';
+const resolver = createResolver(searchIndex); // generated/search-index.json
+resolver.resolveProductHelp({
+  query: 'How do I add a new client?',
+  context: { route: '/clients', role: 'editor', permissions: [], featureFlags: {} },
+});
+// { type: 'workflow', workflow: { id: 'clients.create', ... }, confidence: 1, matched: {...} }
+```
+
+The resolver uses only the compiled search index, never the graph. It normalizes
+text (case, diacritics, simple plurals, `set up`), matches approved aliases, then
+requires the record's entity and a compatible action from a small generic verb
+lexicon (create/change/delete groups). Product vocabulary such as entity synonyms
+belongs in approved aliases, not in the lexicon. Results are `workflow`,
+`ambiguous` (`multiple-matches`, or `action-unclear` when only the entity is
+named) or `unsupported` (`empty-query`, `no-match`, `unavailable-in-context`).
+Role, permission and feature-flag requirements exclude workflows only when the
+caller supplies that context. The current route breaks ties but never excludes.
+`confidence` is the share of action/entity/qualifier signals found, not a
+probability. No embedding adapter is included.
+
+`packages/resolver/eval/fixture-paraphrases.json` holds 20 paraphrases and 5
+controls written before the matcher. The test compiles the approved fixture
+workflows and requires the recorded 80% target: currently 17/20 (85%), with no
+wrong-workflow answers. See [ADR 0015](docs/decisions/0015-lexical-product-help-resolver.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -596,6 +625,7 @@ Analysis packages:
 | `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types; `./browser`: `verifyFixtureWorkflow`, browser verification report schema |
 | `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected record schemas, YAML serialize/parse, `ReviewError` |
 | `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types |
+| `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, request/result schemas and types |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
