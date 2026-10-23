@@ -202,6 +202,75 @@ describe("pathcompiler CLI", () => {
     ]);
   }, 30_000);
 
+  it("builds repeatable generated artifacts from approved workflows only", async () => {
+    const cwd = await directory();
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    expect(await run(["build"])).toContain("Compiled 0 approved workflows");
+    await run(["workflows", "discover", fixture]);
+    await run([
+      "workflows",
+      "approve",
+      "clients.create",
+      fixture,
+      "--by",
+      "Ana",
+    ]);
+    await run(["workflows", "reject", "plans.create", "--by", "Ana"]);
+    const result = await exec(
+      process.execPath,
+      [binary, "build", "--out", "out"],
+      { cwd },
+    );
+    expect(result.stdout).toContain("Compiled 1 approved workflows");
+    const generated = path.join(cwd, "out/generated");
+    expect((await readdir(generated)).sort()).toEqual([
+      "documentation.json",
+      "runtime-manifest.json",
+      "search-index.json",
+    ]);
+    const files = await Promise.all(
+      ["search-index", "runtime-manifest", "documentation"].map((name) =>
+        readFile(path.join(generated, `${name}.json`), "utf8"),
+      ),
+    );
+    const [search, runtime] = files.map((file) => JSON.parse(file));
+    expect(search.workflows.map((item: { id: string }) => item.id)).toEqual([
+      "clients.create",
+    ]);
+    expect(runtime.workflows[0].steps).toHaveLength(4);
+    const commit = parseApprovedWorkflowYaml(
+      await readFile(
+        path.join(cwd, "out/workflows/clients.create.yaml"),
+        "utf8",
+      ),
+    ).approval.approvedCommit;
+    expect(files[1]).not.toContain(commit);
+    expect(files[1]).not.toContain("Ana");
+    await run(["build"]);
+    for (const [index, name] of [
+      "search-index",
+      "runtime-manifest",
+      "documentation",
+    ].entries())
+      expect(await readFile(path.join(generated, `${name}.json`), "utf8")).toBe(
+        files[index],
+      );
+    await writeFile(path.join(cwd, "out/workflows/broken.yaml"), "kind: x\n");
+    await expect(run(["build"])).rejects.toThrow("broken.yaml");
+    await writeFile(
+      path.join(cwd, "out/workflows/plans.create.yaml"),
+      "kind: x\n",
+    );
+    await rm(path.join(cwd, "out/workflows/broken.yaml"));
+    await expect(run(["build"])).rejects.toThrow("approved workflow");
+    for (const invalid of [
+      ["build", "extra"],
+      ["build", "--json"],
+      ["build", "--exclude", "tests"],
+    ])
+      await expect(run(invalid)).rejects.toThrow();
+  }, 30_000);
+
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];

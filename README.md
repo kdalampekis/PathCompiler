@@ -545,6 +545,35 @@ and discovery leaves approved files untouched. Candidates stay under
 approved workflow requires the later proposal/deprecation phases.
 See [ADR 0013](docs/decisions/0013-file-based-workflow-review.md).
 
+## Compile approved workflows
+
+```sh
+pnpm pathcompiler build
+```
+
+`build` reads only approved `.pathcompiler/workflows/<id>.yaml` records and writes:
+
+| File | Contents |
+| --- | --- |
+| `generated/search-index.json` | ID, title, aliases, action/entity/qualifiers, roles, entry routes, required permissions/feature flags |
+| `generated/runtime-manifest.json` | Browser-safe entrypoints, preconditions, steps (target, action, instruction, expected, next/branches) and terminal |
+| `generated/documentation.json` | Readable step text, prerequisites, expected outcomes, completion and the bound commit |
+
+```ts
+import { compileWorkflows } from '@pathcompiler/workflow-compiler';
+const { searchIndex, runtimeManifest, documentation } = compileWorkflows(approvedRecords);
+```
+
+Compilation is pure and deterministic: output is sorted by ID, contains no
+timestamps and is byte-identical for the same approved content and
+`COMPILER_VERSION`. Each record carries a `revision` (SHA-256 of the canonical
+approved workflow), so reviewer metadata alone never changes it. The runtime
+manifest and search index omit evidence, provenance, confidence, commits, file
+paths and reviewer names. Candidates and rejected workflows are never compiled,
+and the compiler does not re-validate approved files against newer commits.
+Aliases are empty until alias generation exists.
+See [ADR 0014](docs/decisions/0014-deterministic-workflow-compiler.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -566,7 +595,8 @@ Analysis packages:
 | `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
 | `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types; `./browser`: `verifyFixtureWorkflow`, browser verification report schema |
 | `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected record schemas, YAML serialize/parse, `ReviewError` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `runCli` |
+| `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

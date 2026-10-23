@@ -759,3 +759,52 @@ precedence and JSON/text show output.
 - Changing or withdrawing an approved workflow is unsupported until proposals
   (Phase 21) and deprecation (Phase 23). Rejections are undone by deleting the record.
 - Twelve phases are complete (0–11), leaving 19 (12–30).
+
+## Phase 12 — Workflow Compiler
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/workflow-compiler` with pure `compileWorkflows`, producing
+  versioned search index, runtime manifest and documentation documents from
+  schema-valid approved records only.
+- Output is sorted by ID, has no timestamps, rejects duplicates and carries
+  `COMPILER_VERSION` plus a per-workflow `revision` (SHA-256 of canonical approved
+  workflow content, excluding reviewer metadata).
+- Search records follow the spec shape and add qualifiers, domain and
+  permission/feature-flag requirements from preconditions for the resolver.
+- The runtime manifest (and search index) omit evidence, provenance, confidence,
+  commits, file paths and reviewer data. Documentation renders steps, conditions,
+  prerequisites and completion as deterministic text and keeps the bound commit.
+- Added `pathcompiler build`, writing `generated/search-index.json`,
+  `generated/runtime-manifest.json` and `generated/documentation.json`.
+- Documented in README and ADR 0014.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 11 baseline lint/typecheck/tests | Passed before edits; 159 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 111 files |
+| `pnpm typecheck` | Passed, fourteen package builds, root tests and fixture |
+| `pnpm test` | 165 tests passed across seventeen suites |
+| `pnpm test:e2e` | 7 fixture and 6 verification Chromium tests passed |
+| `git diff --check` | Passed |
+
+Focused regressions cover all three fixture workflows, schema round-trips, leak
+checks (commit, reviewer, evidence, confidence, test/component paths), input-order
+independence, reviewer-independent and content-sensitive revisions, unapproved and
+duplicate input, preconditions, branches, byte-identical CLI rebuilds, candidate/
+rejected exclusion and invalid approved files.
+
+### Scope notes and limitations
+
+- All Phase 12 scope is implemented.
+- `aliases` are empty; deterministic or model-generated aliases are not built.
+- Revisions are content hashes, not the architecture's incrementing `@N`
+  versions; a registry with history would be needed for those.
+- `build` does not detect approved workflows that drifted from the current code;
+  that belongs to impact analysis (Phase 20).
+- Thirteen phases are complete (0–12), leaving 18 (13–30).

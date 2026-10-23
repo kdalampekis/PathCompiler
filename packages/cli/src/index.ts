@@ -28,6 +28,10 @@ import {
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import {
+  COMPILER_VERSION,
+  compileWorkflows,
+} from "@pathcompiler/workflow-compiler";
+import {
   discoverWorkflows,
   parseCandidateYaml,
   serializeCandidateYaml,
@@ -61,6 +65,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler workflows show <id> [--out <directory>] [--json]
        pathcompiler workflows approve <id> [directory] [--by <name>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows reject <id> [--by <name>] [--reason <text>] [--out <directory>]
+       pathcompiler build [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
@@ -88,6 +93,8 @@ workflows approve re-validates a clean, current candidate and writes workflows/<
 with approvedBy/approvedAt/approvedCommit; commit that file. workflows reject writes
 workflows/rejected/<id>.yaml. Both take the reviewer from --by or PATHCOMPILER_USER and
 never replace an existing review decision. Candidate YAML remains as discovery cache.
+build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
+generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -448,6 +455,29 @@ export async function runCli(
     await writeExclusive(file, serializeReviewedYaml(record));
     return `Rejected ${id} by ${rejectedBy}.\nRecord: ${file}\nThe candidate stays in discovery cache; remove the record to review it again.\n`;
   }
+  if (positionals[0] === "build" && positionals.length === 1) {
+    if (values.exclude !== undefined)
+      throw new Error(
+        "build compiles stored approved workflows and does not support --exclude.",
+      );
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const compiled = compileWorkflows(await readApproved(output));
+    await writeArtifacts(output, [
+      [
+        "generated/search-index.json",
+        `${JSON.stringify(compiled.searchIndex, null, 2)}\n`,
+      ],
+      [
+        "generated/runtime-manifest.json",
+        `${JSON.stringify(compiled.runtimeManifest, null, 2)}\n`,
+      ],
+      [
+        "generated/documentation.json",
+        `${JSON.stringify(compiled.documentation, null, 2)}\n`,
+      ],
+    ]);
+    return `Compiled ${compiled.searchIndex.workflows.length} approved workflows with compiler ${COMPILER_VERSION}.\nArtifacts: ${path.join(output, "generated")}\nCandidates and rejected workflows are excluded. The runtime manifest omits evidence, commits and review data.\n`;
+  }
   if (
     positionals[0] === "workflows" &&
     positionals[1] === "validate" &&
@@ -597,7 +627,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, or workflows discover/validate/list/show/approve/reject. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, or build. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],
@@ -791,6 +821,39 @@ async function listWorkflows(output: string) {
   return [...entries.values()].sort((a, b) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
   );
+}
+
+async function readApproved(output: string) {
+  const directory = path.join(output, "workflows");
+  let names: string[];
+  try {
+    names = (await readdir(directory, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".yaml"))
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const records = [];
+  for (const name of names) {
+    const file = path.join(directory, name);
+    try {
+      records.push(
+        parseStored(
+          await readFile(file, "utf8"),
+          workflowId(name.slice(0, -".yaml".length)),
+          parseApprovedWorkflowYaml,
+        ),
+      );
+    } catch (error) {
+      throw new Error(
+        `Cannot read ${file} as an approved workflow. Fix or move it, then rebuild.`,
+        { cause: error },
+      );
+    }
+  }
+  return records;
 }
 
 /** Atomically creates a new file; never replaces an existing review decision. */
