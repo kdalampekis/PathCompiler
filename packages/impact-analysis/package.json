@@ -1,0 +1,33 @@
+{
+  "name": "@pathcompiler/impact-analysis",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pathcompiler/graph-delta": "workspace:*",
+    "@pathcompiler/workflow-ir": "workspace:*",
+    "@pathcompiler/workflow-review": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/capability-engine": "workspace:*",
+    "@pathcompiler/source-model": "workspace:*",
+    "@pathcompiler/test-miner-playwright": "workspace:*",
+    "@pathcompiler/workflow-discovery": "workspace:*",
+    "@pathcompiler/workflow-validator": "workspace:*"
+  }
+}

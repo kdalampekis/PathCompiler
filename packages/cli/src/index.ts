@@ -27,6 +27,7 @@ import {
 } from "@pathcompiler/git-intelligence";
 import { analyzeCommitRange } from "@pathcompiler/graph-delta";
 import { createHttpService } from "@pathcompiler/http-service";
+import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import { readSourceProject } from "@pathcompiler/source-model";
@@ -70,6 +71,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler workflows approve <id> [directory] [--by <name>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows reject <id> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler diff <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler impact <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler build [--out <directory>]
        pathcompiler mcp [--out <directory>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
@@ -102,6 +104,8 @@ workflows/rejected/<id>.yaml. Both take the reviewer from --by or PATHCOMPILER_U
 never replace an existing review decision. Candidate YAML remains as discovery cache.
 diff exports both commits read-only, re-analyzes each and writes reports/graph-delta.json
 with changed files, symbols, routes, semantic targets and APIs plus the node/edge delta.
+impact applies deterministic rules to that delta for every approved workflow and writes
+reports/workflow-impact.json (severity none/low/medium/high, reasons, affected steps).
 build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
 generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
 mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
@@ -518,6 +522,34 @@ export async function runCli(
     return `PathCompiler HTTP service listening on http://${host.includes(":") ? `[${host}]` : host}:${bound} (artifacts: ${output}).\n`;
   }
   if (
+    positionals[0] === "impact" &&
+    positionals.length >= 3 &&
+    positionals.length <= 4
+  ) {
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const approved = await readApproved(output);
+    if (!approved.length)
+      throw new Error(
+        `No approved workflows under ${path.join(output, "workflows")}. Approve workflows before analyzing impact.`,
+      );
+    const delta = await analyzeCommitRange({
+      directory: path.resolve(cwd, positionals[3] ?? "."),
+      base: positionals[1] ?? "",
+      head: positionals[2] ?? "",
+      exclude: values.exclude ?? [],
+    });
+    const report = analyzeWorkflowImpact(delta, approved);
+    await writeArtifacts(output, [
+      ["reports/graph-delta.json", `${JSON.stringify(delta, null, 2)}\n`],
+      ["reports/workflow-impact.json", `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    const lines = report.impacts.map(
+      (item) =>
+        `${item.severity.padEnd(6)} ${item.workflowId}${item.reasons.length ? `  ${item.reasons.map((reason) => reason.code).join(", ")}` : ""}`,
+    );
+    return `Impact of ${delta.base.commit.slice(0, 12)}..${delta.head.commit.slice(0, 12)} on ${report.impacts.length} approved workflows:\n${lines.join("\n")}\nReport: ${path.join(output, "reports/workflow-impact.json")}\nApproved workflows were not changed. Medium/high impact needs a reviewed update.\n`;
+  }
+  if (
     positionals[0] === "diff" &&
     positionals.length >= 3 &&
     positionals.length <= 4
@@ -714,7 +746,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, diff, build, mcp, or serve. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, diff, impact, build, mcp, or serve. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],

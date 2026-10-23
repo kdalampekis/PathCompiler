@@ -26,6 +26,7 @@
     "@pathcompiler/git-intelligence": "workspace:*",
     "@pathcompiler/graph-delta": "workspace:*",
     "@pathcompiler/http-service": "workspace:*",
+    "@pathcompiler/impact-analysis": "workspace:*",
     "@pathcompiler/mcp-server": "workspace:*",
     "@pathcompiler/sdk-js": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",

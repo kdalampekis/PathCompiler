@@ -768,6 +768,28 @@ the pure core. Correctness is preferred over incremental speed: there is no
 partial re-analysis yet.
 See [ADR 0021](docs/decisions/0021-snapshot-graph-delta.md).
 
+## Workflow impact analysis
+
+```sh
+pnpm pathcompiler impact <approved-commit> HEAD ./fixtures/next-demo
+```
+
+`impact` computes the graph delta and applies deterministic rules to every
+approved workflow. It writes `reports/workflow-impact.json` with
+`{workflowId, severity, reasons, affectedSteps}` per workflow, highest severity
+first. Approved files are never changed.
+
+| Severity | Rules |
+| --- | --- |
+| high | step/condition semantic target removed; workflow API removed; entry/navigate route removed or changed; permission/feature-flag node or guard edge changed |
+| medium | target behavior changed (not copy-only); API content changed; evidence implementation or test removed; approved commit differs from the delta base |
+| low | target moved (evidence location only); copy-only label change; implementation, test or route location changed; an evidence file changed with no specific element affected (no step attribution) |
+
+Rules match the delta against the workflow's step targets, condition targets,
+routes and evidence node IDs. No model is used; models may later supplement these
+rules but not replace them. `analyzeWorkflowImpact(delta, approvedRecords)` is the
+pure core. See [ADR 0022](docs/decisions/0022-deterministic-workflow-impact.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -798,7 +820,8 @@ Analysis packages:
 | `@pathcompiler/mcp-server` | `createPathCompilerMcpServer`, `serveStdio`, `MCP_TOOL_NAMES` |
 | `@pathcompiler/http-service` | `createHttpService`, `createRequestHandler`, `HttpServiceOptions` |
 | `@pathcompiler/graph-delta` | `computeGraphDelta`, `analyzeCommitRange`, `GraphDeltaSchema`, `GraphNodeChangeSchema` and types |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `diff`, `build`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/impact-analysis` | `analyzeWorkflowImpact`, impact reason/impact/report schemas and types |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `diff`, `impact`, `build`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

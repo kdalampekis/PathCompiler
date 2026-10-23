@@ -1143,3 +1143,51 @@ directories, and the built CLI writes the report and leaves the tree clean.
 - Requires `tar`. Renames appear as removal plus addition. Capability/workflow
   graph layers are not diffed (impact analysis works from the source/test graph).
 - Twenty phases are complete (0–19), leaving 11 (20–30).
+
+## Phase 20 — Workflow Impact Analysis
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/impact-analysis` with pure, deterministic
+  `analyzeWorkflowImpact(delta, approvedRecords)`, returning a versioned report of
+  `{workflowId, severity, reasons, affectedSteps}` sorted by severity.
+- Implemented the spec's rules by joining the delta against each workflow's step
+  and condition targets, entry/navigate routes and evidence node IDs. Removed
+  targets, workflow APIs, routes, route changes and permission/flag changes or guard
+  edges are high. Target moves and copy-only label changes are low.
+- Added medium rules (behavioral target change, API content change, removed
+  implementation/test evidence, approval commit ≠ delta base) and low rules
+  (implementation/test/route location changes, unexplained evidence-file edits with
+  no step attribution).
+- Added `pathcompiler impact <base> <head> [directory]`, writing
+  `reports/graph-delta.json` and `reports/workflow-impact.json`. Approved files are
+  never modified. Documented in README and ADR 0022.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 19 baseline lint/typecheck/tests | Passed before edits; 218 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 158 files |
+| `pnpm typecheck` | Passed, twenty-three package builds, root tests and fixture |
+| `pnpm test` | 223 tests passed across twenty-eight suites |
+| `git diff --check` | Passed |
+
+On real commits in a temporary fixture repository (workflows discovered and approved
+at the base commit), renaming `plans.change_structure` is high on `step.1` only. The
+Create Client label edit is low (`copy-changed`, `step.1`) without a redundant file
+reason. `plans.create`, whose shared file changed but none of its elements did, is
+low with no affected steps. Synthetic deltas cover removed APIs and routes, changed
+routes, added permission guards, moved and behaviorally changed targets, baseline
+mismatch, no impact, input-order independence and input validation. The built CLI
+reports high impact and leaves the approved YAML byte-identical.
+
+### Scope notes and limitations
+
+- All Phase 20 rules are implemented deterministically. No model supplementation.
+- Impact is evidence-based. Behavior changes in code not cited as evidence (for
+  example an unreferenced helper) surface only as unexplained file changes.
+- Twenty-one phases are complete (0–20), leaving 10 (21–30).

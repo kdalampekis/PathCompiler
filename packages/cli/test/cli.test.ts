@@ -416,6 +416,77 @@ describe("pathcompiler CLI", () => {
     await expect(runCli(["diff", base, "nope"], cwd)).rejects.toThrow();
   }, 30_000);
 
+  it("reports workflow impact between commits without changing approvals", async () => {
+    const cwd = await directory();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.test",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.test",
+    };
+    const app = path.join(cwd, "app");
+    const git = async (...args: string[]) =>
+      (await exec("git", ["-C", app, ...args], { env })).stdout.trim();
+    const tracked = (
+      await exec("git", ["-C", fixture, "ls-files", "-z", "--", "."])
+    ).stdout
+      .split("\0")
+      .filter(Boolean);
+    for (const file of tracked) {
+      await mkdir(path.dirname(path.join(app, file)), { recursive: true });
+      await writeFile(
+        path.join(app, file),
+        await readFile(path.join(fixture, file)),
+      );
+    }
+    await git("init", "--quiet");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "base");
+    const base = await git("rev-parse", "HEAD");
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await expect(run(["impact", base, "HEAD", "app"])).rejects.toThrow(
+      "No approved workflows",
+    );
+    await run(["workflows", "discover", "app"]);
+    await run([
+      "workflows",
+      "approve",
+      "plans.change_structure",
+      "app",
+      "--by",
+      "Ana",
+    ]);
+    const approvedPath = path.join(
+      cwd,
+      "out/workflows/plans.change_structure.yaml",
+    );
+    const approvedYaml = await readFile(approvedPath, "utf8");
+    const plans = path.join(app, "components/plans.tsx");
+    await writeFile(
+      plans,
+      (await readFile(plans, "utf8")).replace(
+        'data-pathcompiler="plans.change_structure"',
+        'data-pathcompiler="plans.restructure"',
+      ),
+    );
+    await git("commit", "--quiet", "-am", "rename target");
+    const output = await run(["impact", base, "HEAD", "app"]);
+    expect(output).toContain("high   plans.change_structure  target-removed");
+    const report = JSON.parse(
+      await readFile(
+        path.join(cwd, "out/reports/workflow-impact.json"),
+        "utf8",
+      ),
+    );
+    expect(report.impacts[0]).toMatchObject({
+      workflowId: "plans.change_structure",
+      severity: "high",
+      affectedSteps: ["step.1"],
+    });
+    expect(await readFile(approvedPath, "utf8")).toBe(approvedYaml);
+  }, 60_000);
+
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];
