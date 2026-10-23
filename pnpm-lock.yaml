@@ -201,6 +201,40 @@ importers:
         specifier: workspace:*
         version: link:../workflow-validator
 
+  packages/sdk-js:
+    dependencies:
+      "@pathcompiler/resolver":
+        specifier: workspace:*
+        version: link:../resolver
+      "@pathcompiler/workflow-compiler":
+        specifier: workspace:*
+        version: link:../workflow-compiler
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
+      "@pathcompiler/workflow-discovery":
+        specifier: workspace:*
+        version: link:../workflow-discovery
+      "@pathcompiler/workflow-review":
+        specifier: workspace:*
+        version: link:../workflow-review
+      "@pathcompiler/workflow-validator":
+        specifier: workspace:*
+        version: link:../workflow-validator
+
   packages/source-model:
     dependencies:
       zod:

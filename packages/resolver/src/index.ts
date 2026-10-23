@@ -2,7 +2,7 @@ import {
   type SearchIndex,
   SearchIndexSchema,
   type SearchRecord,
-} from "@pathcompiler/workflow-compiler";
+} from "@pathcompiler/workflow-compiler/schema";
 import { z } from "zod";
 
 export * from "./evaluate.js";

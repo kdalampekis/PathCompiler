@@ -857,3 +857,47 @@ code changed.
 - English only. Recall for product-specific phrasing depends on approved aliases,
   which are currently always empty.
 - Fourteen phases are complete (0–13), leaving 17 (14–30).
+
+## Phase 14 — Headless JS SDK
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/sdk-js` with `new PathCompiler({project, transport})`,
+  `resolve`, `workflows.get`, `workflows.search` and `workflows.getRuntimeManifest`.
+- `RuntimeTransport` matches the spec (`resolve`, `getWorkflow`,
+  `getRuntimeManifest`). The client validates requests and every response, and
+  throws a typed `PathCompilerError`. Transport failures propagate unchanged.
+- Implemented the offline `createStaticTransport` over the three `pathcompiler build`
+  outputs. It rejects incomplete or cross-build artifacts, returns copies and
+  strips commits from workflow details. `search` derives from `resolve`.
+- Split compiled-artifact schemas into the browser-safe
+  `@pathcompiler/workflow-compiler/schema` entry and moved the resolver onto it,
+  so the SDK module graph contains no Node.js built-ins (verified by test).
+- Documented in README and ADR 0016.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 13 baseline lint/typecheck/tests | Passed before edits; 170 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 122 files |
+| `pnpm typecheck` | Passed, sixteen package builds, root tests and fixture |
+| `pnpm test` | 175 tests passed across nineteen suites |
+| `git diff --check` | Passed |
+
+Tests cover resolution/search/details/manifests on the compiled fixture, copy
+isolation, unknown IDs, invalid requests and options, invalid transport responses,
+propagated transport errors, incomplete and mismatched artifacts, and a built
+module-graph walk with no Node built-ins. Browser suites were not rerun because no
+runtime or fixture code changed.
+
+### Scope notes and limitations
+
+- All Phase 14 scope is implemented. The HTTP transport is deferred to Phase 18,
+  as the spec says ("HTTP transport later").
+- The SDK has not yet been loaded in a real browser bundle; the runtime phases will
+  exercise it there.
+- Fifteen phases are complete (0–14), leaving 16 (15–30).

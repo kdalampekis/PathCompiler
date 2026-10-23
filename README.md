@@ -603,6 +603,34 @@ controls written before the matcher. The test compiles the approved fixture
 workflows and requires the recorded 80% target: currently 17/20 (85%), with no
 wrong-workflow answers. See [ADR 0015](docs/decisions/0015-lexical-product-help-resolver.md).
 
+## Headless JS SDK
+
+```ts
+import { PathCompiler, createStaticTransport } from '@pathcompiler/sdk-js';
+import searchIndex from './.pathcompiler/generated/search-index.json';
+import runtimeManifest from './.pathcompiler/generated/runtime-manifest.json';
+import documentation from './.pathcompiler/generated/documentation.json';
+
+const client = new PathCompiler({
+  project: 'next-demo',
+  transport: createStaticTransport({ searchIndex, runtimeManifest, documentation }),
+});
+await client.resolve({ query: 'add a client', context: { route: '/clients' } });
+await client.workflows.search('plan');               // [] | [one] | ambiguous options
+await client.workflows.get('clients.create');        // readable steps, no commit
+await client.workflows.getRuntimeManifest('clients.create');
+```
+
+`RuntimeTransport` has `resolve`, `getWorkflow` and `getRuntimeManifest`. The
+client validates every request and every transport response, and throws
+`PathCompilerError` (`invalid-request`, `workflow-not-found`, `invalid-response`).
+Transport failures propagate unchanged. The static transport is offline. It
+refuses incomplete artifacts or files from different builds, returns copies, and
+strips the documentation commit from `workflows.get`. The SDK's module graph uses
+no Node.js built-ins: compiler contracts come from the browser-safe
+`@pathcompiler/workflow-compiler/schema` entry. An HTTP transport arrives with the
+HTTP service. See [ADR 0016](docs/decisions/0016-headless-sdk-transports.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -624,8 +652,9 @@ Analysis packages:
 | `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
 | `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types; `./browser`: `verifyFixtureWorkflow`, browser verification report schema |
 | `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected record schemas, YAML serialize/parse, `ReviewError` |
-| `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types |
+| `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types; `./schema`: browser-safe schemas only |
 | `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, request/result schemas and types |
+| `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
