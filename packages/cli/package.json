@@ -24,6 +24,7 @@
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/git-intelligence": "workspace:*",
+    "@pathcompiler/github-app": "workspace:*",
     "@pathcompiler/graph-delta": "workspace:*",
     "@pathcompiler/http-service": "workspace:*",
     "@pathcompiler/impact-analysis": "workspace:*",
@@ -36,7 +37,8 @@
     "@pathcompiler/workflow-ir": "workspace:*",
     "@pathcompiler/workflow-proposals": "workspace:*",
     "@pathcompiler/workflow-review": "workspace:*",
-    "@pathcompiler/workflow-validator": "workspace:*"
+    "@pathcompiler/workflow-validator": "workspace:*",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1"

@@ -114,6 +114,9 @@ importers:
       "@pathcompiler/git-intelligence":
         specifier: workspace:*
         version: link:../git-intelligence
+      "@pathcompiler/github-app":
+        specifier: workspace:*
+        version: link:../github-app
       "@pathcompiler/graph-delta":
         specifier: workspace:*
         version: link:../graph-delta
@@ -153,6 +156,9 @@ importers:
       "@pathcompiler/workflow-validator":
         specifier: workspace:*
         version: link:../workflow-validator
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
     devDependencies:
       "@modelcontextprotocol/sdk":
         specifier: 1.32.1
@@ -188,6 +194,43 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+
+  packages/github-app:
+    dependencies:
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/graph-delta":
+        specifier: workspace:*
+        version: link:../graph-delta
+      "@pathcompiler/impact-analysis":
+        specifier: workspace:*
+        version: link:../impact-analysis
+      "@pathcompiler/workflow-discovery":
+        specifier: workspace:*
+        version: link:../workflow-discovery
+      "@pathcompiler/workflow-proposals":
+        specifier: workspace:*
+        version: link:../workflow-proposals
+      "@pathcompiler/workflow-review":
+        specifier: workspace:*
+        version: link:../workflow-review
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
+      "@pathcompiler/workflow-validator":
+        specifier: workspace:*
+        version: link:../workflow-validator
 
   packages/graph-core:
     dependencies:

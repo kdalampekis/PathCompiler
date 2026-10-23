@@ -7,6 +7,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
+import { createServer } from "node:http";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { createGitHubProvider } from "@pathcompiler/adapter-github";
@@ -26,6 +27,14 @@ import {
   openGitRepository,
   openGitRepository as openRepository,
 } from "@pathcompiler/git-intelligence";
+import {
+  createAppAuth,
+  createJobQueue,
+  createLocalRepositoryProvider,
+  createWebhookHandler,
+  createWorkflowCheckWorker,
+  githubAppManifest,
+} from "@pathcompiler/github-app";
 import {
   analyzeCommitRange,
   analyzeCommitRangeDetailed,
@@ -72,6 +81,7 @@ import {
   WorkflowIdSchema,
 } from "@pathcompiler/workflow-review";
 import { validateWorkflow } from "@pathcompiler/workflow-validator";
+import { z } from "zod";
 
 export const HELP = `PathCompiler — local Next.js source analysis
 
@@ -95,6 +105,8 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler proposals accept <proposal> [directory] [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler proposals reject|ignore <proposal> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler build [--out <directory>]
+       pathcompiler github-app manifest --name <name> --url <url> --webhook <https-url>
+       pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
@@ -137,6 +149,9 @@ scores signals (new action, write API, Playwright flow, route/dialog, commit sub
 writes reports/new-workflows.json plus candidates backed by two or more signals and a test.
 build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
 generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
+github-app serve verifies GitHub webhooks (GITHUB_WEBHOOK_SECRET), acknowledges push and
+pull_request events immediately, analyzes them in a background queue using configured local
+clones, and publishes a "PathCompiler Workflow Check" run with a scoped installation token.
 mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
 serve runs the HTTP runtime API on 127.0.0.1:4310 by default from the same files and
 requires PATHCOMPILER_API_TOKEN (Authorization: Bearer <token>).
@@ -158,6 +173,10 @@ const CLI_OPTIONS = {
   reason: { type: "string" },
   port: { type: "string" },
   host: { type: "string" },
+  config: { type: "string" },
+  name: { type: "string" },
+  url: { type: "string" },
+  webhook: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -175,9 +194,20 @@ export async function runCli(
   if (values.help) return HELP;
   if (
     (values.port !== undefined || values.host !== undefined) &&
-    !["serve", "mcp"].includes(positionals[0] ?? "")
+    !["serve", "mcp", "github-app"].includes(positionals[0] ?? "")
   )
     throw new Error("--port and --host are only supported by serve.");
+  if (
+    (values.config !== undefined ||
+      values.name !== undefined ||
+      values.url !== undefined ||
+      values.webhook !== undefined) &&
+    positionals[0] !== "github-app"
+  )
+    throw new Error(
+      "--config, --name, --url and --webhook are only supported by github-app.",
+    );
+  if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   const proposalDecision =
     positionals[0] === "proposals" &&
     ["accept", "reject", "ignore"].includes(positionals[1] ?? "");
@@ -853,7 +883,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/detect/validate/list/show/approve/reject, diff, impact, proposals, build, mcp, or serve. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/detect/validate/list/show/approve/reject, diff, impact, proposals, build, github-app, mcp, or serve. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],
@@ -1355,6 +1385,94 @@ async function readRejected(output: string) {
       ),
     ),
   );
+}
+
+const GitHubAppConfigSchema = z.strictObject({
+  appId: z.string().regex(/^\d+$/),
+  privateKeyPath: z.string().min(1),
+  repositories: z
+    .record(
+      z.string().regex(/^[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+$/),
+      z.strictObject({
+        path: z.string().min(1),
+        appDirectory: z.string().min(1).optional(),
+        pathcompilerDirectory: z.string().min(1).optional(),
+      }),
+    )
+    .refine((value) => Object.keys(value).length > 0, "Configure a repository"),
+});
+
+async function runGitHubApp(positionals: string[], values: Values) {
+  if (positionals[1] === "manifest" && positionals.length === 2)
+    return `${JSON.stringify(
+      githubAppManifest({
+        name: values.name ?? "",
+        url: values.url ?? "",
+        webhookUrl: values.webhook ?? "",
+      }),
+      null,
+      2,
+    )}\n`;
+  if (positionals[1] !== "serve" || positionals.length !== 2)
+    throw new Error(
+      "Expected: github-app manifest --name --url --webhook, or github-app serve --config <json-file>.",
+    );
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  if (!secret || secret.length < 16)
+    throw new Error(
+      "Set GITHUB_WEBHOOK_SECRET to the app's webhook secret (16+ characters).",
+    );
+  if (!values.config)
+    throw new Error("github-app serve requires --config <json-file>.");
+  const configFile = path.resolve(values.config);
+  let config: z.infer<typeof GitHubAppConfigSchema>;
+  try {
+    config = GitHubAppConfigSchema.parse(
+      JSON.parse(await readFile(configFile, "utf8")),
+    );
+  } catch (error) {
+    throw new Error(
+      'Invalid GitHub App config. Provide JSON with appId, privateKeyPath and repositories {"owner/repo": {path}}.',
+      { cause: error },
+    );
+  }
+  const relative = (file: string) =>
+    path.resolve(path.dirname(configFile), file);
+  const auth = createAppAuth({
+    appId: config.appId,
+    privateKey: await readFile(relative(config.privateKeyPath), "utf8"),
+  });
+  const worker = createWorkflowCheckWorker({
+    auth,
+    repositories: createLocalRepositoryProvider(
+      Object.fromEntries(
+        Object.entries(config.repositories).map(([name, repository]) => [
+          name,
+          { ...repository, path: relative(repository.path) },
+        ]),
+      ),
+    ),
+  });
+  const queue = createJobQueue(
+    async (job) => {
+      await worker(job);
+    },
+    (error, job) =>
+      process.stderr.write(
+        `PathCompiler check failed for ${job.owner}/${job.repo}@${job.head.slice(0, 12)}: ${error instanceof Error ? error.message : String(error)}\n`,
+      ),
+  );
+  const server = createServer(createWebhookHandler({ secret, queue }));
+  const port = values.port === undefined ? 4320 : Number(values.port);
+  if (!Number.isInteger(port) || port < 0 || port > 65_535)
+    throw new Error("--port must be an integer from 0 to 65535.");
+  const host = values.host ?? "127.0.0.1";
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, resolve);
+  });
+  const address = server.address();
+  return `PathCompiler GitHub App webhook listening on http://${host}:${address && typeof address === "object" ? address.port : port} (${Object.keys(config.repositories).length} repositories). Expose it over HTTPS.\n`;
 }
 
 async function readProposal(directory: string, name: string) {

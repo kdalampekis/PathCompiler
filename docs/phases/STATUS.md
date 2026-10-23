@@ -1339,3 +1339,60 @@ only `plans.create`, and blocks re-approval.
   same-domain, same-entity capabilities and never auto-links them.
 - Rename-like changes with a matching successor produce updates, not deprecations.
 - Twenty-four phases are complete (0–23), leaving 7 (24–30).
+
+## Phase 24 — GitHub App
+
+Complete for offline-verifiable scope — verified locally on 2026-10-22. Not yet
+exercised against live GitHub (see limitations).
+
+- Added `@pathcompiler/github-app` (Node crypto/http plus fetch; no Octokit):
+  least-privilege manifest (`checks: write`, `contents/metadata/pull_requests: read`;
+  `push`/`pull_request` events), constant-time `X-Hub-Signature-256` verification
+  over the raw body, and normalization of push events (branch create/delete
+  ignored) and PR opened/synchronize/reopened events.
+- The webhook handler verifies, acknowledges with 202, and enqueues into an
+  in-process sequential queue deduplicated by delivery ID. Processing is
+  asynchronous, and failures are reported without stopping the queue.
+- RS256 app JWTs and installation tokens scoped down to checks/contents/metadata,
+  cached until near expiry. Check runs are published as `PathCompiler Workflow
+  Check` in the spec's ✓/⚠/+ format (`neutral` for review, `success` when clean,
+  `failure` with an actionable summary on errors).
+- The worker fetches base/head into a configured local clone, with the token
+  passed only through `GIT_CONFIG_*` env and Git stderr never relayed, then runs
+  graph delta, impact and new-workflow detection against the clone's committed
+  approved workflows.
+- Added `pathcompiler github-app manifest` and `github-app serve --config`
+  (`GITHUB_WEBHOOK_SECRET` from env, private key from a file path). Documented in
+  README and ADR 0026.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 23 baseline lint/typecheck/tests | Passed before edits; 236 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 169 files |
+| `pnpm typecheck` | Passed, twenty-six package builds, root tests and fixture |
+| `pnpm test` | 244 tests passed across thirty-one suites |
+| `git diff --check` | Passed |
+
+Tests cover signature acceptance and tampering, event normalization and ignored
+events, acknowledgement before processing on a real HTTP server, duplicate
+deliveries, 401/400/405/413 handling and queue error isolation. They verify JWT
+signatures against the generated public key, check token scoping/caching/refusal
+and check-run payloads with a fake GitHub API, and check the manifest's HTTPS
+webhook. An end-to-end worker run fetches a renamed-target commit from a local
+origin into a clone and publishes "⚠ 1 workflow requires review / ✓ 2 workflows
+unaffected" (neutral), without any token in recorded requests. A failure-check
+path is covered, and the built CLI serves verified pings and rejects forged ones.
+
+### Scope notes and limitations
+
+- Not verified against GitHub.com: no real app registration, installation, public
+  HTTPS endpoint or live token/check-run calls were possible here.
+- The queue is in-memory (pending jobs are lost on restart; rely on redelivery).
+  Repositories must be pre-cloned and configured. Proposals are not written by
+  the app.
+- Twenty-five phases are complete (0–24), leaving 6 (25–30).

@@ -863,6 +863,35 @@ approved. `workflows list/show` report the `deprecated` state, and approving the
 same ID again requires removing the deprecated record.
 See [ADR 0025](docs/decisions/0025-reviewed-workflow-deprecation.md).
 
+## GitHub App
+
+```sh
+pnpm pathcompiler github-app manifest --name PathCompiler --url https://… --webhook https://…/hook
+GITHUB_WEBHOOK_SECRET=… pnpm pathcompiler github-app serve --config github-app.json --port 4320
+```
+
+`github-app.json` contains `{"appId": "123", "privateKeyPath": "app.pem",
+"repositories": {"owner/repo": {"path": "./clone", "appDirectory": "."}}}`. Paths
+are relative to the config file. The secret and private key are never stored in
+it.
+
+| Concern | Behavior |
+| --- | --- |
+| Permissions | Manifest requests `checks: write`, `contents: read`, `metadata: read`, `pull_requests: read`; events `push`, `pull_request` only |
+| Webhooks | `X-Hub-Signature-256` HMAC over the raw body, constant-time; 1 MiB limit; ping answered |
+| Flow | verify → 202 acknowledgement → in-process queue (deduplicated by delivery) → asynchronous analysis → check run |
+| Events | push (branch create/delete ignored); pull requests opened/synchronize/reopened |
+| Tokens | RS256 app JWT → installation token scoped down to checks/contents/metadata, cached until near expiry |
+| Analysis | fetches base/head into the configured clone (token via `GIT_CONFIG_*` env, never argv/URL/logs), then delta, impact and new-workflow detection against the clone's committed `.pathcompiler/workflows` |
+
+The check run is named `PathCompiler Workflow Check`. Its summary reads
+`✓ N workflows unaffected / ⚠ N workflows require review / + N possible new
+workflows`, with details per workflow. Review needs are `neutral` (they don't block
+merging). Analysis errors publish a `failure` check with an actionable message.
+Approved workflows are never changed by the app. The queue is in-process: a
+restart drops pending jobs, and GitHub redelivery is the recovery path.
+See [ADR 0026](docs/decisions/0026-github-app-workflow-checks.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -895,7 +924,8 @@ Analysis packages:
 | `@pathcompiler/graph-delta` | `computeGraphDelta`, `analyzeCommitRange`, `analyzeCommitRangeDetailed`, `GraphDeltaSchema`, `GraphNodeChangeSchema` and types |
 | `@pathcompiler/impact-analysis` | `analyzeWorkflowImpact`, impact reason/impact/report schemas and types |
 | `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `acceptDeprecation`, `decideProposal`, `detectNewWorkflows`, `workflowDiff`, `proposalFileName`, proposal/detection schemas and YAML serialize/parse, `ProposalError` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/github-app` | `verifyWebhookSignature`, `parseWebhookEvent`, `createWebhookHandler`, `createJobQueue`, `createAppAuth`, `publishCheckRun`, `summarizeWorkflowCheck`, `createWorkflowCheckWorker`, `createLocalRepositoryProvider`, `githubAppManifest`, `APP_PERMISSIONS` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

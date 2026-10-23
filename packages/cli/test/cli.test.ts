@@ -779,6 +779,91 @@ describe("pathcompiler CLI", () => {
     ).rejects.toThrow("deprecated");
   }, 90_000);
 
+  it("prints the GitHub App manifest and serves verified webhooks", async () => {
+    const cwd = await directory();
+    const manifest = JSON.parse(
+      await runCli(
+        [
+          "github-app",
+          "manifest",
+          "--name",
+          "PathCompiler",
+          "--url",
+          "https://example.test",
+          "--webhook",
+          "https://example.test/hook",
+        ],
+        cwd,
+      ),
+    );
+    expect(manifest.default_permissions).toEqual({
+      checks: "write",
+      contents: "read",
+      metadata: "read",
+      pull_requests: "read",
+    });
+    const { generateKeyPairSync, createHmac } = await import("node:crypto");
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    await writeFile(
+      path.join(cwd, "app.pem"),
+      privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    );
+    await writeFile(
+      path.join(cwd, "app.json"),
+      JSON.stringify({
+        appId: "123",
+        privateKeyPath: "app.pem",
+        repositories: { "acme/demo": { path: "clone" } },
+      }),
+    );
+    const secret = "cli-webhook-secret-0123";
+    const child = spawn(
+      process.execPath,
+      [binary, "github-app", "serve", "--config", "app.json", "--port", "0"],
+      { cwd, env: { ...process.env, GITHUB_WEBHOOK_SECRET: secret } },
+    );
+    try {
+      const url = await new Promise<string>((resolve, reject) => {
+        child.stdout.on("data", (chunk: Buffer) => {
+          const found = /listening on (http:\/\/\S+)/.exec(chunk.toString());
+          if (found?.[1]) resolve(found[1]);
+        });
+        child.once("exit", (code) => reject(new Error(`serve exited ${code}`)));
+      });
+      const body = "{}";
+      const ping = await fetch(url, {
+        method: "POST",
+        headers: {
+          "x-github-event": "ping",
+          "x-github-delivery": "1",
+          "x-hub-signature-256": `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`,
+        },
+        body,
+      });
+      expect(ping.status).toBe(200);
+      const forged = await fetch(url, {
+        method: "POST",
+        headers: { "x-github-event": "ping", "x-github-delivery": "2" },
+        body,
+      });
+      expect(forged.status).toBe(401);
+    } finally {
+      child.kill();
+    }
+    const previous = process.env.GITHUB_WEBHOOK_SECRET;
+    delete process.env.GITHUB_WEBHOOK_SECRET;
+    try {
+      await expect(
+        runCli(["github-app", "serve", "--config", "app.json"], cwd),
+      ).rejects.toThrow("GITHUB_WEBHOOK_SECRET");
+    } finally {
+      if (previous !== undefined) process.env.GITHUB_WEBHOOK_SECRET = previous;
+    }
+    await expect(runCli(["build", "--config", "x"], cwd)).rejects.toThrow(
+      "only supported by github-app",
+    );
+  }, 30_000);
+
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];
