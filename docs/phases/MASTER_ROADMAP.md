@@ -451,7 +451,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Tests/evals:** fixture equivalence; coverage report; determinism.
 - **Runtime change:** No.
 - **Unblocks:** R2 (extracted models), R-WI, R9, R11, P1, I3.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `@pathcompiler/formal-abstraction`, ADR 0036.
 
 #### R2 — SMT Reachability
 - **Objective:** `solver-provider` boundary and the first SMT backend (choice
@@ -468,7 +468,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   metric.
 - **Runtime change:** No.
 - **Unblocks:** R3, R4, R8, R9, O8, P2, P3.
-- **Status:** 🔒 blocked on R1.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### R3 — Planning
 - **Objective:** Bounded SMT planning from an admissible initial state to a goal,
@@ -509,7 +509,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Runtime change:** No (flag defaults off).
 - **Unblocks:** a decision on the default strategy (separate ADR); I3 candidate
   rebuild options.
-- **Status:** 🔒 blocked on R1, R3, C2, C3.
+- **Status:** 🔒 blocked on R3, C2, C3.
 
 #### R5 — MUS / MCS
 - **Objective:** Minimal unsatisfiable subsets and minimal correction sets as
@@ -581,7 +581,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Tests/evals:** true-change recall; false-positive rate.
 - **Runtime change:** No (reports only).
 - **Unblocks:** I2 (`SemanticChangeIntent` vocabulary), I3, P4, O12.
-- **Status:** 🔒 blocked on R1, R2, R4.
+- **Status:** 🔒 blocked on R2, R4.
 
 #### R12 — Developer reasoning surfaces
 - **Objective:** `/v1/reason/*` endpoints (§73) and a separate developer
@@ -615,7 +615,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Prerequisites:** P0, R1, C9 (model-produced candidate interpretations). **Packages:** `probabilistic-evidence`, `formal-abstraction`.
 - **Acceptance:** candidate interpretations are filtered by formal consistency
   and re-scored.
-- **Runtime change:** No. **Status:** 🔒 blocked on P0, R1, C5.
+- **Runtime change:** No. **Status:** 🔒 blocked on P0, C5.
 
 #### P2 — Weighted soft constraints (MaxSAT)
 - **Prerequisites:** P1, R2 (optimization-capable provider; R7 preferred).
@@ -796,7 +796,7 @@ Shared rules:
 - **Acceptance:** a human PR is evaluated with no recommendation present. The
   "unexpected regression" demo (§254) fails a candidate even though the harness
   claims success.
-- **Status:** 🔒 blocked on R1, R8, R11.
+- **Status:** 🔒 blocked on R8, R11.
 
 #### I4 — Browser candidate verification
 - **Prerequisites:** I3, C8. **Status:** 🔒 blocked.
@@ -825,13 +825,13 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **R1** (next), C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅ | C9 (C5, C2, C3) · R2 (R1) · R3/R4/R8/R9 (R2) · R5/R12 (R4) · R6 (R3, C7) · R7 (R3) · R10 (R3, R8) · R11 (R1, R2, R4) · R-WI (R1, R3, C2, C3) · P1 (P0, R1, C9) · P2 (P1) · P3 (P0, C8, R2) · P4 (P0, R11) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0, R4, R11) · IG (I0, C2) · I1 (IG, R8) · I2 (I1, R11) · I3 (R1, R8, R11) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R2** (next), C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅ | C9 (C5, C2, C3) · R3/R4/R8/R9 (R2) · R5/R12 (R4) · R6 (R3, C7) · R7 (R3) · R10 (R3, R8) · R11 (R2, R4) · R-WI (R3, C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8, R2) · P4 (P0, R11) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0, R4, R11) · IG (I0, C2) · I1 (IG, R8) · I2 (I1, R11) · I3 (R8, R11) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
 | Lane | Sequence | Notes |
 | --- | --- | --- |
-| A — formal core (critical path) | R0 ✅ → R1 → R2 → R3 / R4 → R11 | Longest dependency chain; gates the reasoning MVP and the I track. |
+| A — formal core (critical path) | R0 ✅ → R1 ✅ → R2 → R3 / R4 → R11 | Longest dependency chain; gates the reasoning MVP and the I track. |
 | B — contracts and infrastructure | C1, C2, C3, C5, C8 (independent of each other and of lane A), then C9 | C1 gates O; C2 and C3 gate R-WI, C9 and IG; C8 gates I4, P3 and mode-5 browser checks. |
 | C — uncertainty | P0 (any time) → P1 after R1 + C9 | Independent of A until P1. |
 | D — observability | O0 after C1 → O1 → O3/O4/O5 → O6 → O7 | O8+ joins lane A outputs. |
@@ -839,12 +839,19 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: R1 — Formal Abstraction Builder
+## 7. Next implementation phase: R2 — SMT Reachability
 
-R0 is complete. R1 is next on the critical path: R2 needs extracted models, and
-R1 must prove it reproduces the hand-encoded `next-demo` model (or explain each
-difference) before any solver depends on it. C1 remains the parallel candidate
-for lane D (observability).
+R0 and R1 are complete. R2 is next on the critical path: it adds the
+`solver-provider` boundary and bounded reachability over both the hand-encoded
+and the extracted `next-demo` models. Its first deliverable is the ADR choosing
+the solver backend (Z3-compatible preferred). Results must keep `unknown`
+distinct from `unreachable`. Each conclusion about the extracted model must be
+shown alongside R1's coverage and uncertainty report (reasoning spec §84–§86).
+C1 remains the parallel candidate for lane D (observability).
+
+R1 (2026-10-23) reproduced every hand-model action and goal, and ADR 0036
+explains each remaining difference: UI-level guards are not applied, the
+confirmation condition is over-approximated, and stored values are not modeled.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

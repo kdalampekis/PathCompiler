@@ -1006,6 +1006,26 @@ and serialization and hashing are canonical. There is no solver yet, and nothing
 changes discovery or runtime behavior.
 See [ADR 0035](docs/decisions/0035-formal-product-model-semantics.md).
 
+```ts
+import { buildFormalModel } from '@pathcompiler/formal-abstraction';
+const { model, coverage, uncertainties } = buildFormalModel(graph, capabilityReport, testTraceReport);
+```
+
+`@pathcompiler/formal-abstraction` (phase R1) derives a candidate model from the
+Product Graph, capabilities and mined tests. It never reads workflow candidates.
+It builds the following:
+- navigation from `NAVIGATES_TO` edges;
+- an automaton for each capability's dialog, inferred from test sessions
+  (open, fields, submit, confirmation, back, cancel);
+- guards from the permission and flag checks the API handler enforces;
+- completion goals.
+
+Where evidence is missing, the model over-approximates. The coverage report
+counts transitions by evidence basis. Each uncertainty names the graph nodes
+behind it, for example UI-only guards, an unknown confirmation condition, or
+required fields inferred from tests.
+See [ADR 0036](docs/decisions/0036-formal-abstraction-rules.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1041,6 +1061,7 @@ Analysis packages:
 | `@pathcompiler/github-app` | `verifyWebhookSignature`, `parseWebhookEvent`, `createWebhookHandler`, `createJobQueue`, `createAppAuth`, `publishCheckRun`, `summarizeWorkflowCheck`, `createWorkflowCheckWorker`, `createLocalRepositoryProvider`, `githubAppManifest`, `APP_PERMISSIONS` |
 | `@pathcompiler/assistant-tools` | `resolveProductHelp`, `parseToolInput`, `toolResultText`, `jsonSchemaTool`, `anthropicTool`, `openAITool`, `langChainTool`, `INPUT_SCHEMA`, `STRICT_INPUT_SCHEMA`, `ToolInputError` |
 | `@pathcompiler/formal-model` | `FormalProductModelSchema`, `parseFormalModel`, `normalizeFormalModel`, `serializeFormalModel`, `formalModelHash`, `collectFormalEvidence`, `f` constructors, variable/expression/action/goal schemas and types |
+| `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after

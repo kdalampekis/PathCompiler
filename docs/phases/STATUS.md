@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after R0)
+## Current state (updated 2026-10-23, after R1)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R1** (next), C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R2** (next), C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation** (2026-10-23) |
-| Next recommended phase | **R1 — Formal Abstraction Builder** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5. |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder** (2026-10-23) |
+| Next recommended phase | **R2 — SMT Reachability** (`MASTER_ROADMAP.md` §7), starting with the solver-backend ADR. Parallel candidates: C1, then C2, C3, C5. |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -1785,3 +1785,80 @@ Tests check that:
   not per-plan state). Richer constructs need an ADR and a schema bump.
 - Next recommended phase: R1 — Formal Abstraction Builder.
 
+---
+
+## Phase R1 — Formal Abstraction Builder
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/formal-abstraction` with
+  `buildFormalModel(graph, capabilities, traces) → { model, coverage, uncertainties }`.
+  It never reads workflow candidates, so R-WI can still compare
+  reasoning-assisted discovery against test-backed discovery.
+- The extractor builds the following:
+  - **Context variables:** a `role` enum (roles checked in code plus
+    `unlisted`), `can_<permission>` booleans and `<flag>_enabled` booleans.
+  - **Navigation:** `current_area` from capability routes and `NAVIGATES_TO`
+    targets, plus a deterministic action per navigation link.
+  - **Dialog automata:** one per capability, inferred from test sessions.
+    Sessions start at the entry control and end at navigation, reload, cancel,
+    or a step outside the dialog. The automaton covers open, fields (`entered`
+    booleans or string-literal enums), commit, submit-for-confirmation, back
+    and cancel.
+  - **Required fields:** only when a test shows a rejected submit.
+  - **Guards:** only the permission and flag checks reachable from the API
+    handler, applied to committing actions.
+  - **Entity existence:** checked only for entries inside list rows.
+  - **Goals:** completion goals named `<domain>.<qualifier_><past tense>`.
+  - **Invariants:** structural ones (dialog only on its route, confirmation
+    only inside its dialog).
+- Coverage counts transitions by basis (deterministic, tests, runtime,
+  semantic-only; reasoning spec §85). It lists the rules behind each action,
+  which capabilities were modeled and which test sessions were used. There are
+  ten uncertainty kinds, and each cites graph nodes.
+- For `fixtures/next-demo`: 25 actions (3 deterministic, 22 from tests),
+  5 of 5 capabilities modeled, and 0 test sessions discarded. All 12
+  hand-model actions map to extracted actions with the same semantic target
+  and capability, and both goal IDs match. ADR 0036 records each remaining
+  difference, and each one appears as an uncertainty entry.
+- Rules are recorded in ADR 0036 and documented in the README. No change to
+  discovery, compiled artifacts or runtime behavior.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 266 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 216 files |
+| `pnpm typecheck` | Passed, including the new package |
+| `pnpm test` | 273 tests passed across 35 suites (7 new formal-abstraction tests) |
+| `git diff --check` | Passed |
+
+Tests check:
+- metadata and context variables are bound to the commit;
+- equivalence with the hand model (action mapping, semantic targets,
+  capabilities, goals), with every guard difference backed by an uncertainty;
+- that every extra action is a cancel or back path, a navigation link, or an
+  out-of-scope capability;
+- provenance: every evidence reference and every uncertainty node resolves to a
+  graph node, with a matching locator;
+- the coverage totals and the rules behind each action;
+- byte-identical output when graph, capability and trace order are reversed;
+- that unresolved steps discard sessions and report capabilities as not
+  modeled;
+- that unbound or mismatched scans are rejected.
+
+### Scope notes and limitations
+
+- C5 semantic assistance is not used (it does not exist yet). The `semantic`
+  and `runtime` bases are always 0.
+- Business rules in handler bodies are reported, not modeled: validation, the
+  weekly → simple confirmation condition, stored values, and enabling
+  conditions such as plans.create needing a client.
+- UI gating of entries is reported, not applied. A security invariant such as
+  "viewers never hold an editing form open" therefore has no extracted
+  counterpart.
+- Session inference assumes modal dialogs and the session-ending events above.
+  Inline forms are modeled as if they were modal.
+- Next recommended phase: R2 — SMT Reachability.
