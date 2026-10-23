@@ -29,4 +29,5 @@ jobs:
             fixtures/next-demo/test-results/
             packages/workflow-validator/test-results/
             packages/runtime-core/test-results/
+            apps/dashboard/test-results/
           if-no-files-found: ignore

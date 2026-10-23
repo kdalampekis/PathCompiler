@@ -892,6 +892,29 @@ Approved workflows are never changed by the app. The queue is in-process: a
 restart drops pending jobs, and GitHub redelivery is the recovery path.
 See [ADR 0026](docs/decisions/0026-github-app-workflow-checks.md).
 
+## Control plane dashboard
+
+```sh
+pnpm --filter @pathcompiler/dashboard build
+PATHCOMPILER_PROJECTS='{"demo":{"root":"/path/to/repo"}}' pnpm --filter @pathcompiler/dashboard start --port 3000
+```
+
+`apps/dashboard` is a local Next.js app over each project's `.pathcompiler`
+directory. Its screens: **Projects**; **Product map** (capabilities by domain,
+with routes and workflow coverage); **Workflows**; **Workflow detail** (state,
+current commit, approval or deprecation, confidence with dimensions, steps with
+expected outcomes and per-step source evidence, the validation report, pending
+diffs); **Pending changes** (update and deprecation proposals with diffs, the
+latest impact, possible new workflows); **Evidence** (references behind approved
+workflows, Playwright traces); and **Settings**.
+
+The first editor is deliberately simple. It offers approve/reject for candidates
+and accept/reject/ignore for proposals, and these run the same `pathcompiler`
+commands as the terminal, so validation and never-replace rules are identical. The
+dashboard has no authentication: bind it to `127.0.0.1` for local review. There is
+no graph visualization yet.
+See [ADR 0027](docs/decisions/0027-local-control-plane-dashboard.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |

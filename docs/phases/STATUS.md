@@ -1396,3 +1396,55 @@ path is covered, and the built CLI serves verified pings and rejects forged ones
   Repositories must be pre-cloned and configured. Proposals are not written by
   the app.
 - Twenty-five phases are complete (0–24), leaving 6 (25–30).
+
+## Phase 25 — Control Plane Dashboard
+
+Complete — verified locally on 2026-10-22.
+
+- Added `apps/dashboard` (Next.js App Router; `apps/*` joined the workspace) with
+  Projects, Product Map, Workflows, Workflow Detail, Pending Changes, Evidence and
+  Settings screens over each project's `.pathcompiler` directory.
+- Workflow Detail shows state, current commit, approval/deprecation, confidence
+  (with dimensions, labeled as rule strength), steps with expected outcomes and
+  per-step source evidence, the validation report and pending diffs.
+- The simple first editor offers approve/reject for candidates and
+  accept/reject/ignore for proposals through server actions that run the same
+  `runCli` commands, so rules are identical to the terminal. Results appear as
+  status/alert messages.
+- Reads use core parsers and CLI reports. IDs are validated (unknown or traversal
+  paths return 404). The CLI loads at runtime and project paths are marked dynamic,
+  so the production build has no warnings. There is no graph visualization, as
+  specified.
+- Projects are configured with `PATHCOMPILER_PROJECTS`. The dashboard is local-only
+  with no authentication. Dashboard e2e is chained into `pnpm test:e2e` and CI
+  artifacts. Documented in README and ADR 0027.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 24 baseline lint/typecheck/tests | Passed before edits; 244 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 187 files |
+| `pnpm typecheck` | Passed, including dashboard route types |
+| `pnpm test` | 244 tests passed across thirty-one suites |
+| `pnpm test:e2e` | Fixture 7, verification 6, runtime 3, dashboard 7 Chromium tests passed |
+| Dashboard production build | Compiled with no warnings |
+| `git diff --check` | Passed |
+
+The dashboard suite prepares a real project with the built CLI (discover, approve,
+rename commit, validate, capabilities, tests, impact, proposals, detect, build). It
+verifies project counts, product-map coverage, workflow detail content (steps,
+evidence locator, expected outcome, confidence label, validation checks), the
+pending diff, proposal acceptance by a named reviewer and the updated target,
+candidate approval with ambiguities shown, removal of review controls once
+decided, evidence and settings content, and 404s for unknown or traversal IDs.
+
+### Scope notes and limitations
+
+- All Phase 25 screens are implemented. Editing workflow content in the browser
+  is not supported (edits happen in YAML; proposals record `edit` mode).
+- Local single-user tool: no authentication, authorization or audit log.
+- Twenty-six phases are complete (0–25), leaving 5 (26–30).
