@@ -1526,3 +1526,42 @@ misplaced `--dir`.
 
 - All Phase 27 scope is implemented. No localization or site-generator front matter.
 - Twenty-eight phases are complete (0–27), leaving 3 (28–30).
+
+## Phase 28 — Assistant Tool Adapters
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/assistant-tools` (depends only on the SDK and zod) with the
+  provider-neutral core `resolveProductHelp(client, input)` and `parseToolInput`.
+  Inputs may be JSON strings or objects, strict-mode nulls are dropped, and flag
+  pairs become a map. Invalid input raises a typed `ToolInputError`.
+- Adapters reshape one tool, `resolve_product_help`: the generic JSON Schema
+  description, Anthropic `input_schema`, OpenAI `strict` function tools (Chat
+  Completions and Responses shapes) with a strict-compatible schema, and a
+  LangChain-style `{name, description, schema, invoke}` wrapper.
+- A test asserts no workspace package depends on OpenAI, Anthropic or LangChain
+  SDKs. Documented in README and ADR 0030.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 27 baseline lint/typecheck/tests | Passed before edits; 249 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 192 files |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 254 tests passed across thirty-two suites |
+| `git diff --check` | Passed |
+
+Tests cover each adapter shape, recursive strict-mode invariants (no open maps;
+every object closed and fully required), argument normalization and rejection,
+delegation through the SDK client (with recorded normalized requests) and the
+LangChain wrapper's JSON output, and the workspace-wide provider SDK ban.
+
+### Scope notes and limitations
+
+- All Phase 28 scope is implemented. The adapters were not exercised against live
+  model APIs (no provider credentials or SDKs, by design).
+- Twenty-nine phases are complete (0–28), leaving 2 (29–30).

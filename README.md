@@ -605,6 +605,31 @@ approved. It refuses to overwrite hand-written Markdown and leaves other files
 alone. Output is deterministic.
 See [ADR 0029](docs/decisions/0029-generated-help-documentation.md).
 
+## Assistant tool adapters
+
+```ts
+import {
+  anthropicTool, openAITool, jsonSchemaTool, langChainTool,
+  resolveProductHelp, toolResultText,
+} from '@pathcompiler/assistant-tools';
+
+tools: [anthropicTool()]                 // Anthropic: {name, description, input_schema}
+tools: [openAITool()]                    // OpenAI Chat Completions; openAITool({ api: 'responses' })
+const tool = langChainTool(client);      // {name, description, schema, invoke(input) → JSON string}
+
+// When the model calls the tool (OpenAI passes a JSON string, Anthropic an object):
+const result = await resolveProductHelp(client, toolCall.arguments ?? toolUse.input);
+reply(toolResultText(result));
+```
+
+There is one provider-neutral tool, `resolve_product_help`, described by a single
+JSON Schema. `resolveProductHelp` validates the arguments and calls the SDK
+client, so every adapter returns exactly what the SDK returns. The OpenAI variant
+uses a strict-mode schema (all properties required, optional values nullable,
+feature flags as name/value pairs), and the handler maps it back. No provider SDK
+is a dependency of any package, and a test enforces that.
+See [ADR 0030](docs/decisions/0030-provider-neutral-assistant-tools.md).
+
 ## Resolve product help
 
 ```ts
@@ -979,6 +1004,7 @@ Analysis packages:
 | `@pathcompiler/impact-analysis` | `analyzeWorkflowImpact`, impact reason/impact/report schemas and types |
 | `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `acceptDeprecation`, `decideProposal`, `detectNewWorkflows`, `workflowDiff`, `proposalFileName`, proposal/detection schemas and YAML serialize/parse, `ProposalError` |
 | `@pathcompiler/github-app` | `verifyWebhookSignature`, `parseWebhookEvent`, `createWebhookHandler`, `createJobQueue`, `createAppAuth`, `publishCheckRun`, `summarizeWorkflowCheck`, `createWorkflowCheckWorker`, `createLocalRepositoryProvider`, `githubAppManifest`, `APP_PERMISSIONS` |
+| `@pathcompiler/assistant-tools` | `resolveProductHelp`, `parseToolInput`, `toolResultText`, `jsonSchemaTool`, `anthropicTool`, `openAITool`, `langChainTool`, `INPUT_SCHEMA`, `STRICT_INPUT_SCHEMA`, `ToolInputError` |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
