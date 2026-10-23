@@ -279,7 +279,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
   accept-update; paraphrase eval; all e2e suites.
 - **Runtime change:** **Yes, breaking** (migration note required).
 - **Unblocks:** O0, I0 (`ProductTarget` versions), P-query ranking.
-- **Status:** 🟢 unblocked.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### C2 — Configuration and feature flags
 - **Objective:** Add `pathcompiler.yaml` (§44) with Zod validation and
