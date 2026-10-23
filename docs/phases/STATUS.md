@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after R1)
+## Current state (updated 2026-10-23, after R2)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R2** (next), C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R3** (next), R4, R8, R9, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder** (2026-10-23) |
-| Next recommended phase | **R2 — SMT Reachability** (`MASTER_ROADMAP.md` §7), starting with the solver-backend ADR. Parallel candidates: C1, then C2, C3, C5. |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability** (2026-10-23) |
+| Next recommended phase | **R3 — Planning** (`MASTER_ROADMAP.md` §7), then R4. Parallel candidates: C1, then C2, C3, C5. |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -1862,3 +1862,88 @@ Tests check:
 - Session inference assumes modal dialogs and the session-ending events above.
   Inline forms are modeled as if they were modal.
 - Next recommended phase: R2 — SMT Reachability.
+
+---
+
+## Phase R2 — SMT Reachability
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/solver-provider`: a solver-neutral, sort-checked term
+  language (bool/int, `not`/`and`/`or`/`eq`/`lt`/`le`) and the
+  `SolverProvider { check, close }` interface. `enumerate` and `optimize` are
+  deferred to R6 and R7.
+- Added `@pathcompiler/solver-z3`, the only package that imports Z3 (`z3-solver`
+  5.2.0, WASM). It creates a fresh solver per check with a timeout, releases the
+  solver and model eagerly, and terminates worker threads on `close`.
+- Added `@pathcompiler/reasoner-core`. `createProductReasoner(provider)
+  .checkReachability(model, { goal, context, maxDepth, timeoutMs })` works as
+  follows:
+  - **Slicing:** the model is cut to the cone of influence of the goal and the
+    context.
+  - **Encoding:** state variables are per step and context variables fixed.
+    Enum values and strings share a code table, integers keep their bounds, and
+    effects are simultaneous, with the frame rule.
+  - **Bounded model checking (BMC)** finds shortest witnesses.
+  - **k-induction** proves unreachability. It uses simple-path constraints and
+    strengthening from frozen variables.
+  - **Unknown answers:** insufficient bound, timeout and solver unknown each
+    give `unknown`.
+
+  Witnesses are replayed with an independent evaluator before they are
+  returned. Results carry the model's ID, hash, commit and source, plus stats:
+  bound, solver calls, constraint count, duration and slice size.
+- Added `pathcompiler reason reachable <goal> [directory]` with `--context`,
+  `--max-depth`, `--timeout-ms`, `--model` and `--json`. It writes
+  `reports/reasoning/<goal>.json`, which includes model coverage and
+  uncertainties for extracted models. An unreachable answer on an extracted
+  model is labeled as holding in the model only. It is not exposed through MCP
+  or HTTP.
+- Recorded in ADR 0037 and documented in the README. No change to discovery,
+  compiled artifacts or runtime behavior.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 273 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 229 files |
+| `pnpm typecheck` | Passed, including the three new packages |
+| `pnpm test` | 289 tests passed across 39 suites (16 new: 2 solver-provider, 3 solver-z3, 8 reasoner-core, 3 CLI) |
+| CLI binary | `reason reachable` answers on the fixture in about 1.2 s and exits cleanly |
+| `git diff --check` | Passed |
+
+Fixture results (hand-encoded and extracted models):
+
+| Query | Result |
+| --- | --- |
+| Editor creates a client | Reachable with a 5-step shortest witness (navigation, open, name, email, submit), with evidence on each step |
+| Viewer (or `unlisted`) creates a client or changes a plan structure | Unreachable by k-induction |
+| Editor changes a plan structure with the flag on (extracted model) | Reachable in 3 steps; the solver chose `plan_exists = true` |
+| Same, with the flag off | Unreachable |
+| `maxDepth` 3 | Unknown (insufficient bound), not unreachable |
+
+Further tests:
+- stubbed solvers that time out, return unknown, or run past the budget all
+  produce `unknown`;
+- malformed queries get actionable errors;
+- slicing drops irrelevant actions.
+
+Cross-check against explicit-state breadth-first search: 40 seeded random
+models with booleans, enums, bounded integers and a context flag, each under
+three contexts, gave 120 queries. All 77 reachable and 43 unreachable answers
+agreed with the reference, every witness had the shortest length, and there
+were 0 unknown answers.
+
+### Scope notes and limitations
+
+- Reachability holds in the model. Extracted-model conclusions must be read
+  with R1's coverage and uncertainties.
+- The extracted model slices poorly: 20 of 21 variables remain, because every
+  dialog entry requires "no dialog open". This does not matter at fixture size.
+  Larger models may need a finer slice or incremental solving.
+- No unsat explanations yet (R4), and no plan enumeration or optimization (R6,
+  R7).
+- `z3-solver` adds about 30 MB of WASM to installs that include the CLI.
+- Next recommended phase: R3 — Planning.

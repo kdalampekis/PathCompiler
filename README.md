@@ -1026,6 +1026,26 @@ behind it, for example UI-only guards, an unknown confirmation condition, or
 required fields inferred from tests.
 See [ADR 0036](docs/decisions/0036-formal-abstraction-rules.md).
 
+```bash
+pnpm pathcompiler reason reachable clients.created fixtures/next-demo --context role=editor
+pnpm pathcompiler reason reachable clients.created --model model.json --context role=viewer --json
+```
+
+`@pathcompiler/reasoner-core` (phase R2) answers "can goal G be reached under
+context C?":
+- `reachable`: a shortest witness trace, replayed and validated, where each step
+  carries its semantic target, capability and evidence;
+- `unreachable`: a k-induction proof;
+- `unknown`: insufficient bound, timeout or solver unknown. It is never
+  reported as unreachable.
+
+The solver sits behind `@pathcompiler/solver-provider`, a neutral term
+language with no Z3 types. The first backend is `@pathcompiler/solver-z3`
+(Z3 WASM). The CLI writes `reports/reasoning/<goal>.json`. For an extracted
+model, that report includes the model's coverage and uncertainties, because an
+unreachable answer holds only within the model.
+See [ADR 0037](docs/decisions/0037-solver-backend-and-reachability.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1062,7 +1082,10 @@ Analysis packages:
 | `@pathcompiler/assistant-tools` | `resolveProductHelp`, `parseToolInput`, `toolResultText`, `jsonSchemaTool`, `anthropicTool`, `openAITool`, `langChainTool`, `INPUT_SCHEMA`, `STRICT_INPUT_SCHEMA`, `ToolInputError` |
 | `@pathcompiler/formal-model` | `FormalProductModelSchema`, `parseFormalModel`, `normalizeFormalModel`, `serializeFormalModel`, `formalModelHash`, `collectFormalEvidence`, `f` constructors, variable/expression/action/goal schemas and types |
 | `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/solver-provider` | `SolverProvider`, `SolverProblem`, `SolverTerm`, `SolverCheckResult`, `SolverProblemSchema`, `parseSolverProblem` |
+| `@pathcompiler/solver-z3` | `createZ3SolverProvider` (only package importing Z3) |
+| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

@@ -21,6 +21,11 @@ import {
   discoverCapabilities,
   discoverProductSurfaces,
 } from "@pathcompiler/capability-engine";
+import { buildFormalModel } from "@pathcompiler/formal-abstraction";
+import {
+  type FormalProductModel,
+  parseFormalModel,
+} from "@pathcompiler/formal-model";
 import {
   associatePullRequest,
   enrichNodeHistory,
@@ -42,7 +47,13 @@ import {
 import { createHttpService } from "@pathcompiler/http-service";
 import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
+import {
+  createProductReasoner,
+  type FormalValue,
+  type ReachabilityResult,
+} from "@pathcompiler/reasoner-core";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
+import { createZ3SolverProvider } from "@pathcompiler/solver-z3";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import {
@@ -117,6 +128,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler reason reachable <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
 
 Writes .pathcompiler/graph/source-graph.json and .pathcompiler/reports/scan-summary.json
 under the current working directory, or under the directory supplied to --out.
@@ -163,6 +175,12 @@ clones, and publishes a "PathCompiler Workflow Check" run with a scoped installa
 mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
 serve runs the HTTP runtime API on 127.0.0.1:4310 by default from the same files and
 requires PATHCOMPILER_API_TOKEN (Authorization: Bearer <token>).
+reason reachable asks whether a goal of the Formal Product Model can be reached under
+fixed context values (role, flags; omitted ones are free). Without --model it extracts the
+model from the repository and its tests (static evidence). It answers reachable (with a
+witness trace), unreachable (k-induction proof) or unknown, and writes
+reports/reasoning/<goal>.json. Unreachable means unreachable in the model: read it with the
+model coverage and uncertainties it reports. Reasoning output is for developers only.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -187,6 +205,10 @@ const CLI_OPTIONS = {
   webhook: { type: "string" },
   format: { type: "string", multiple: true },
   dir: { type: "string" },
+  context: { type: "string", multiple: true },
+  "max-depth": { type: "string" },
+  "timeout-ms": { type: "string" },
+  model: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -217,7 +239,18 @@ export async function runCli(
     throw new Error(
       "--config, --name, --url and --webhook are only supported by github-app.",
     );
+  if (
+    (values.context !== undefined ||
+      values["max-depth"] !== undefined ||
+      values["timeout-ms"] !== undefined ||
+      values.model !== undefined) &&
+    positionals[0] !== "reason"
+  )
+    throw new Error(
+      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable.",
+    );
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
+  if (positionals[0] === "reason") return runReason(positionals, values, cwd);
   if (values.format !== undefined && positionals[0] !== "build")
     throw new Error("--format is only supported by build.");
   if (values.dir !== undefined && positionals[0] !== "docs")
@@ -953,6 +986,142 @@ export async function runCli(
   ] as const;
   await writeArtifacts(output, artifacts);
   return `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.\nArtifacts: ${output}\nDiagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).\n`;
+}
+
+async function runReason(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (
+    positionals[1] !== "reachable" ||
+    positionals.length < 3 ||
+    positionals.length > 4
+  )
+    throw new Error(
+      "Expected: pathcompiler reason reachable <goal> [directory]. Use --help for options.",
+    );
+  const goal = positionals[2] as string;
+  const integer = (flag: string, value: string | undefined) => {
+    if (value === undefined) return undefined;
+    if (!/^\d+$/.test(value))
+      throw new Error(`--${flag} must be a non-negative integer.`);
+    return Number(value);
+  };
+  const maxDepth = integer("max-depth", values["max-depth"]);
+  const timeoutMs = integer("timeout-ms", values["timeout-ms"]);
+  let model: FormalProductModel;
+  let extraction: ReturnType<typeof buildFormalModel> | undefined;
+  if (values.model !== undefined) {
+    if (positionals[3] !== undefined || values.exclude !== undefined)
+      throw new Error(
+        "--model reasons over the given model; do not also pass a directory or --exclude.",
+      );
+    try {
+      model = parseFormalModel(
+        JSON.parse(await readFile(path.resolve(cwd, values.model), "utf8")),
+      );
+    } catch (error) {
+      throw new Error(
+        `Cannot read the Formal Product Model in ${values.model}. Provide JSON matching @pathcompiler/formal-model (schemaVersion 1).`,
+        { cause: error },
+      );
+    }
+  } else {
+    const project = await readSourceProject(
+      path.resolve(cwd, positionals[3] ?? "."),
+      { exclude: values.exclude ?? [] },
+    );
+    const mined = minePlaywrightTests(
+      project,
+      analyzeNextProject(project).graph,
+    );
+    const capabilities = discoverCapabilities(mined.graph);
+    extraction = buildFormalModel(
+      capabilities.graph,
+      capabilities.report,
+      mined.report,
+    );
+    model = extraction.model;
+  }
+  const context: Record<string, FormalValue> = {};
+  for (const entry of values.context ?? []) {
+    const separator = entry.indexOf("=");
+    if (separator <= 0)
+      throw new Error(`--context expects name=value, got "${entry}".`);
+    const name = entry.slice(0, separator);
+    const raw = entry.slice(separator + 1);
+    const variable = model.variables.find((item) => item.id === name);
+    context[name] =
+      variable?.type === "boolean" && (raw === "true" || raw === "false")
+        ? raw === "true"
+        : variable?.type === "integer" && /^-?\d+$/.test(raw)
+          ? Number(raw)
+          : raw;
+  }
+  const solver = await createZ3SolverProvider();
+  let result: ReachabilityResult;
+  try {
+    result = await createProductReasoner(solver).checkReachability(model, {
+      goal,
+      context,
+      ...(maxDepth === undefined ? {} : { maxDepth }),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    });
+  } finally {
+    await solver.close();
+  }
+  const report = {
+    schemaVersion: 1,
+    type: "reachability_result",
+    result,
+    ...(extraction
+      ? {
+          modelCoverage: extraction.coverage,
+          uncertainties: extraction.uncertainties,
+        }
+      : {}),
+  };
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = `reports/reasoning/${goal}.json`;
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  const given =
+    Object.entries(result.context)
+      .map(([name, value]) => `${name}=${value}`)
+      .join(", ") || "any context";
+  const lines = [`${goal} under ${given}: ${result.status.toUpperCase()}`];
+  if (result.status === "reachable") {
+    const chosen = Object.entries(result.trace.context)
+      .filter(([name]) => !(name in result.context))
+      .map(([name, value]) => `${name}=${value}`);
+    if (chosen.length > 0) lines.push(`Witness context: ${chosen.join(", ")}`);
+    for (const step of result.trace.actions)
+      lines.push(
+        `  ${step.index + 1}. ${step.actionId}${step.semanticTarget ? ` [${step.semanticTarget}]` : ""}`,
+      );
+  } else if (result.status === "unreachable")
+    lines.push(
+      `No path exists in the model (k-induction closed at depth ${result.proof.depth}).`,
+    );
+  else lines.push(`Reason: ${result.reason}. ${result.detail}`);
+  lines.push(
+    `Model: ${result.model.id} (${result.model.source}, ${result.model.hash}); slice ${result.stats.slice.variables}/${result.stats.slice.totalVariables} variables, ${result.stats.slice.actions}/${result.stats.slice.totalActions} actions; ${result.stats.solverCalls} solver calls, ${result.stats.durationMs} ms.`,
+  );
+  if (extraction) {
+    const { transitions } = extraction.coverage;
+    lines.push(
+      `Model coverage: ${transitions.total} transitions (${transitions.deterministic} deterministic, ${transitions.tests} from tests, ${transitions.semanticOnly} semantic-only); ${extraction.uncertainties.length} uncertainties.`,
+    );
+    if (result.status === "unreachable")
+      lines.push(
+        "Unreachable in the extracted model; review its uncertainties and verify in the browser before relying on it.",
+      );
+  }
+  lines.push(`Artifact: ${path.join(output, file)}`);
+  return `${lines.join("\n")}\n`;
 }
 
 async function writeArtifacts(
