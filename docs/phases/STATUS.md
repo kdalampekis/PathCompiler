@@ -1565,3 +1565,46 @@ LangChain wrapper's JSON output, and the workspace-wide provider SDK ban.
 - All Phase 28 scope is implemented. The adapters were not exercised against live
   model APIs (no provider credentials or SDKs, by design).
 - Twenty-nine phases are complete (0–28), leaving 2 (29–30).
+
+## Phase 29 — Example Existing Assistant
+
+Complete — verified locally on 2026-10-22.
+
+- Added `examples/custom-assistant` (`examples/*` joined the workspace; example
+  tests run in the root Vitest suite). It is an existing assistant with its own
+  chat loop and `ChatModel` interface that adds PathCompiler as one
+  `resolve_product_help` tool call, then renders the structured result, workflow
+  steps and supported actions with its own card UI.
+- It uses only `@pathcompiler/sdk-js` and `@pathcompiler/assistant-tools` over
+  static artifacts: no PathCompiler UI or React package and no server.
+  `ScriptedModel` makes it run offline. The README shows where Anthropic or OpenAI
+  calls plug in.
+- `prepare-artifacts` discovers, approves and builds the fixture. `start` answers
+  a question in the terminal. TypeScript runs directly on Node 22 (erasable syntax
+  only).
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 28 baseline lint/typecheck/tests | Passed before edits; 254 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 199 files |
+| `pnpm typecheck` | Passed, including the example |
+| `pnpm test` | 258 tests passed across thirty-three suites |
+| Documented `prepare-artifacts` and `start` | Rendered the Create Client card with Open/Show me/Checklist |
+| `git diff --check` | Passed |
+
+Tests build real artifacts with the CLI and check the full Create Client card
+(steps, completion, actions; never execute), ambiguous clarification, the
+unsupported answer, skipping the tool for small talk (with the tool calls
+recorded), the standalone program answering a structure question, and the absence
+of PathCompiler UI/React dependencies and imports.
+
+### Scope notes and limitations
+
+- All Phase 29 scope is implemented. The model is scripted. Real provider calls
+  are documented but not exercised (no credentials or provider SDKs, by design).
+- Thirty phases are complete (0–29), leaving 1 (30).

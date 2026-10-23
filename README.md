@@ -630,6 +630,10 @@ feature flags as name/value pairs), and the handler maps it back. No provider SD
 is a dependency of any package, and a test enforces that.
 See [ADR 0030](docs/decisions/0030-provider-neutral-assistant-tools.md).
 
+A complete example of an existing assistant that adds PathCompiler as one tool
+call and renders answers with its own UI, without any PathCompiler UI package or
+server, is in [examples/custom-assistant](examples/custom-assistant/README.md).
+
 ## Resolve product help
 
 ```ts
