@@ -708,6 +708,41 @@ implemented in `@pathcompiler/resolver`, not in the MCP package. Programmatic us
 `@pathcompiler/mcp-server`. Admin tools (impacted workflows, change evidence) wait
 for impact analysis. See [ADR 0019](docs/decisions/0019-mcp-adapter-over-sdk.md).
 
+## HTTP service
+
+```sh
+pnpm pathcompiler build
+PATHCOMPILER_API_TOKEN=<secret, 16+ chars> pnpm pathcompiler serve --port 4310
+```
+
+| Endpoint | SDK call |
+| --- | --- |
+| `POST /v1/help/resolve` `{query, context?}` | `resolve` |
+| `POST /v1/workflows/search` `{query, context?}` → `{workflows}` | `workflows.search` |
+| `GET /v1/workflows/:id` | `workflows.get` |
+| `GET /v1/workflows/:id/runtime` | `workflows.getRuntimeManifest` |
+| `GET /v1/workflows/:id/related` | `workflows.related` |
+
+Every request needs `Authorization: Bearer <token>`. Tokens are compared in
+constant time. The service binds to `127.0.0.1` unless `--host` is given. Each
+endpoint is one SDK call, so results, validation and error codes mirror the SDK.
+A test compares HTTP and in-process results for every endpoint. Errors are
+`{error: {code, message}}` with 400/401/404/405/413/415 statuses. Unexpected
+failures return a generic 500 and are reported to the host (stderr in the CLI),
+never to the client. Responses are `no-store`. Bodies are JSON only, up to 64 KiB.
+
+```ts
+import { PathCompiler, createHttpTransport } from '@pathcompiler/sdk-js';
+const client = new PathCompiler({
+  project: 'next-demo',
+  transport: createHttpTransport({ baseUrl: 'http://127.0.0.1:4310', token }),
+});
+```
+
+The token is a shared secret for local or server-to-server use. Do not embed it
+in browser bundles. There is no CORS, user auth, rate limiting or billing yet.
+See [ADR 0020](docs/decisions/0020-minimal-http-runtime-service.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -731,12 +766,13 @@ Analysis packages:
 | `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected record schemas, YAML serialize/parse, `ReviewError` |
 | `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types; `./schema`: browser-safe schemas only |
 | `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, `relatedWorkflows`, `supportedActions`, request/result schemas and types |
-| `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
+| `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `createHttpTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
 | `@pathcompiler/runtime-core` | `createGuideRuntime`, `createDomEnvironment`, `routeMatches`, `idleGuideState`, environment/state types |
 | `@pathcompiler/react` | `PathCompilerProvider`, `useProductHelp`, `useWorkflow`, `useGuideRuntime`, `useWorkflowProgress` |
 | `@pathcompiler/ui` | `ProductHelpCard`, `WorkflowChecklist`, `GuideOverlay`, `WorkflowSearch`, `defaultLabels` |
 | `@pathcompiler/mcp-server` | `createPathCompilerMcpServer`, `serveStdio`, `MCP_TOOL_NAMES` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `mcp`, `runCli` |
+| `@pathcompiler/http-service` | `createHttpService`, `createRequestHandler`, `HttpServiceOptions` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

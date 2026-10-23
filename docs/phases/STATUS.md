@@ -1050,3 +1050,48 @@ were not rerun because no runtime or fixture code changed.
   (`get_impacted_workflows`, `get_change_evidence`) wait for Phase 20 services.
 - Stdio only. No HTTP/SSE MCP transport yet.
 - Eighteen phases are complete (0–17), leaving 13 (18–30).
+
+## Phase 18 — HTTP Service
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/http-service` (Node `http`, no framework) with
+  `POST /v1/help/resolve`, `POST /v1/workflows/search`, `GET /v1/workflows/:id`,
+  `GET /v1/workflows/:id/runtime` and `GET /v1/workflows/:id/related`. Each endpoint
+  is one SDK call, so behavior mirrors the SDK.
+- Simple bearer API token (16+ characters, constant-time comparison). Structured
+  JSON errors with 400/401/404/405/413/415/500 statuses. Unexpected errors are
+  hidden from clients and reported to the host. `no-store`/`nosniff` headers;
+  JSON-only bodies up to 64 KiB.
+- Added the SDK's browser-safe `createHttpTransport` (new error codes
+  `unauthorized`, `transport-failed`) and `pathcompiler serve` (loopback by default,
+  requires `PATHCOMPILER_API_TOKEN`), sharing artifact loading with `mcp`.
+- Documented in README and ADR 0020.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 17 baseline lint/typecheck/tests | Passed before edits; 203 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 150 files |
+| `pnpm typecheck` | Passed, twenty-one package builds, root tests and fixture |
+| `pnpm test` | 210 tests passed across twenty-six suites |
+| `git diff --check` | Passed |
+
+Tests compare HTTP-transport and in-process SDK results for every endpoint,
+supported actions and error code. They also cover missing, wrong, non-bearer and
+extended tokens, method/media-type/JSON/body-size/encoding/unknown-route errors,
+hidden internal errors with host reporting, server-side invalid responses, HTTP
+transport URL validation, and the built CLI `serve` answering authorized requests
+and refusing unauthorized ones. Browser suites were not rerun because no runtime
+or fixture code changed.
+
+### Scope notes and limitations
+
+- All Phase 18 scope is implemented, plus the related-workflows endpoint.
+- No CORS, per-user or per-project keys, rate limiting, TLS termination or billing.
+  The shared token is not for browsers.
+- Nineteen phases are complete (0–18), leaving 12 (19–30).

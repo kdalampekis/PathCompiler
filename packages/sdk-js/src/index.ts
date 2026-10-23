@@ -29,6 +29,7 @@ export type {
   SupportedActions,
 } from "@pathcompiler/resolver";
 export type { RuntimeWorkflow } from "@pathcompiler/workflow-compiler/schema";
+export { createHttpTransport, type HttpTransportOptions } from "./http.js";
 
 /** Readable workflow description. Omits the repository commit kept in documentation.json. */
 export const WorkflowDetailsSchema = DocumentationRecordSchema.omit({
@@ -49,7 +50,9 @@ export class PathCompilerError extends Error {
     readonly code:
       | "invalid-request"
       | "workflow-not-found"
-      | "invalid-response",
+      | "invalid-response"
+      | "unauthorized"
+      | "transport-failed",
     message: string,
     options?: { cause?: unknown },
   ) {

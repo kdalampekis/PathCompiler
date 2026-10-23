@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
@@ -312,6 +312,64 @@ describe("pathcompiler CLI", () => {
       ["mcp", "--exclude", "x"],
     ])
       await expect(run(invalid)).rejects.toThrow();
+  }, 30_000);
+
+  it("serves the token-protected HTTP API from generated artifacts", async () => {
+    const cwd = await directory();
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["workflows", "discover", fixture]);
+    await run([
+      "workflows",
+      "approve",
+      "clients.create",
+      fixture,
+      "--by",
+      "Ana",
+    ]);
+    await run(["build"]);
+    const token = "cli-test-token-0123456789";
+    const child = spawn(
+      process.execPath,
+      [binary, "serve", "--out", "out", "--port", "0"],
+      { cwd, env: { ...process.env, PATHCOMPILER_API_TOKEN: token } },
+    );
+    try {
+      const url = await new Promise<string>((resolve, reject) => {
+        child.stdout.on("data", (chunk: Buffer) => {
+          const found = /listening on (http:\/\/\S+)/.exec(chunk.toString());
+          if (found?.[1]) resolve(found[1]);
+        });
+        child.once("exit", (code) => reject(new Error(`serve exited ${code}`)));
+      });
+      const denied = await fetch(`${url}/v1/workflows/clients.create`);
+      expect(denied.status).toBe(401);
+      const response = await fetch(`${url}/v1/help/resolve`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ query: "add a new client" }),
+      });
+      expect(await response.json()).toMatchObject({
+        type: "workflow",
+        workflow: { id: "clients.create" },
+      });
+    } finally {
+      child.kill();
+    }
+    const previous = process.env.PATHCOMPILER_API_TOKEN;
+    delete process.env.PATHCOMPILER_API_TOKEN;
+    try {
+      await expect(run(["serve"])).rejects.toThrow("PATHCOMPILER_API_TOKEN");
+    } finally {
+      if (previous !== undefined) process.env.PATHCOMPILER_API_TOKEN = previous;
+    }
+    for (const invalid of [
+      ["build", "--port", "1"],
+      ["mcp", "--host", "0.0.0.0"],
+    ])
+      await expect(run(invalid)).rejects.toThrow("--port and --host");
   }, 30_000);
 
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {

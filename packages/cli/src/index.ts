@@ -25,6 +25,7 @@ import {
   enrichNodeHistory,
   openGitRepository,
 } from "@pathcompiler/git-intelligence";
+import { createHttpService } from "@pathcompiler/http-service";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import { readSourceProject } from "@pathcompiler/source-model";
@@ -69,6 +70,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler workflows reject <id> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler build [--out <directory>]
        pathcompiler mcp [--out <directory>]
+       pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
@@ -99,6 +101,8 @@ never replace an existing review decision. Candidate YAML remains as discovery c
 build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
 generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
 mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
+serve runs the HTTP runtime API on 127.0.0.1:4310 by default from the same files and
+requires PATHCOMPILER_API_TOKEN (Authorization: Bearer <token>).
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -123,9 +127,16 @@ export async function runCli(
       expect: { type: "string" },
       by: { type: "string" },
       reason: { type: "string" },
+      port: { type: "string" },
+      host: { type: "string" },
     },
   });
   if (values.help) return HELP;
+  if (
+    (values.port !== undefined || values.host !== undefined) &&
+    !["serve", "mcp"].includes(positionals[0] ?? "")
+  )
+    throw new Error("--port and --host are only supported by serve.");
   const review =
     positionals[0] === "workflows" &&
     (positionals[1] === "approve" || positionals[1] === "reject");
@@ -459,46 +470,48 @@ export async function runCli(
     await writeExclusive(file, serializeReviewedYaml(record));
     return `Rejected ${id} by ${rejectedBy}.\nRecord: ${file}\nThe candidate stays in discovery cache; remove the record to review it again.\n`;
   }
-  if (positionals[0] === "mcp" && positionals.length === 1) {
+  if (
+    (positionals[0] === "mcp" || positionals[0] === "serve") &&
+    positionals.length === 1
+  ) {
     if (values.exclude !== undefined)
       throw new Error(
-        "mcp serves generated artifacts and does not support --exclude.",
+        `${positionals[0]} serves generated artifacts and does not support --exclude.`,
       );
     const output = path.resolve(cwd, values.out ?? ".pathcompiler");
-    const artifacts = await Promise.all(
-      ["search-index", "runtime-manifest", "documentation"].map(
-        async (name) => {
-          const file = path.join(output, `generated/${name}.json`);
-          const content = await readOptional(file);
-          if (content === undefined)
-            throw new Error(`Missing ${file}. Run pathcompiler build first.`);
-          try {
-            return JSON.parse(content) as unknown;
-          } catch (error) {
-            throw new Error(
-              `Cannot parse ${file}. Rebuild it with pathcompiler build.`,
-              {
-                cause: error,
-              },
-            );
-          }
-        },
-      ),
-    );
-    const [searchIndex, runtimeManifest, documentation] = artifacts;
-    const client = new PathCompiler({
-      project: path.basename(path.dirname(output)),
-      transport: createStaticTransport({
-        searchIndex,
-        runtimeManifest,
-        documentation,
-      }),
+    if (positionals[0] === "mcp") {
+      if (values.port !== undefined || values.host !== undefined)
+        throw new Error("--port and --host are only supported by serve.");
+      await serveStdio(await loadGeneratedClient(output));
+      process.stderr.write(
+        `PathCompiler MCP server ready on stdio (artifacts: ${output}).\n`,
+      );
+      return "";
+    }
+    const token = process.env.PATHCOMPILER_API_TOKEN;
+    if (!token || token.length < 16)
+      throw new Error(
+        "Set PATHCOMPILER_API_TOKEN to a secret of at least 16 characters before running serve.",
+      );
+    const port = values.port === undefined ? 4310 : Number(values.port);
+    if (!Number.isInteger(port) || port < 0 || port > 65_535)
+      throw new Error("--port must be an integer from 0 to 65535.");
+    const host = values.host ?? "127.0.0.1";
+    const server = createHttpService({
+      client: await loadGeneratedClient(output),
+      token,
+      onError: (error) =>
+        process.stderr.write(
+          `PathCompiler HTTP error: ${error instanceof Error ? error.message : String(error)}\n`,
+        ),
     });
-    await serveStdio(client);
-    process.stderr.write(
-      `PathCompiler MCP server ready on stdio (artifacts: ${output}).\n`,
-    );
-    return "";
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(port, host, resolve);
+    });
+    const address = server.address();
+    const bound = address && typeof address === "object" ? address.port : port;
+    return `PathCompiler HTTP service listening on http://${host.includes(":") ? `[${host}]` : host}:${bound} (artifacts: ${output}).\n`;
   }
   if (positionals[0] === "build" && positionals.length === 1) {
     if (values.exclude !== undefined)
@@ -672,7 +685,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, build, or mcp. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, build, mcp, or serve. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],
@@ -866,6 +879,33 @@ async function listWorkflows(output: string) {
   return [...entries.values()].sort((a, b) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
   );
+}
+
+async function loadGeneratedClient(output: string): Promise<PathCompiler> {
+  const [searchIndex, runtimeManifest, documentation] = await Promise.all(
+    ["search-index", "runtime-manifest", "documentation"].map(async (name) => {
+      const file = path.join(output, `generated/${name}.json`);
+      const content = await readOptional(file);
+      if (content === undefined)
+        throw new Error(`Missing ${file}. Run pathcompiler build first.`);
+      try {
+        return JSON.parse(content) as unknown;
+      } catch (error) {
+        throw new Error(
+          `Cannot parse ${file}. Rebuild it with pathcompiler build.`,
+          { cause: error },
+        );
+      }
+    }),
+  );
+  return new PathCompiler({
+    project: path.basename(path.dirname(output)),
+    transport: createStaticTransport({
+      searchIndex,
+      runtimeManifest,
+      documentation,
+    }),
+  });
 }
 
 async function readApproved(output: string) {
