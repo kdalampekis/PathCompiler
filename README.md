@@ -574,6 +574,20 @@ and the compiler does not re-validate approved files against newer commits.
 Aliases are empty until alias generation exists.
 See [ADR 0014](docs/decisions/0014-deterministic-workflow-compiler.md).
 
+### Static export formats
+
+```sh
+pnpm pathcompiler build --format json,yaml,markdown
+```
+
+`json` (the default) writes the three artifacts the SDK's
+`createStaticTransport` reads, ready to import into an application bundle. `yaml`
+writes the same data as `.yaml`. `markdown` writes `generated/workflows.md`, a
+readable catalog. Approved text is escaped so it renders literally. Every format is
+deterministic, and nothing in static mode calls a PathCompiler server: a test
+resolves help from the built JSON with `fetch` disabled.
+See [ADR 0028](docs/decisions/0028-static-export-formats.md).
+
 ## Resolve product help
 
 ```ts
@@ -936,7 +950,7 @@ Analysis packages:
 | `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
 | `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types; `./browser`: `verifyFixtureWorkflow`, browser verification report schema |
 | `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected/deprecated record schemas, YAML serialize/parse, `ReviewError` |
-| `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types; `./schema`: browser-safe schemas only |
+| `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `exportArtifacts`, `renderWorkflowMarkdown`, `renderCatalogMarkdown`, `escapeMarkdown`, `COMPILER_VERSION`, search/runtime/documentation schemas and types; `./schema`: browser-safe schemas only |
 | `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, `relatedWorkflows`, `supportedActions`, request/result schemas and types |
 | `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `createHttpTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
 | `@pathcompiler/runtime-core` | `createGuideRuntime`, `createDomEnvironment`, `routeMatches`, `idleGuideState`, environment/state types |

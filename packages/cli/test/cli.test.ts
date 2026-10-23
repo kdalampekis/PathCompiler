@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import { parseCandidateYaml } from "@pathcompiler/workflow-discovery";
 import { parseApprovedWorkflowYaml } from "@pathcompiler/workflow-review";
 import { afterEach, describe, expect, it } from "vitest";
@@ -862,6 +863,72 @@ describe("pathcompiler CLI", () => {
     await expect(runCli(["build", "--config", "x"], cwd)).rejects.toThrow(
       "only supported by github-app",
     );
+  }, 30_000);
+
+  it("exports static JSON, YAML and Markdown usable without any server", async () => {
+    const cwd = await directory();
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["workflows", "discover", fixture]);
+    await run([
+      "workflows",
+      "approve",
+      "clients.create",
+      fixture,
+      "--by",
+      "Ana",
+    ]);
+    expect(
+      await run(["build", "--format", "json,yaml", "--format", "markdown"]),
+    ).toContain("(json, markdown, yaml)");
+    const generated = path.join(cwd, "out/generated");
+    expect((await readdir(generated)).sort()).toEqual([
+      "documentation.json",
+      "documentation.yaml",
+      "runtime-manifest.json",
+      "runtime-manifest.yaml",
+      "search-index.json",
+      "search-index.yaml",
+      "workflows.md",
+    ]);
+    expect(
+      await readFile(path.join(generated, "workflows.md"), "utf8"),
+    ).toContain("# Product workflows");
+    const [searchIndex, runtimeManifest, documentation] = await Promise.all(
+      ["search-index", "runtime-manifest", "documentation"].map(async (name) =>
+        JSON.parse(
+          await readFile(path.join(generated, `${name}.json`), "utf8"),
+        ),
+      ),
+    );
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("network disabled");
+    }) as typeof fetch;
+    try {
+      const client = new PathCompiler({
+        project: "offline",
+        transport: createStaticTransport({
+          searchIndex,
+          runtimeManifest,
+          documentation,
+        }),
+      });
+      expect(await client.resolve({ query: "add a client" })).toMatchObject({
+        type: "workflow",
+        workflow: { id: "clients.create" },
+      });
+      expect(
+        (await client.workflows.getRuntimeManifest("clients.create")).steps,
+      ).toHaveLength(4);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    for (const invalid of [
+      ["build", "--format", "xml"],
+      ["build", "--format", ""],
+      ["workflows", "list", "--format", "json"],
+    ])
+      await expect(run(invalid)).rejects.toThrow("--format");
   }, 30_000);
 
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {

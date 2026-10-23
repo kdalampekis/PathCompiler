@@ -10,11 +10,16 @@ import {
 } from "@pathcompiler/workflow-review";
 import { validateWorkflow } from "@pathcompiler/workflow-validator";
 import { beforeAll, describe, expect, it } from "vitest";
+import { parse } from "yaml";
 import {
   COMPILER_VERSION,
   compileWorkflows,
   DocumentationSchema,
+  escapeMarkdown,
+  exportArtifacts,
+  GENERATED_MARKER,
   RuntimeManifestSchema,
+  renderWorkflowMarkdown,
   SearchIndexSchema,
 } from "../src/index.js";
 
@@ -183,5 +188,74 @@ describe("workflow compiler", () => {
     expect(output.documentation.workflows[0]?.steps[0]?.branches).toEqual([
       { when: "dialog.container appears", next: "step.2" },
     ]);
+  });
+
+  it("exports deterministic JSON, YAML and Markdown static artifacts", () => {
+    const compiled = compileWorkflows(approved);
+    const files = exportArtifacts(compiled, [
+      "markdown",
+      "yaml",
+      "json",
+      "json",
+    ]);
+    expect(files.map(([file]) => file)).toEqual([
+      "generated/search-index.json",
+      "generated/runtime-manifest.json",
+      "generated/documentation.json",
+      "generated/workflows.md",
+      "generated/search-index.yaml",
+      "generated/runtime-manifest.yaml",
+      "generated/documentation.yaml",
+    ]);
+    expect(
+      exportArtifacts(compileWorkflows([...approved].reverse()), [
+        "json",
+        "yaml",
+        "markdown",
+      ]),
+    ).toEqual(files);
+    const contents = new Map(files);
+    for (const name of ["search-index", "runtime-manifest", "documentation"])
+      expect(parse(contents.get(`generated/${name}.yaml`) ?? "")).toEqual(
+        JSON.parse(contents.get(`generated/${name}.json`) ?? ""),
+      );
+    const markdown = contents.get("generated/workflows.md") ?? "";
+    expect(markdown.startsWith(GENERATED_MARKER)).toBe(true);
+    expect(markdown).toContain("## Create Client");
+    expect(markdown).toContain("1. Click Create Client");
+    expect(markdown).toContain(
+      '**Done when:** clients.feedback shows "Client created"',
+    );
+    expect(exportArtifacts(compiled).map(([file]) => file)).toEqual([
+      "generated/search-index.json",
+      "generated/runtime-manifest.json",
+      "generated/documentation.json",
+    ]);
+  });
+
+  it("renders approved text literally in Markdown", () => {
+    expect(escapeMarkdown("<script>alert(1)</script> *x* [a](b)\nnext")).toBe(
+      "\\<script\\>alert\\(1\\)\\</script\\> \\*x\\* \\[a\\]\\(b\\) next",
+    );
+    const record = compileWorkflows([client()]).documentation.workflows[0];
+    if (!record) throw new Error("Missing record");
+    const page = renderWorkflowMarkdown({
+      ...record,
+      title: "Create <b>Client</b>",
+      steps: [
+        {
+          ...record.steps[0],
+          id: "a",
+          text: "Open",
+          optional: true,
+          branches: [{ when: "x appears", next: "b" }],
+        },
+        { id: "b", text: "Save", optional: false, branches: [] },
+      ] as typeof record.steps,
+    });
+    expect(page).toContain("# Create \\<b\\>Client\\</b\\>");
+    expect(page).toContain("1. Open _(optional)_");
+    expect(page).toContain("   - If x appears, continue at step 2.");
+    expect(page).not.toContain("<b>");
   });
 });

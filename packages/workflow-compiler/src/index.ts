@@ -17,6 +17,7 @@ import {
   type SearchRecord,
 } from "./schema.js";
 
+export * from "./render.js";
 export * from "./schema.js";
 
 /**

@@ -1448,3 +1448,43 @@ decided, evidence and settings content, and 404s for unknown or traversal IDs.
   is not supported (edits happen in YAML; proposals record `edit` mode).
 - Local single-user tool: no authentication, authorization or audit log.
 - Twenty-six phases are complete (0–25), leaving 5 (26–30).
+
+## Phase 26 — Static Export
+
+Complete — verified locally on 2026-10-22.
+
+- `pathcompiler build --format json,yaml,markdown` (repeatable or comma-separated;
+  default `json`). JSON writes the three artifacts the SDK's static transport reads,
+  YAML mirrors them, and Markdown writes the `generated/workflows.md` catalog.
+- Added `exportArtifacts`, `renderWorkflowMarkdown`, `renderCatalogMarkdown`,
+  `escapeMarkdown` and `GENERATED_MARKER` to `@pathcompiler/workflow-compiler`.
+  Output is deterministic, and approved text is escaped so it renders literally.
+- Static mode needs no PathCompiler server: built JSON loaded into the SDK resolves
+  help with `fetch` disabled. Documented in README and ADR 0028.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 25 baseline lint/typecheck/tests | Passed before edits; 244 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 188 files |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 247 tests passed across thirty-one suites |
+| `git diff --check` | Passed |
+
+Tests cover format ordering, de-duplication and default JSON, input-order
+determinism, YAML parsing to exactly the JSON documents, catalog structure and
+marker, literal rendering of HTML/link/emphasis characters, optional steps and
+branches, all seven files from the built CLI, offline SDK resolution and runtime
+manifests from the built JSON, and invalid or misplaced `--format`. Browser suites
+were not rerun because no runtime, fixture or dashboard behavior changed (default
+build output is unchanged).
+
+### Scope notes and limitations
+
+- All Phase 26 scope is implemented. The SDK reads JSON only; YAML and Markdown are
+  for people and tooling.
+- Twenty-seven phases are complete (0–26), leaving 4 (27–30).

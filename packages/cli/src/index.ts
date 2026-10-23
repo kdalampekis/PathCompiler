@@ -48,6 +48,9 @@ import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import {
   COMPILER_VERSION,
   compileWorkflows,
+  EXPORT_FORMATS,
+  type ExportFormat,
+  exportArtifacts,
 } from "@pathcompiler/workflow-compiler";
 import {
   discoverWorkflows,
@@ -104,7 +107,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler proposals show <proposal> [--out <directory>]
        pathcompiler proposals accept <proposal> [directory] [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler proposals reject|ignore <proposal> [--by <name>] [--reason <text>] [--out <directory>]
-       pathcompiler build [--out <directory>]
+       pathcompiler build [--out <directory>] [--format json,yaml,markdown]
        pathcompiler github-app manifest --name <name> --url <url> --webhook <https-url>
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
@@ -177,6 +180,7 @@ const CLI_OPTIONS = {
   name: { type: "string" },
   url: { type: "string" },
   webhook: { type: "string" },
+  format: { type: "string", multiple: true },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -208,6 +212,8 @@ export async function runCli(
       "--config, --name, --url and --webhook are only supported by github-app.",
     );
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
+  if (values.format !== undefined && positionals[0] !== "build")
+    throw new Error("--format is only supported by build.");
   const proposalDecision =
     positionals[0] === "proposals" &&
     ["accept", "reject", "ignore"].includes(positionals[1] ?? "");
@@ -662,23 +668,21 @@ export async function runCli(
       throw new Error(
         "build compiles stored approved workflows and does not support --exclude.",
       );
+    const formats = (values.format ?? ["json"])
+      .flatMap((item) => item.split(","))
+      .map((item) => item.trim());
+    const unknown = formats.filter(
+      (item) => !(EXPORT_FORMATS as readonly string[]).includes(item),
+    );
+    if (unknown.length || !formats.length)
+      throw new Error(
+        `--format must be ${EXPORT_FORMATS.join(", ")} (comma-separated or repeated).`,
+      );
     const output = path.resolve(cwd, values.out ?? ".pathcompiler");
     const compiled = compileWorkflows(await readApproved(output));
-    await writeArtifacts(output, [
-      [
-        "generated/search-index.json",
-        `${JSON.stringify(compiled.searchIndex, null, 2)}\n`,
-      ],
-      [
-        "generated/runtime-manifest.json",
-        `${JSON.stringify(compiled.runtimeManifest, null, 2)}\n`,
-      ],
-      [
-        "generated/documentation.json",
-        `${JSON.stringify(compiled.documentation, null, 2)}\n`,
-      ],
-    ]);
-    return `Compiled ${compiled.searchIndex.workflows.length} approved workflows with compiler ${COMPILER_VERSION}.\nArtifacts: ${path.join(output, "generated")}\nCandidates and rejected workflows are excluded. The runtime manifest omits evidence, commits and review data.\n`;
+    const files = exportArtifacts(compiled, formats as ExportFormat[]);
+    await writeArtifacts(output, files);
+    return `Compiled ${compiled.searchIndex.workflows.length} approved workflows with compiler ${COMPILER_VERSION} (${[...new Set(formats)].sort().join(", ")}).\nArtifacts: ${files.map(([file]) => path.join(output, file)).join(", ")}\nStatic artifacts need no PathCompiler server at runtime. Candidates and rejected workflows are excluded; the runtime manifest omits evidence, commits and review data.\n`;
   }
   if (
     positionals[0] === "workflows" &&
