@@ -743,6 +743,31 @@ The token is a shared secret for local or server-to-server use. Do not embed it
 in browser bundles. There is no CORS, user auth, rate limiting or billing yet.
 See [ADR 0020](docs/decisions/0020-minimal-http-runtime-service.md).
 
+## Graph delta between commits
+
+```sh
+pnpm pathcompiler diff <base> <head> ./fixtures/next-demo
+```
+
+`diff` exports each commit's tracked files for the selected directory with
+`git archive`, which leaves the repository and working tree untouched. It fully
+re-analyzes each snapshot (source plus Playwright evidence) and writes
+`reports/graph-delta.json`:
+
+- `addedNodes`, `removedNodes`, `changedNodes`, `addedEdges`, `removedEdges`, and
+  `changedEdges` (same edge, different data);
+- `summary.files` (exact tracked-file changes by content hash, any file type),
+  plus added/removed/changed `symbols`, `routes`, semantic `targets` and `apis`.
+
+Commit binding (`repositoryCommit`, the repository node's commit) is ignored, so
+unchanged facts never appear as changes. Each changed node lists the data
+`fields` that differ and a `kind`: `location` when only evidence locations moved,
+otherwise `content`. A label edit is a `content` change on `label`. A renamed
+semantic target is a removal plus an addition. `computeGraphDelta(base, head)` is
+the pure core. Correctness is preferred over incremental speed: there is no
+partial re-analysis yet.
+See [ADR 0021](docs/decisions/0021-snapshot-graph-delta.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -772,7 +797,8 @@ Analysis packages:
 | `@pathcompiler/ui` | `ProductHelpCard`, `WorkflowChecklist`, `GuideOverlay`, `WorkflowSearch`, `defaultLabels` |
 | `@pathcompiler/mcp-server` | `createPathCompilerMcpServer`, `serveStdio`, `MCP_TOOL_NAMES` |
 | `@pathcompiler/http-service` | `createHttpService`, `createRequestHandler`, `HttpServiceOptions` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/graph-delta` | `computeGraphDelta`, `analyzeCommitRange`, `GraphDeltaSchema`, `GraphNodeChangeSchema` and types |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `diff`, `build`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

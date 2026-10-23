@@ -1095,3 +1095,51 @@ or fixture code changed.
 - No CORS, per-user or per-project keys, rate limiting, TLS termination or billing.
   The shared token is not for browsers.
 - Nineteen phases are complete (0–18), leaving 12 (19–30).
+
+## Phase 19 — Incremental Graph Diff
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/graph-delta`. `analyzeCommitRange({directory, base, head})`
+  exports both commits read-only with `git archive` (new
+  `LocalGitRepository.exportCommit`), fully re-analyzes each snapshot
+  (Next.js plus Playwright evidence) and returns a versioned `GraphDelta`.
+- Added a `readSourceProject(dir, {snapshot: {commit}})` option that binds
+  provenance for exports without `.git` metadata.
+- `computeGraphDelta` is pure. It strips commit binding before comparing, so
+  unchanged facts never appear changed. Changed nodes carry differing `fields` and
+  `kind` (`location` vs `content`).
+- The delta includes the spec's node/edge lists plus `changedEdges` and a summary of
+  exact changed files (content hashes of both exports), symbols/components, routes,
+  semantic targets and APIs.
+- Added `pathcompiler diff <base> <head> [directory]`, writing
+  `reports/graph-delta.json`. Documented in README and ADR 0021.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 18 baseline lint/typecheck/tests | Passed before edits; 210 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 154 files |
+| `pnpm typecheck` | Passed, twenty-two package builds, root tests and fixture |
+| `pnpm test` | 218 tests passed across twenty-seven suites |
+| `git diff --check` | Passed |
+
+Tests build a temporary repository with the fixture in a subdirectory and commit a
+copy-only label edit, a renamed semantic target, a new route and a non-source file.
+The delta reports exactly the scoped changed files, the added route, the removed and
+added targets, the new component, and the label as a content change. Out-of-scope
+files are excluded, identical commits give an empty delta, evidence-only moves and
+re-binding are classified correctly, unknown revisions fail without leftover temp
+directories, and the built CLI writes the report and leaves the tree clean.
+
+### Scope notes and limitations
+
+- All Phase 19 outputs are implemented with full re-scans. There is no partial
+  re-analysis yet, which the spec allows.
+- Requires `tar`. Renames appear as removal plus addition. Capability/workflow
+  graph layers are not diffed (impact analysis works from the source/test graph).
+- Twenty phases are complete (0–19), leaving 11 (20–30).

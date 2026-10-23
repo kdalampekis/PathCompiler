@@ -24,6 +24,7 @@
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/git-intelligence": "workspace:*",
+    "@pathcompiler/graph-delta": "workspace:*",
     "@pathcompiler/http-service": "workspace:*",
     "@pathcompiler/mcp-server": "workspace:*",
     "@pathcompiler/sdk-js": "workspace:*",

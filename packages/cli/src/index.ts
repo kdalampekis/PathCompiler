@@ -25,6 +25,7 @@ import {
   enrichNodeHistory,
   openGitRepository,
 } from "@pathcompiler/git-intelligence";
+import { analyzeCommitRange } from "@pathcompiler/graph-delta";
 import { createHttpService } from "@pathcompiler/http-service";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
@@ -68,6 +69,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler workflows show <id> [--out <directory>] [--json]
        pathcompiler workflows approve <id> [directory] [--by <name>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows reject <id> [--by <name>] [--reason <text>] [--out <directory>]
+       pathcompiler diff <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler build [--out <directory>]
        pathcompiler mcp [--out <directory>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
@@ -98,6 +100,8 @@ workflows approve re-validates a clean, current candidate and writes workflows/<
 with approvedBy/approvedAt/approvedCommit; commit that file. workflows reject writes
 workflows/rejected/<id>.yaml. Both take the reviewer from --by or PATHCOMPILER_USER and
 never replace an existing review decision. Candidate YAML remains as discovery cache.
+diff exports both commits read-only, re-analyzes each and writes reports/graph-delta.json
+with changed files, symbols, routes, semantic targets and APIs plus the node/edge delta.
 build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
 generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
 mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
@@ -513,6 +517,31 @@ export async function runCli(
     const bound = address && typeof address === "object" ? address.port : port;
     return `PathCompiler HTTP service listening on http://${host.includes(":") ? `[${host}]` : host}:${bound} (artifacts: ${output}).\n`;
   }
+  if (
+    positionals[0] === "diff" &&
+    positionals.length >= 3 &&
+    positionals.length <= 4
+  ) {
+    const delta = await analyzeCommitRange({
+      directory: path.resolve(cwd, positionals[3] ?? "."),
+      base: positionals[1] ?? "",
+      head: positionals[2] ?? "",
+      exclude: values.exclude ?? [],
+    });
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const relative = "reports/graph-delta.json";
+    await writeArtifacts(output, [
+      [relative, `${JSON.stringify(delta, null, 2)}\n`],
+    ]);
+    const count = (list: {
+      added: string[];
+      removed: string[];
+      changed: string[];
+    }) =>
+      `+${list.added.length} -${list.removed.length} ~${list.changed.length}`;
+    const { summary } = delta;
+    return `Graph delta ${delta.base.commit.slice(0, 12)}..${delta.head.commit.slice(0, 12)}: ${summary.files.length} files changed.\nRoutes ${count(summary.routes)}, targets ${count(summary.targets)}, APIs ${count(summary.apis)}, symbols ${count(summary.symbols)}.\nNodes +${delta.addedNodes.length} -${delta.removedNodes.length} ~${delta.changedNodes.length}; edges +${delta.addedEdges.length} -${delta.removedEdges.length}.\nReport: ${path.join(output, relative)}\n`;
+  }
   if (positionals[0] === "build" && positionals.length === 1) {
     if (values.exclude !== undefined)
       throw new Error(
@@ -685,7 +714,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, build, mcp, or serve. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, diff, build, mcp, or serve. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],

@@ -71,7 +71,14 @@ export function compareText(a: string, b: string): number {
 /** Reads source, never executes repository code. Symlinks and hidden directories are excluded. */
 export async function readSourceProject(
   directory: string,
-  options: { exclude?: string[] } = {},
+  options: {
+    exclude?: string[];
+    /**
+     * Treat the directory as a clean export of this commit (e.g. `git archive`)
+     * instead of reading Git metadata, which the export does not contain.
+     */
+    snapshot?: { commit: string };
+  } = {},
 ): Promise<SourceProject> {
   const root = await realpath(directory);
   if (!(await stat(root)).isDirectory())
@@ -91,24 +98,31 @@ export async function readSourceProject(
       env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     });
   let isGit = false;
-  try {
-    isGit =
-      (await git(["rev-parse", "--is-inside-work-tree"])).stdout.trim() ===
-      "true";
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error.code === 128 || error.code === "ENOENT")
-    ) {
-      diagnostics.push({
-        code: "git-unavailable",
-        message:
-          "Git metadata and Git ignore rules are unavailable; only default and explicit excludes apply.",
-      });
-    } else throw error;
-  }
+  if (options.snapshot) {
+    commit = z
+      .string()
+      .regex(/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/, "Expected a full commit SHA")
+      .parse(options.snapshot.commit);
+    dirty = false;
+  } else
+    try {
+      isGit =
+        (await git(["rev-parse", "--is-inside-work-tree"])).stdout.trim() ===
+        "true";
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        (error.code === 128 || error.code === "ENOENT")
+      ) {
+        diagnostics.push({
+          code: "git-unavailable",
+          message:
+            "Git metadata and Git ignore rules are unavailable; only default and explicit excludes apply.",
+        });
+      } else throw error;
+    }
   if (isGit) {
     allowed = new Set(
       (

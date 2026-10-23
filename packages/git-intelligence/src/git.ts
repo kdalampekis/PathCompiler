@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpath } from "node:fs/promises";
+import { readdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { compareText, RelativePathSchema } from "@pathcompiler/source-model";
@@ -182,6 +182,37 @@ export class LocalGitRepository {
   private async requireCommit(revision: string): Promise<string> {
     const sha = await this.resolve(revision);
     if (!sha) throw new Error("The requested commit is unavailable locally.");
+    return sha;
+  }
+
+  /**
+   * Writes the selected directory's tracked files at `revision` into an empty
+   * `destination` with `git archive` (repository state is not modified) and
+   * returns the commit SHA. The export has no Git metadata; analyze it with
+   * `readSourceProject(destination, { snapshot: { commit } })`.
+   */
+  async exportCommit(revision: string, destination: string): Promise<string> {
+    const sha = await this.requireCommit(revision);
+    if ((await readdir(destination)).length)
+      throw new Error("Export destination must be an empty directory.");
+    const archive = path.join(destination, ".pathcompiler-export.tar");
+    await git(this.root, [
+      "archive",
+      "--format=tar",
+      `--output=${archive}`,
+      this.prefix ? `${sha}:${this.prefix}` : sha,
+    ]);
+    try {
+      await exec("tar", ["-xf", archive, "-C", destination], {
+        timeout: 30_000,
+      });
+    } catch {
+      throw new Error(
+        "Could not extract the exported commit. Ensure the tar command is available.",
+      );
+    } finally {
+      await rm(archive, { force: true });
+    }
     return sha;
   }
 

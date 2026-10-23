@@ -372,6 +372,50 @@ describe("pathcompiler CLI", () => {
       await expect(run(invalid)).rejects.toThrow("--port and --host");
   }, 30_000);
 
+  it("writes a graph delta between two local commits", async () => {
+    const cwd = await directory();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.test",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.test",
+    };
+    const git = async (...args: string[]) =>
+      (await exec("git", ["-C", cwd, ...args], { env })).stdout.trim();
+    await mkdir(path.join(cwd, "app"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "app/page.tsx"),
+      "export default function Page() { return <main />; }\n",
+    );
+    await git("init", "--quiet");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "base");
+    const base = await git("rev-parse", "HEAD");
+    await mkdir(path.join(cwd, "app/settings"));
+    await writeFile(
+      path.join(cwd, "app/settings/page.tsx"),
+      "export default function Settings() { return <main />; }\n",
+    );
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "head");
+    const result = await exec(
+      process.execPath,
+      [binary, "diff", base, "HEAD", ".", "--out", "out"],
+      { cwd },
+    );
+    expect(result.stdout).toContain("1 files changed");
+    expect(result.stdout).toContain("Routes +1 -0 ~0");
+    const delta = JSON.parse(
+      await readFile(path.join(cwd, "out/reports/graph-delta.json"), "utf8"),
+    );
+    expect(delta.base.commit).toBe(base);
+    expect(delta.summary.routes.added).toEqual(["route:/settings"]);
+    expect(await git("status", "--porcelain", "--", "app")).toBe("");
+    await expect(runCli(["diff", base], cwd)).rejects.toThrow();
+    await expect(runCli(["diff", base, "nope"], cwd)).rejects.toThrow();
+  }, 30_000);
+
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];

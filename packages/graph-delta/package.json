@@ -1,0 +1,27 @@
+{
+  "name": "@pathcompiler/graph-delta",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/git-intelligence": "workspace:*",
+    "@pathcompiler/graph-core": "workspace:*",
+    "@pathcompiler/source-model": "workspace:*",
+    "@pathcompiler/test-miner-playwright": "workspace:*",
+    "zod": "4.6.7"
+  }
+}
