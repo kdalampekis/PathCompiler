@@ -86,6 +86,30 @@ describe("headless SDK", () => {
     ).toHaveLength(4);
   });
 
+  it("lists related workflows and supported actions from the same artifacts", async () => {
+    const sdk = client();
+    expect(await sdk.workflows.related("plans.create")).toEqual([
+      expect.objectContaining({
+        id: "plans.change_structure",
+        relation: "same-entity",
+      }),
+    ]);
+    expect(await sdk.workflows.related("clients.create")).toEqual([]);
+    expect(await sdk.workflows.getSupportedActions("clients.create")).toEqual({
+      explain: true,
+      checklist: true,
+      navigate: true,
+      guide: true,
+      execute: false,
+    });
+    expect((await failure(sdk.workflows.related("clients.edit"))).code).toBe(
+      "workflow-not-found",
+    );
+    expect(
+      (await failure(sdk.workflows.getSupportedActions("clients.edit"))).code,
+    ).toBe("workflow-not-found");
+  });
+
   it("reports unknown workflows and invalid requests with typed errors", async () => {
     const sdk = client();
     expect((await failure(sdk.workflows.get("clients.edit"))).code).toBe(
@@ -111,6 +135,7 @@ describe("headless SDK", () => {
       getRuntimeManifest: async () => {
         throw new Error("network down");
       },
+      getRelatedWorkflows: async () => [{ id: "x" }] as never,
     };
     const sdk = client(broken);
     expect((await failure(sdk.resolve({ query: "a" }))).code).toBe(
@@ -121,6 +146,9 @@ describe("headless SDK", () => {
     );
     await expect(sdk.workflows.getRuntimeManifest("x")).rejects.toThrow(
       "network down",
+    );
+    expect((await failure(sdk.workflows.related("x"))).code).toBe(
+      "invalid-response",
     );
   });
 

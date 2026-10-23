@@ -11,6 +11,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { parseCandidateYaml } from "@pathcompiler/workflow-discovery";
 import { parseApprovedWorkflowYaml } from "@pathcompiler/workflow-review";
 import { afterEach, describe, expect, it } from "vitest";
@@ -267,6 +269,47 @@ describe("pathcompiler CLI", () => {
       ["build", "extra"],
       ["build", "--json"],
       ["build", "--exclude", "tests"],
+    ])
+      await expect(run(invalid)).rejects.toThrow();
+  }, 30_000);
+
+  it("serves MCP tools over stdio from generated artifacts", async () => {
+    const cwd = await directory();
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await expect(run(["mcp"])).rejects.toThrow("Run pathcompiler build first");
+    await run(["workflows", "discover", fixture]);
+    await run([
+      "workflows",
+      "approve",
+      "clients.create",
+      fixture,
+      "--by",
+      "Ana",
+    ]);
+    await run(["build"]);
+    const client = new Client({ name: "cli-test", version: "0.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [binary, "mcp", "--out", "out"],
+      cwd,
+      stderr: "pipe",
+    });
+    await client.connect(transport);
+    try {
+      expect((await client.listTools()).tools).toHaveLength(5);
+      const result = await client.callTool({
+        name: "pathcompiler.resolve_help",
+        arguments: { query: "how do I add a new client" },
+      });
+      expect(result.structuredContent).toMatchObject({
+        result: { type: "workflow", workflow: { id: "clients.create" } },
+      });
+    } finally {
+      await client.close();
+    }
+    for (const invalid of [
+      ["mcp", "extra"],
+      ["mcp", "--exclude", "x"],
     ])
       await expect(run(invalid)).rejects.toThrow();
   }, 30_000);

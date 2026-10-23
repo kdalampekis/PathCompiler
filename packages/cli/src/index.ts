@@ -25,6 +25,8 @@ import {
   enrichNodeHistory,
   openGitRepository,
 } from "@pathcompiler/git-intelligence";
+import { serveStdio } from "@pathcompiler/mcp-server";
+import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import {
@@ -66,6 +68,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler workflows approve <id> [directory] [--by <name>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows reject <id> [--by <name>] [--reason <text>] [--out <directory>]
        pathcompiler build [--out <directory>]
+       pathcompiler mcp [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
 
@@ -95,6 +98,7 @@ workflows/rejected/<id>.yaml. Both take the reviewer from --by or PATHCOMPILER_U
 never replace an existing review decision. Candidate YAML remains as discovery cache.
 build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
 generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
+mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -455,6 +459,47 @@ export async function runCli(
     await writeExclusive(file, serializeReviewedYaml(record));
     return `Rejected ${id} by ${rejectedBy}.\nRecord: ${file}\nThe candidate stays in discovery cache; remove the record to review it again.\n`;
   }
+  if (positionals[0] === "mcp" && positionals.length === 1) {
+    if (values.exclude !== undefined)
+      throw new Error(
+        "mcp serves generated artifacts and does not support --exclude.",
+      );
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const artifacts = await Promise.all(
+      ["search-index", "runtime-manifest", "documentation"].map(
+        async (name) => {
+          const file = path.join(output, `generated/${name}.json`);
+          const content = await readOptional(file);
+          if (content === undefined)
+            throw new Error(`Missing ${file}. Run pathcompiler build first.`);
+          try {
+            return JSON.parse(content) as unknown;
+          } catch (error) {
+            throw new Error(
+              `Cannot parse ${file}. Rebuild it with pathcompiler build.`,
+              {
+                cause: error,
+              },
+            );
+          }
+        },
+      ),
+    );
+    const [searchIndex, runtimeManifest, documentation] = artifacts;
+    const client = new PathCompiler({
+      project: path.basename(path.dirname(output)),
+      transport: createStaticTransport({
+        searchIndex,
+        runtimeManifest,
+        documentation,
+      }),
+    });
+    await serveStdio(client);
+    process.stderr.write(
+      `PathCompiler MCP server ready on stdio (artifacts: ${output}).\n`,
+    );
+    return "";
+  }
   if (positionals[0] === "build" && positionals.length === 1) {
     if (values.exclude !== undefined)
       throw new Error(
@@ -627,7 +672,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, or build. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, build, or mcp. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],

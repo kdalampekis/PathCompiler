@@ -2,9 +2,14 @@ import {
   createResolver,
   type ProductHelpResult,
   ProductHelpResultSchema,
+  type RelatedWorkflow,
+  RelatedWorkflowSchema,
   type ResolveContext,
   type ResolveRequest,
   ResolveRequestSchema,
+  relatedWorkflows,
+  type SupportedActions,
+  supportedActions,
 } from "@pathcompiler/resolver";
 import {
   DocumentationRecordSchema,
@@ -18,8 +23,10 @@ import { z } from "zod";
 
 export type {
   ProductHelpResult,
+  RelatedWorkflow,
   ResolveContext,
   ResolveRequest,
+  SupportedActions,
 } from "@pathcompiler/resolver";
 export type { RuntimeWorkflow } from "@pathcompiler/workflow-compiler/schema";
 
@@ -34,6 +41,7 @@ export interface RuntimeTransport {
   resolve(request: ResolveRequest): Promise<ProductHelpResult>;
   getWorkflow(id: string): Promise<WorkflowDetails>;
   getRuntimeManifest(id: string): Promise<RuntimeWorkflow>;
+  getRelatedWorkflows(id: string): Promise<RelatedWorkflow[]>;
 }
 
 export class PathCompilerError extends Error {
@@ -57,11 +65,16 @@ const OptionsSchema = z.strictObject({
     (value) =>
       typeof value === "object" &&
       value !== null &&
-      ["resolve", "getWorkflow", "getRuntimeManifest"].every(
+      [
+        "resolve",
+        "getWorkflow",
+        "getRuntimeManifest",
+        "getRelatedWorkflows",
+      ].every(
         (name) =>
           typeof (value as Record<string, unknown>)[name] === "function",
       ),
-    "Transport must implement resolve, getWorkflow and getRuntimeManifest",
+    "Transport must implement resolve, getWorkflow, getRuntimeManifest and getRelatedWorkflows",
   ),
 });
 export type PathCompilerOptions = z.infer<typeof OptionsSchema>;
@@ -72,6 +85,10 @@ export class PathCompiler {
   readonly workflows: {
     get(id: string): Promise<WorkflowDetails>;
     getRuntimeManifest(id: string): Promise<RuntimeWorkflow>;
+    /** Workflows sharing the entity or domain, entity matches first. */
+    related(id: string): Promise<RelatedWorkflow[]>;
+    /** Explain/checklist/navigate/guide availability; never execute. */
+    getSupportedActions(id: string): Promise<SupportedActions>;
     /** Workflows the resolver considers relevant: one match, all ambiguous options, or none. */
     search(query: string, context?: ResolveContext): Promise<WorkflowSummary[]>;
   };
@@ -82,7 +99,7 @@ export class PathCompiler {
     if (!parsed.success)
       throw new PathCompilerError(
         "invalid-request",
-        "Provide a project name and a transport implementing resolve, getWorkflow and getRuntimeManifest.",
+        "Provide a project name and a transport implementing resolve, getWorkflow, getRuntimeManifest and getRelatedWorkflows.",
         { cause: parsed.error },
       );
     this.project = parsed.data.project;
@@ -100,6 +117,14 @@ export class PathCompiler {
           await this.#transport.getRuntimeManifest(workflowId(id)),
           "runtime manifest",
         ),
+      related: async (id) =>
+        checked(
+          z.array(RelatedWorkflowSchema),
+          await this.#transport.getRelatedWorkflows(workflowId(id)),
+          "related workflow list",
+        ),
+      getSupportedActions: async (id) =>
+        supportedActions(await this.workflows.getRuntimeManifest(id)),
       search: async (query, context) => {
         const result = await this.resolve(
           context === undefined ? { query } : { query, context },
@@ -203,18 +228,24 @@ export function createStaticTransport(
       item,
     ]),
   );
+  const notFound = (id: string) =>
+    new PathCompilerError(
+      "workflow-not-found",
+      `No approved workflow ${id} in these artifacts. Approve it and rebuild.`,
+    );
   const find = <T>(items: Map<string, T>, id: string): T => {
     const item = items.get(id);
-    if (item === undefined)
-      throw new PathCompilerError(
-        "workflow-not-found",
-        `No approved workflow ${id} in these artifacts. Approve it and rebuild.`,
-      );
+    if (item === undefined) throw notFound(id);
     return structuredClone(item);
   };
   return {
     resolve: async (request) => resolver.resolveProductHelp(request),
     getWorkflow: async (id) => find(details, id),
     getRuntimeManifest: async (id) => find(runtime, id),
+    getRelatedWorkflows: async (id) => {
+      const related = relatedWorkflows(searchIndex, id);
+      if (related === null) throw notFound(id);
+      return related;
+    },
   };
 }

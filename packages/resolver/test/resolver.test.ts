@@ -19,6 +19,8 @@ import {
   evaluateResolver,
   normalizeTokens,
   ProductHelpResultSchema,
+  relatedWorkflows,
+  supportedActions,
 } from "../src/index.js";
 
 let fixtureIndex: SearchIndex;
@@ -237,5 +239,59 @@ describe("product help resolver", () => {
       } as never),
     ).toThrow();
     expect(() => createResolver({ workflows: [] })).toThrow();
+  });
+
+  it("ranks related workflows by shared entity, then domain", () => {
+    const catalog = index(
+      record({}),
+      record({ id: "invoices.create", action: "create" }),
+      record({ id: "invoices.archive_batch", entity: "batch" }),
+      record({ id: "billing.refund", domain: "billing", entity: "invoice" }),
+      record({ id: "notes.create", domain: "notes", entity: "note" }),
+    );
+    expect(relatedWorkflows(catalog, "invoices.send")).toEqual([
+      expect.objectContaining({
+        id: "billing.refund",
+        relation: "same-entity",
+      }),
+      expect.objectContaining({
+        id: "invoices.create",
+        relation: "same-entity",
+      }),
+      expect.objectContaining({
+        id: "invoices.archive_batch",
+        relation: "same-domain",
+      }),
+    ]);
+    expect(relatedWorkflows(catalog, "invoices.send", 1)).toHaveLength(1);
+    expect(relatedWorkflows(catalog, "missing.workflow")).toBeNull();
+  });
+
+  it("derives supported actions without ever offering execution", () => {
+    const base = {
+      id: "invoices.send",
+      revision,
+      title: "Send Invoice",
+      entrypoints: [{ route: "/invoices" }],
+      preconditions: [],
+      steps: [
+        { id: "a", target: "invoice.send", action: { type: "click" as const } },
+      ],
+      terminal: { type: "explicit_next" as const },
+    };
+    expect(supportedActions(base)).toEqual({
+      explain: true,
+      checklist: true,
+      navigate: true,
+      guide: true,
+      execute: false,
+    });
+    expect(
+      supportedActions({
+        ...base,
+        entrypoints: [{ route: "/invoices/[id]" }],
+        steps: [{ id: "a", action: { type: "click" } }],
+      }),
+    ).toMatchObject({ navigate: false, guide: false, execute: false });
   });
 });

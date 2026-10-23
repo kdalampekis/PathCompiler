@@ -24,6 +24,8 @@
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/git-intelligence": "workspace:*",
+    "@pathcompiler/mcp-server": "workspace:*",
+    "@pathcompiler/sdk-js": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*",
     "@pathcompiler/workflow-compiler": "workspace:*",
@@ -31,5 +33,8 @@
     "@pathcompiler/workflow-ir": "workspace:*",
     "@pathcompiler/workflow-review": "workspace:*",
     "@pathcompiler/workflow-validator": "workspace:*"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1"
   }
 }

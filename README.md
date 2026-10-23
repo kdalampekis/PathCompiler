@@ -688,6 +688,26 @@ Override any text (for example for translation) with `labels`. Only the overlay
 sets inline styles, and only those its positioning needs.
 See [ADR 0018](docs/decisions/0018-optional-ui-components.md).
 
+## MCP server
+
+```sh
+pnpm pathcompiler build
+pnpm pathcompiler mcp            # stdio; configure your MCP client to run this
+```
+
+Read-only tools: `pathcompiler.resolve_help`, `pathcompiler.search_workflows`,
+`pathcompiler.get_workflow`, `pathcompiler.get_related_workflows` and
+`pathcompiler.get_supported_actions`. Each tool makes exactly one SDK call
+(`resolve`, `workflows.search/get/related/getSupportedActions`) and returns the
+same data as structured content and JSON text. SDK errors (for example
+`workflow-not-found`) come back as readable tool errors. `get_related_workflows`
+returns workflows sharing the entity first, then the domain. `get_supported_actions`
+reports explain/checklist/navigate/guide and always `execute: false`. Both are
+implemented in `@pathcompiler/resolver`, not in the MCP package. Programmatic use:
+`createPathCompilerMcpServer(client)` or `serveStdio(client)` from
+`@pathcompiler/mcp-server`. Admin tools (impacted workflows, change evidence) wait
+for impact analysis. See [ADR 0019](docs/decisions/0019-mcp-adapter-over-sdk.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -710,12 +730,13 @@ Analysis packages:
 | `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types; `./browser`: `verifyFixtureWorkflow`, browser verification report schema |
 | `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected record schemas, YAML serialize/parse, `ReviewError` |
 | `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `COMPILER_VERSION`, search/runtime/documentation schemas and types; `./schema`: browser-safe schemas only |
-| `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, request/result schemas and types |
+| `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, `relatedWorkflows`, `supportedActions`, request/result schemas and types |
 | `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
 | `@pathcompiler/runtime-core` | `createGuideRuntime`, `createDomEnvironment`, `routeMatches`, `idleGuideState`, environment/state types |
 | `@pathcompiler/react` | `PathCompilerProvider`, `useProductHelp`, `useWorkflow`, `useGuideRuntime`, `useWorkflowProgress` |
 | `@pathcompiler/ui` | `ProductHelpCard`, `WorkflowChecklist`, `GuideOverlay`, `WorkflowSearch`, `defaultLabels` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `runCli` |
+| `@pathcompiler/mcp-server` | `createPathCompilerMcpServer`, `serveStdio`, `MCP_TOOL_NAMES` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `build`, `mcp`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

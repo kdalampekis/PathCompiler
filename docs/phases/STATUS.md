@@ -1002,3 +1002,51 @@ behavior changed.
 - All Phase 16 scope is implemented.
 - No automated axe audit and no real-browser visual check of overlay positioning.
 - Seventeen phases are complete (0–16), leaving 14 (17–30).
+
+## Phase 17 — MCP Server
+
+Complete — verified locally on 2026-10-22.
+
+- Added `@pathcompiler/mcp-server` (official `@modelcontextprotocol/sdk` 1.32.1)
+  with read-only tools `pathcompiler.resolve_help`, `search_workflows`,
+  `get_workflow`, `get_related_workflows` and `get_supported_actions`. Each tool
+  makes one SDK call and returns its result unchanged, as structured content and
+  JSON text. SDK errors become readable tool errors.
+- Catalog logic lives in core `@pathcompiler/resolver` (`relatedWorkflows`,
+  `supportedActions`, with `execute` always false) and is exposed by the SDK as
+  `workflows.related` and `workflows.getSupportedActions`.
+- Deviation: `RuntimeTransport` gains `getRelatedWorkflows(id)`, since the specified
+  three methods cannot enumerate workflows (ADR 0019).
+- Added `pathcompiler mcp`, serving stdio from `generated/*.json` through the
+  static transport. Only MCP traffic goes to stdout.
+- Raised the Vitest per-test timeout to 30 s. The first full run had four 5 s
+  timeouts in untouched fixture-analysis suites at load average 24. With the
+  machine idle, all tests passed before and after the change.
+- Documented in README and ADR 0019.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 16 baseline lint/typecheck/tests | Passed before edits; 196 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 145 files |
+| `pnpm typecheck` | Passed, twenty package builds, root tests and fixture |
+| `pnpm test` | 203 tests passed across twenty-five suites |
+| `git diff --check` | Passed |
+
+Tests cover tool listing and annotations, equality of every tool's output with
+direct SDK calls over a real MCP client/server link, not-found/oversized/extra-key
+errors, related-workflow ranking and limits, supported actions for static and
+templated routes and untargeted steps, SDK related/supported-action validation, and
+the built CLI spawned as a stdio MCP server answering `resolve_help`. Browser suites
+were not rerun because no runtime or fixture code changed.
+
+### Scope notes and limitations
+
+- All Phase 17 required tools are implemented. The optional admin tools
+  (`get_impacted_workflows`, `get_change_evidence`) wait for Phase 20 services.
+- Stdio only. No HTTP/SSE MCP transport yet.
+- Eighteen phases are complete (0–17), leaving 13 (18–30).

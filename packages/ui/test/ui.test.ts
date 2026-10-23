@@ -103,6 +103,9 @@ const transport: RuntimeTransport = {
   async getRuntimeManifest() {
     return manifest;
   },
+  async getRelatedWorkflows() {
+    return [];
+  },
 };
 const client = new PathCompiler({ project: "ui", transport });
 

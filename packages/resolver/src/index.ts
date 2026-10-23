@@ -5,6 +5,7 @@ import {
 } from "@pathcompiler/workflow-compiler/schema";
 import { z } from "zod";
 
+export * from "./catalog.js";
 export * from "./evaluate.js";
 
 export const ResolveContextSchema = z.strictObject({
