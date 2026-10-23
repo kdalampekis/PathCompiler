@@ -495,7 +495,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Tests/evals:** root-cause precision; provenance correctness.
 - **Runtime change:** No.
 - **Unblocks:** R5, R11, R12, I0.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `explainUnreachable`, solver assumptions and cores, `reason why-not`, ADR 0039.
 
 #### R-WI — Reasoning-assisted workflow discovery (spec §23, §125)
 - **Objective:** Product Graph → Formal Abstraction → planning → feasible trace →
@@ -520,7 +520,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   and minimal.
 - **Runtime change:** No.
 - **Unblocks:** permission audit and minimal-enablement modules.
-- **Status:** 🔒 blocked on R4.
+- **Status:** 🟢 unblocked.
 
 #### R6 — Plan Enumeration and semantic trace clustering
 - **Objective:** Bounded enumeration with blocking constraints, and
@@ -581,7 +581,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Tests/evals:** true-change recall; false-positive rate.
 - **Runtime change:** No (reports only).
 - **Unblocks:** I2 (`SemanticChangeIntent` vocabulary), I3, P4, O12.
-- **Status:** 🔒 blocked on R4.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### R12 — Developer reasoning surfaces
 - **Objective:** `/v1/reason/*` endpoints (§73) and a separate developer
@@ -592,7 +592,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   (or a separate entry point).
 - **Acceptance:** never exposed to end-user tokens; product-semantic results only.
 - **Runtime change:** Yes (new developer-only endpoints).
-- **Status:** 🔒 blocked on R4.
+- **Status:** 🟢 unblocked.
 
 ### 4.3 P track: probabilistic reasoning
 
@@ -825,13 +825,13 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **R4** (next), R7, R8, R9, C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅ | C9 (C5, C2, C3) · R5/R12 (R4) · R6 (C7) · R10 (R8) · R11 (R4) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0, R11) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0, R4, R11) · IG (I0, C2) · I1 (IG, R8) · I2 (I1, R11) · I3 (R8, R11) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R11** (next), R5, R7, R8, R9, R12, C1, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅ | C9 (C5, C2, C3) · R6 (C7) · R10 (R8) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0, R11) · P-RV (P0) · P5 (O11, R8) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0, R11) · IG (I0, C2) · I1 (IG, R8) · I2 (I1, R11) · I3 (R8, R11) · I4 (I3, C8) · I5–I8 (I3, O0, O7 chain) · I9 (I2, I3, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
 | Lane | Sequence | Notes |
 | --- | --- | --- |
-| A — formal core (critical path) | R0 ✅ → R1 ✅ → R2 ✅ → R3 ✅ / R4 → R11 | Longest dependency chain; gates the reasoning MVP and the I track. |
+| A — formal core (critical path) | R0 ✅ → R1 ✅ → R2 ✅ → R3 ✅ / R4 ✅ → R11 | Longest dependency chain; gates the reasoning MVP and the I track. |
 | B — contracts and infrastructure | C1, C2, C3, C5, C8 (independent of each other and of lane A), then C9 | C1 gates O; C2 and C3 gate R-WI, C9 and IG; C8 gates I4, P3 and mode-5 browser checks. |
 | C — uncertainty | P0 (any time) → P1 after R1 + C9 | Independent of A until P1. |
 | D — observability | O0 after C1 → O1 → O3/O4/O5 → O6 → O7 | O8+ joins lane A outputs. |
@@ -839,20 +839,20 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: R4 — UNSAT Explanation
+## 7. Next implementation phase: R11 — Commit semantic reasoning
 
-R0–R3 are complete. R4 is next in the reasoning-MVP order (spec §94, step 4:
-"explain why"). It gives the solver boundary named assertions and unsat cores,
-and maps them to product-semantic reasons with source provenance. An example is
-"viewer cannot create a client: `clients.create.submit` requires role editor
-(`requireEditor`)". R4 unblocks R5, R11, R12 and I0, so it sits on the path to
-mode 5 (Evaluate) and mode 4 (Recommend). R7, R8 and R9 are also unblocked. C1
-remains the parallel candidate for lane D (observability).
+R0–R4 are complete. R11 closes the reasoning MVP (spec §94, steps 6–10). It
+compares the formal models of two commits and reports reachability and
+applicability changes, such as "clients.create is no longer reachable for an
+editor". It traces each change to the permission rule and the commit
+(§25). It unblocks I0, I2, I3 and P4, the path to mode 5 (Evaluate) and mode 4
+(Recommend). R5, R7, R8, R9 and R12 are also unblocked. C1 remains the parallel
+candidate for lane D (observability).
 
-R3 (2026-10-23) returns canonical shortest plans (ADR 0038). For the fixture,
-the Create Client, Change Plan Structure and Create Plan plans match their
-workflows' major steps. On the extracted model, the Change Plan Structure plan
-skips the selector, which ADR 0036 explains.
+R4 (2026-10-23) explains unreachable answers with deletion-minimized unsat
+cores over labeled product constraints (ADR 0039). For "viewer creates a
+client", the explanation is the role, the `requireEditor`-backed precondition
+and the initial state.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

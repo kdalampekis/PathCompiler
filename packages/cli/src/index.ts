@@ -49,6 +49,7 @@ import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
   createProductReasoner,
+  type ExplanationResult,
   evaluatePlan,
   type FormalValue,
   type PlanEvaluation,
@@ -131,7 +132,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
-       pathcompiler reason reachable|plan <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler reason reachable|plan|why-not <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
 
 Writes .pathcompiler/graph/source-graph.json and .pathcompiler/reports/scan-summary.json
 under the current working directory, or under the directory supplied to --out.
@@ -185,7 +186,9 @@ witness trace), unreachable (k-induction proof) or unknown, and writes
 reports/reasoning/<goal>.json. Unreachable means unreachable in the model: read it with the
 model coverage and uncertainties it reports. reason plan returns the shortest plan
 (canonical among equals) and compares it with workflows/<capability>.yaml when that
-approved workflow exists, writing reports/reasoning/plans/<goal>.json.
+approved workflow exists, writing reports/reasoning/plans/<goal>.json. reason why-not explains an
+unreachable goal with a minimal set of product constraints (context, preconditions, initial
+state) and their source evidence, writing reports/reasoning/why-not/<goal>.json.
 Reasoning output is for developers only.
 No repository code is executed and no source is sent to a model or network service.
 `;
@@ -253,7 +256,7 @@ export async function runCli(
     positionals[0] !== "reason"
   )
     throw new Error(
-      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable and reason plan.",
+      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable, plan and why-not.",
     );
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (positionals[0] === "reason") return runReason(positionals, values, cwd);
@@ -1001,12 +1004,12 @@ async function runReason(
 ): Promise<string> {
   const mode = positionals[1];
   if (
-    (mode !== "reachable" && mode !== "plan") ||
+    (mode !== "reachable" && mode !== "plan" && mode !== "why-not") ||
     positionals.length < 3 ||
     positionals.length > 4
   )
     throw new Error(
-      "Expected: pathcompiler reason reachable|plan <goal> [directory]. Use --help for options.",
+      "Expected: pathcompiler reason reachable|plan|why-not <goal> [directory]. Use --help for options.",
     );
   const goal = positionals[2] as string;
   const integer = (flag: string, value: string | undefined) => {
@@ -1073,13 +1076,15 @@ async function runReason(
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   };
   const solver = await createZ3SolverProvider();
-  let result: ReachabilityResult | PlanResult;
+  let result: ReachabilityResult | PlanResult | ExplanationResult;
   try {
     const reasoner = createProductReasoner(solver);
     result =
       mode === "plan"
         ? await reasoner.findPlan(model, query)
-        : await reasoner.checkReachability(model, query);
+        : mode === "why-not"
+          ? await reasoner.explainUnreachable(model, query)
+          : await reasoner.checkReachability(model, query);
   } finally {
     await solver.close();
   }
@@ -1103,7 +1108,12 @@ async function runReason(
   }
   const report = {
     schemaVersion: 1,
-    type: mode === "plan" ? "plan_result" : "reachability_result",
+    type:
+      mode === "plan"
+        ? "plan_result"
+        : mode === "why-not"
+          ? "explanation_result"
+          : "reachability_result",
     result,
     ...(evaluation ? { evaluation } : {}),
     ...(compared ? { comparedWorkflow: compared } : {}),
@@ -1117,7 +1127,9 @@ async function runReason(
   const file =
     mode === "plan"
       ? `reports/reasoning/plans/${goal}.json`
-      : `reports/reasoning/${goal}.json`;
+      : mode === "why-not"
+        ? `reports/reasoning/why-not/${goal}.json`
+        : `reports/reasoning/${goal}.json`;
   await writeArtifacts(output, [
     [file, `${JSON.stringify(report, null, 2)}\n`],
   ]);
@@ -1155,12 +1167,45 @@ async function runReason(
   } else if (result.status === "reachable") {
     lines.push(`${goal} under ${given}: REACHABLE`);
     steps(result.trace.context, result.trace.actions);
-  } else if (result.status === "unreachable" || result.status === "impossible")
+  } else if (
+    result.status === "unreachable" ||
+    result.status === "impossible"
+  ) {
     lines.push(
       `${goal} under ${given}: ${result.status.toUpperCase()}`,
       `No path exists in the model (k-induction closed at depth ${result.proof.depth}).`,
     );
-  else
+    const explanation =
+      mode === "why-not" && result.status === "unreachable"
+        ? (result as Extract<ExplanationResult, { status: "unreachable" }>)
+            .explanation
+        : undefined;
+    if (explanation) {
+      lines.push(
+        `Why${explanation.minimal ? "" : " (not minimized: the solver returned unknown)"}:`,
+        ...explanation.summary.map((line) => `  ${line}`),
+        "Source:",
+      );
+      for (const item of explanation.constraints) {
+        const sources = item.evidence.filter((ref) => ref.type !== "test");
+        const tests = item.evidence.length - sources.length;
+        lines.push(
+          `  ${item.id}: ${
+            sources
+              .map((ref) =>
+                ref.locator.includes("/") && !ref.id.includes(ref.locator)
+                  ? `${ref.id} (${ref.locator})`
+                  : ref.id,
+              )
+              .join("; ") || "no source evidence"
+          }${tests > 0 ? ` (+${tests} tests)` : ""}`,
+        );
+      }
+      lines.push(
+        `Evidence commit: ${result.model.repositoryCommit ?? "unbound"}`,
+      );
+    }
+  } else
     lines.push(
       `${goal} under ${given}: UNKNOWN`,
       `Reason: ${result.reason}. ${result.detail}`,

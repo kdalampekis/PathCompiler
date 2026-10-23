@@ -60,3 +60,45 @@ describe("z3 solver provider", () => {
     ).rejects.toThrow(/Expected a bool term/);
   });
 });
+
+describe("z3 assumptions", () => {
+  it("returns an unsat core over the assumptions", async () => {
+    const vars = [
+      { name: "p", sort: "bool" as const },
+      { name: "q", sort: "bool" as const },
+      { name: "r", sort: "bool" as const },
+      { name: "x", sort: "int" as const },
+    ];
+    const v = (name: string): SolverTerm => ({ op: "var", name });
+    const implies = (a: SolverTerm, b: SolverTerm): SolverTerm => ({
+      op: "or",
+      args: [{ op: "not", arg: a }, b],
+    });
+    const problem = {
+      variables: vars,
+      assertions: [
+        implies(v("p"), { op: "lt", left: x, right: int(0) }),
+        implies(v("q"), { op: "lt", left: int(5), right: x }),
+        implies(v("r"), { op: "eq", left: x, right: int(10) }),
+      ],
+      timeoutMs: 5000,
+    };
+    const result = await solver.check({
+      ...problem,
+      assumptions: ["p", "q", "r"],
+    });
+    expect(result.status).toBe("unsat");
+    if (result.status === "unsat") {
+      expect(result.core).toContain("p");
+      expect(result.core?.every((item) => ["p", "q", "r"].includes(item))).toBe(
+        true,
+      );
+    }
+    expect(
+      (await solver.check({ ...problem, assumptions: ["q", "r"] })).status,
+    ).toBe("sat");
+    await expect(
+      solver.check({ ...problem, assumptions: ["x"] }),
+    ).rejects.toThrow(/not a declared boolean variable/);
+  });
+});

@@ -1030,6 +1030,7 @@ See [ADR 0036](docs/decisions/0036-formal-abstraction-rules.md).
 pnpm pathcompiler reason reachable clients.created fixtures/next-demo --context role=editor
 pnpm pathcompiler reason reachable clients.created --model model.json --context role=viewer --json
 pnpm pathcompiler reason plan plans.structure_changed fixtures/next-demo --context role=editor
+pnpm pathcompiler reason why-not clients.created fixtures/next-demo --context role=unlisted
 ```
 
 `@pathcompiler/reasoner-core` (phase R2) answers "can goal G be reached under
@@ -1055,6 +1056,14 @@ steps with a reviewed workflow. `reason plan` writes
 `reports/reasoning/plans/<goal>.json`, and compares the plan with the approved
 `workflows/<capability>.yaml` when one exists.
 See [ADR 0038](docs/decisions/0038-planning-semantics.md).
+
+`explainUnreachable` (phase R4) answers "why not?" with a minimal set of
+product constraints the unreachability proof needs: context values,
+precondition conjuncts and initial facts. For example: "clients.create.submit
+requires role = editor". Each constraint carries source evidence, such as
+`symbol:lib/session.ts#requireEditor` and the API handler, never solver labels.
+`reason why-not` writes `reports/reasoning/why-not/<goal>.json`.
+See [ADR 0039](docs/decisions/0039-unsat-explanations.md).
 
 ## Packages
 
@@ -1092,10 +1101,10 @@ Analysis packages:
 | `@pathcompiler/assistant-tools` | `resolveProductHelp`, `parseToolInput`, `toolResultText`, `jsonSchemaTool`, `anthropicTool`, `openAITool`, `langChainTool`, `INPUT_SCHEMA`, `STRICT_INPUT_SCHEMA`, `ToolInputError` |
 | `@pathcompiler/formal-model` | `FormalProductModelSchema`, `parseFormalModel`, `normalizeFormalModel`, `serializeFormalModel`, `formalModelHash`, `collectFormalEvidence`, `f` constructors, variable/expression/action/goal schemas and types |
 | `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
-| `@pathcompiler/solver-provider` | `SolverProvider`, `SolverProblem`, `SolverTerm`, `SolverCheckResult`, `SolverProblemSchema`, `parseSolverProblem` |
+| `@pathcompiler/solver-provider` | `SolverProvider` (assumptions, unsat cores), `SolverProblem`, `SolverTerm`, `SolverCheckResult`, `SolverProblemSchema`, `parseSolverProblem` |
 | `@pathcompiler/solver-z3` | `createZ3SolverProvider` (only package importing Z3) |
-| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable/plan`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `reason reachable/plan/why-not`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

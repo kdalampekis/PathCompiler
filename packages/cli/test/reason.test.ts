@@ -175,6 +175,40 @@ describe("pathcompiler reason reachable", () => {
     );
   });
 
+  it("explains why a goal is unreachable with source evidence", async () => {
+    const out = await directory();
+    const output = await runCli([
+      "reason",
+      "why-not",
+      "clients.created",
+      fixture,
+      "--context",
+      "role=unlisted",
+      "--out",
+      out,
+    ]);
+    expect(output).toContain(
+      "clients.created under role=unlisted: UNREACHABLE",
+    );
+    expect(output).toContain(
+      "  Only clients.create.submit can make clients.created true.",
+    );
+    expect(output).toContain("  clients.create.submit requires role = editor.");
+    expect(output).toMatch(
+      /precondition:clients\.create\.submit#4: .*symbol:lib\/session\.ts#requireEditor/,
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(out, "reports/reasoning/why-not/clients.created.json"),
+        "utf8",
+      ),
+    );
+    expect(report).toMatchObject({
+      type: "explanation_result",
+      result: { status: "unreachable", explanation: { minimal: true } },
+    });
+  });
+
   it("rejects malformed invocations with actionable errors", async () => {
     const out = await directory();
     const file = path.join(out, "model.json");
@@ -224,7 +258,7 @@ describe("pathcompiler reason reachable", () => {
     ).rejects.toThrow(/--max-depth must be a non-negative integer/);
     await expect(
       runCli(["scan", fixture, "--context", "role=editor"]),
-    ).rejects.toThrow(/only supported by reason reachable/);
+    ).rejects.toThrow(/only supported by reason reachable, plan and why-not/);
     await writeFile(file, "{}");
     await expect(
       runCli(["reason", "reachable", "clients.created", "--model", file]),

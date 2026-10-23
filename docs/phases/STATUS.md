@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after R3)
+## Current state (updated 2026-10-23, after R4)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R4** (next), R7, R8, R9, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R11** (next), R5, R7, R8, R9, R12, C1, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning** (2026-10-23) |
-| Next recommended phase | **R4 — UNSAT Explanation** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5. |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation** (2026-10-23) |
+| Next recommended phase | **R11 — Commit semantic reasoning** (`MASTER_ROADMAP.md` §7). Parallel candidates: C1, then C2, C3, C5. |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2017,3 +2017,69 @@ Further tests:
 - The extracted model's shortcut plans show where the abstraction is too loose.
   R-WI must report such gaps rather than turn shortcut plans into workflows.
 - Next recommended phase: R4 — UNSAT Explanation.
+
+---
+
+## Phase R4 — UNSAT Explanation
+
+Complete — verified locally on 2026-10-23.
+
+- **Solver boundary.**
+  - `SolverProblem.assumptions` lists boolean variables assumed true for one
+    check. For an `unsat` answer with assumptions, the result includes a
+    `core`, an unsatisfiable subset of them. The boundary validates that
+    assumptions are declared booleans.
+  - The Z3 backend uses `solver_check_assumptions` and `solver_get_unsat_core`,
+    and maps core entries back to names by AST handle.
+- **`ProductReasoner.explainUnreachable(model, query)`.** It labels three kinds
+  of constraint: context assignments (`context:<v>`), each top-level
+  precondition conjunct of each sliced action (`precondition:<action>#<n>`),
+  and each initial conjunct (`initial#<n>`).
+  - Domains, frame, effects and the goal stay hard.
+  - After the k-induction proof, the cores of all proof checks are combined and
+    then minimized by deletion against every check. The result is minimal for
+    the certificate; it is not a global MUS, which is R5.
+  - Each constraint has a product description, its action, capability and
+    semantic target, its variables, and evidence: the action's evidence plus
+    that of the context variables it mentions. The explanation also names the
+    goal-setting actions and a summary.
+  - A reachable or unknown answer is returned unchanged.
+- **Helpers and CLI.** Added `describeFormalExpr` for product-term rendering.
+  `pathcompiler reason why-not <goal>` prints the reasons and the source
+  evidence per constraint, then writes
+  `reports/reasoning/why-not/<goal>.json`.
+- Recorded in ADR 0039 and documented in the README. Discovery, compiled
+  artifacts and runtime are unchanged.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 295 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 232 files |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 302 tests passed across 41 suites (1 new Z3 core test, 5 explanation tests, 1 CLI why-not test) |
+| CLI binary | `reason why-not clients.created fixtures/next-demo --context role=unlisted` answers in about 220 ms |
+| `git diff --check` | Passed |
+
+Explanation precision on the fixture:
+
+| Question | Minimal explanation | Source trace |
+| --- | --- | --- |
+| Viewer creates a client (hand model) | role = viewer; `clients.submit_create` requires role = editor; initially no client | `symbol:lib/session.ts#requireEditor`, `permission:role:editor` |
+| Unlisted role creates a client (extracted model) | role = unlisted; `clients.create.submit` requires role = editor; initially not created | `symbol:lib/session.ts#requireEditor`, `symbol:app/api/clients/route.ts#POST`, `api:POST:/api/clients` |
+| Editor with the flag off changes a plan structure (extracted model) | flag = false; both `confirm` and `submit` require `plan_structure_enabled`; initially not changed | `flag:planStructure`, the PATCH handler |
+
+Provenance check: over 40 seeded random models (more than 30 unreachable
+queries), keeping only the explained constraints still makes the goal
+unreachable under explicit-state search, and every explanation is minimal.
+
+### Scope notes and limitations
+
+- Explanations are minimal for the k-induction certificate at the proof depth.
+  MUS/MCS enumeration and "minimal change that enables it" are R5.
+- Evidence per constraint is the action's evidence plus that of its context
+  variables; the conjunct is not mapped to a single source line. The extracted
+  model's guard evidence covers every guard on the API handler.
+- Next recommended phase: R11 — Commit semantic reasoning.

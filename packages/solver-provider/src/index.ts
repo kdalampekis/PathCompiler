@@ -36,6 +36,11 @@ export const SolverProblemSchema = z
   .strictObject({
     variables: z.array(z.strictObject({ name, sort: z.enum(["bool", "int"]) })),
     assertions: z.array(SolverTermSchema),
+    /**
+     * Boolean variables assumed true for this check only. An `unsat` answer then
+     * names a subset of them (the core) that is already contradictory.
+     */
+    assumptions: z.array(name).optional(),
     /** Wall-clock budget for this check; exceeding it yields `unknown`. */
     timeoutMs: z.number().int().positive(),
   })
@@ -53,12 +58,25 @@ export const SolverProblemSchema = z
       const issue = sortIssue(assertion, sorts, "bool");
       if (issue) context.addIssue({ code: "custom", message: issue });
     }
+    const assumed = problem.assumptions ?? [];
+    if (new Set(assumed).size !== assumed.length)
+      context.addIssue({
+        code: "custom",
+        message: "Assumptions must be unique",
+      });
+    for (const item of assumed)
+      if (sorts.get(item) !== "bool")
+        context.addIssue({
+          code: "custom",
+          message: `Assumption ${item} is not a declared boolean variable`,
+        });
   });
 export type SolverProblem = z.infer<typeof SolverProblemSchema>;
 
 export type SolverCheckResult =
   | { status: "sat"; model: Record<string, SolverValue> }
-  | { status: "unsat" }
+  /** `core` is present when the problem had assumptions: an unsatisfiable subset of them. */
+  | { status: "unsat"; core?: string[] }
   | { status: "unknown"; reason: string };
 
 /**

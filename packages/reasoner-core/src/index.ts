@@ -103,6 +103,34 @@ export type PlanResult =
       proof: { method: "k-induction"; depth: number };
     })
   | (ResultBase & { status: "unknown"; reason: UnknownReason; detail: string });
+/** A named model constraint an explanation can cite (reasoning spec §24–§25). */
+export type ConstraintProvenance = {
+  /** Stable within a model: `context:<variable>`, `precondition:<action>#<n>`, `initial#<n>`. */
+  id: string;
+  kind: "context" | "precondition" | "initial";
+  /** Product-semantic sentence, never a solver label. */
+  description: string;
+  actionId?: string;
+  capabilityId?: string;
+  semanticTarget?: string;
+  variables: string[];
+  /** The action's evidence plus the evidence of the variables the constraint mentions. */
+  evidence: EvidenceRef[];
+};
+export type UnreachableExplanation = {
+  /** A minimal set of constraints the unreachability proof needs (deletion-minimized core). */
+  constraints: ConstraintProvenance[];
+  /** False when a solver `unknown` stopped minimization early. */
+  minimal: boolean;
+  /** Actions in the slice that assign a goal variable. */
+  goalSetters: { actionId: string; capabilityId?: string }[];
+  summary: string[];
+};
+export type ExplanationResult =
+  | Exclude<ReachabilityResult, { status: "unreachable" }>
+  | (Extract<ReachabilityResult, { status: "unreachable" }> & {
+      explanation: UnreachableExplanation;
+    });
 export interface ProductReasoner {
   checkReachability(
     model: FormalProductModel,
@@ -117,6 +145,11 @@ export interface ProductReasoner {
     model: FormalProductModel,
     query: ReachabilityQuery,
   ): Promise<PlanResult>;
+  /** Reachability plus, when unreachable, the constraints responsible and their source evidence. */
+  explainUnreachable(
+    model: FormalProductModel,
+    query: ReachabilityQuery,
+  ): Promise<ExplanationResult>;
 }
 export class ReasoningQueryError extends Error {
   override name = "ReasoningQueryError";
@@ -246,6 +279,36 @@ export function sliceFormalModel(
   };
 }
 
+const describeTerm = (term: FormalTerm) =>
+  term.type === "var" ? term.id : String(term.value);
+/** Renders an expression in product terms, e.g. `role = editor and not client_form_open`. */
+export function describeFormalExpr(expr: FormalExpr): string {
+  const nested = (item: FormalExpr) =>
+    item.type === "and" || item.type === "or"
+      ? `(${describeFormalExpr(item)})`
+      : describeFormalExpr(item);
+  switch (expr.type) {
+    case "bool":
+      return String(expr.value);
+    case "var":
+      return expr.id;
+    case "not":
+      return expr.expr.type === "eq"
+        ? `${describeTerm(expr.expr.left)} ≠ ${describeTerm(expr.expr.right)}`
+        : `not ${nested(expr.expr)}`;
+    case "and":
+      return expr.expressions.map(nested).join(" and ");
+    case "or":
+      return expr.expressions.map(nested).join(" or ");
+    default: {
+      const symbol = { eq: "=", lt: "<", lte: "≤", gt: ">", gte: "≥" }[
+        expr.type
+      ];
+      return `${describeTerm(expr.left)} ${symbol} ${describeTerm(expr.right)}`;
+    }
+  }
+}
+
 const conjuncts = (expr: FormalExpr): FormalExpr[] =>
   expr.type === "and" ? expr.expressions.flatMap(conjuncts) : [expr];
 const not = (arg: SolverTerm): SolverTerm => ({ op: "not", arg });
@@ -263,9 +326,12 @@ const variable = (name: string): SolverTerm => ({ op: "var", name });
 /** Bounded model checking for witnesses, k-induction for unreachability proofs. */
 export function createProductReasoner(solver: SolverProvider): ProductReasoner {
   return {
-    checkReachability: (model, query) => search(solver, model, query, false),
+    checkReachability: (model, query) => search(solver, model, query, "reach"),
+    // Explain mode always attaches an explanation to unreachable results.
+    explainUnreachable: (model, query) =>
+      search(solver, model, query, "explain") as Promise<ExplanationResult>,
     async findPlan(input, query) {
-      const result = await search(solver, input, query, true);
+      const result = await search(solver, input, query, "plan");
       if (result.status === "unknown") return result;
       if (result.status === "unreachable")
         return { ...result, status: "impossible" };
@@ -309,8 +375,10 @@ async function search(
   solver: SolverProvider,
   input: FormalProductModel,
   query: ReachabilityQuery,
-  canonical: boolean,
-): Promise<ReachabilityResult> {
+  mode: "reach" | "plan" | "explain",
+): Promise<ReachabilityResult | ExplanationResult> {
+  const canonical = mode === "plan";
+  const labeled = mode === "explain";
   const started = Date.now();
   // Normalized order makes action indices, and so canonical plans, independent of authoring order.
   const full = normalizeFormalModel(input);
@@ -482,6 +550,87 @@ async function search(
   ]);
   const tracked = stateIds.filter((id) => used.has(id));
   const stepIds = (step: number) => (step === 0 ? stateIds : tracked);
+  // Explanations guard each product constraint with a label assumed true; an
+  // unsat core over the labels names the constraints a proof needs.
+  const provenance = new Map<string, ConstraintProvenance>();
+  const evidenceOf = (ids: string[], extra: EvidenceRef[] = []) => {
+    const refs = new Map(
+      [...extra, ...ids.flatMap((id) => variables.get(id)?.evidence ?? [])].map(
+        (ref) => [JSON.stringify(ref), ref],
+      ),
+    );
+    return [...refs.entries()]
+      .sort(([a], [b]) => compareText(a, b))
+      .map(([, ref]) => ref);
+  };
+  const label = (item: ConstraintProvenance) => {
+    provenance.set(item.id, item);
+    return `L:${item.id}`;
+  };
+  const guard = (labelName: string | undefined, body: SolverTerm) =>
+    labeled && labelName ? implies(variable(labelName), body) : body;
+  const contextLabels = new Map(
+    Object.entries(context)
+      .filter(([id]) => variables.has(id))
+      .map(([id, value]) => [
+        id,
+        label({
+          id: `context:${id}`,
+          kind: "context",
+          description: `Context fixes ${id} = ${String(value)}`,
+          variables: [id],
+          evidence: evidenceOf([id]),
+        }),
+      ]),
+  );
+  const preconditions = model.actions.map((action) => {
+    const original = full.actions.find(
+      (item) => item.id === action.id,
+    ) as FormalAction;
+    return conjuncts(action.precondition).map((item, index) => {
+      if (item.type === "bool" && item.value) return { item, label: undefined };
+      const ids = [...new Set(formalExprVariables(item))].sort(compareText);
+      return {
+        item,
+        label: label({
+          id: `precondition:${action.id}#${index + 1}`,
+          kind: "precondition",
+          description: `${action.id} requires ${describeFormalExpr(item)}`,
+          actionId: action.id,
+          ...(original.capabilityId
+            ? { capabilityId: original.capabilityId }
+            : {}),
+          ...(original.semanticTarget
+            ? { semanticTarget: original.semanticTarget }
+            : {}),
+          variables: ids,
+          evidence: evidenceOf(
+            ids.filter((id) => variables.get(id)?.scope === "context"),
+            original.evidence,
+          ),
+        }),
+      };
+    });
+  });
+  const initialParts = conjuncts(model.initial).map((item, index) => {
+    const ids = [...new Set(formalExprVariables(item))].sort(compareText);
+    return {
+      item,
+      label: label({
+        id: `initial#${index + 1}`,
+        kind: "initial",
+        description: `Initially ${describeFormalExpr(item)}`,
+        variables: ids,
+        evidence: evidenceOf(ids),
+      }),
+    };
+  });
+  const allLabels = labeled
+    ? [...provenance.keys()].map((id) => `L:${id}`)
+    : [];
+  const initialTerm = and(
+    initialParts.map((part) => guard(part.label, expr(part.item, 0))),
+  );
   const declare = (steps: number) => {
     const declarations: SolverProblem["variables"] = [];
     const constraints: SolverTerm[] = [];
@@ -499,7 +648,14 @@ async function search(
       }
     for (const [id, value] of Object.entries(context))
       if (variables.has(id))
-        constraints.push(eq(variable(name(id, 0)), encodeConst(value)));
+        constraints.push(
+          guard(
+            contextLabels.get(id),
+            eq(variable(name(id, 0)), encodeConst(value)),
+          ),
+        );
+    for (const item of allLabels)
+      declarations.push({ name: item, sort: "bool" });
     for (let step = 0; step < steps; step += 1) {
       declarations.push({ name: `a${step}`, sort: "int" });
       constraints.push(transition(step));
@@ -519,7 +675,9 @@ async function search(
         return implies(
           eq(choice, int(index)),
           and([
-            expr(action.precondition, step),
+            ...(preconditions[index] ?? []).map((part) =>
+              guard(part.label, expr(part.item, step)),
+            ),
             ...tracked.map((id) => {
               const value = assigned.get(id);
               return eq(
@@ -534,8 +692,8 @@ async function search(
   };
   // Variables no action assigns keep their initial values; their initial
   // conjuncts therefore hold in every reachable state.
-  const frozen = conjuncts(model.initial).filter((item) =>
-    formalExprVariables(item).every(
+  const frozen = initialParts.filter((part) =>
+    formalExprVariables(part.item).every(
       (id) => variables.get(id)?.scope === "context" || !dynamic.has(id),
     ),
   );
@@ -571,7 +729,7 @@ async function search(
     problem: Omit<SolverProblem, "timeoutMs">,
   ): Promise<
     | { status: "sat"; model: Record<string, SolverValue> }
-    | { status: "unsat" }
+    | { status: "unsat"; core?: string[] }
     | ReachabilityResult
   > => {
     const remaining = started + timeoutMs - Date.now();
@@ -584,7 +742,11 @@ async function search(
       };
     solverCalls += 1;
     constraintCount = problem.assertions.length;
-    const result = await solver.check({ ...problem, timeoutMs: remaining });
+    const result = await solver.check({
+      ...problem,
+      ...(labeled && !problem.assumptions ? { assumptions: allLabels } : {}),
+      timeoutMs: remaining,
+    });
     if (result.status !== "unknown") return result;
     const timedOut = /timeout|canceled/i.test(result.reason);
     return {
@@ -595,17 +757,111 @@ async function search(
     };
   };
 
-  for (let depth = 0; depth <= maxDepth; depth += 1) {
-    bound = depth;
+  const baseProblem = (depth: number) => {
     const witness = declare(depth);
-    const found = await run({
+    return {
       variables: witness.declarations,
       assertions: [
         ...witness.constraints,
-        expr(model.initial, 0),
+        initialTerm,
         expr(goal.condition, depth),
       ],
-    });
+    };
+  };
+  const stepProblem = (depth: number) => {
+    const step = declare(depth + 1);
+    const distinct: SolverTerm[] = [];
+    for (let i = 0; i <= depth + 1; i += 1)
+      for (let j = i + 1; j <= depth + 1; j += 1)
+        distinct.push(
+          or(
+            tracked.map((id) =>
+              not(eq(variable(name(id, i)), variable(name(id, j)))),
+            ),
+          ),
+        );
+    return {
+      variables: step.declarations,
+      assertions: [
+        ...step.constraints,
+        ...frozen.map((part) => guard(part.label, expr(part.item, 0))),
+        ...Array.from({ length: depth + 1 }, (_, index) =>
+          not(expr(goal.condition, index)),
+        ),
+        expr(goal.condition, depth + 1),
+        ...distinct,
+      ],
+    };
+  };
+  const explain = async (
+    depth: number,
+  ): Promise<UnreachableExplanation | ReachabilityResult> => {
+    const problems = [
+      ...Array.from({ length: depth + 1 }, (_, index) => baseProblem(index)),
+      stepProblem(depth),
+    ];
+    let selected = new Set<string>();
+    let minimal = true;
+    for (const problem of problems) {
+      const result = await run(problem);
+      if ("goal" in result) return result;
+      if (result.status === "sat")
+        throw new Error("Internal reasoning error: proof does not replay.");
+      for (const item of result.core ?? allLabels) selected.add(item);
+    }
+    for (const candidate of [...selected].sort(compareText)) {
+      const trial = [...selected].filter((item) => item !== candidate);
+      let needed = false;
+      for (const problem of problems) {
+        const result = await run({ ...problem, assumptions: trial });
+        if ("goal" in result) {
+          minimal = false;
+          break;
+        }
+        if (result.status === "sat") {
+          needed = true;
+          break;
+        }
+      }
+      if (!minimal) break;
+      if (!needed) selected = new Set(trial);
+    }
+    const order = { context: 0, precondition: 1, initial: 2 };
+    const constraints = [...selected]
+      .map((item) => provenance.get(item.slice(2)) as ConstraintProvenance)
+      .sort((a, b) => order[a.kind] - order[b.kind] || compareText(a.id, b.id));
+    const goalVariables = new Set(formalExprVariables(goal.condition));
+    const goalSetters = model.actions
+      .filter((action) =>
+        action.effects.some((effect) => goalVariables.has(effect.variable)),
+      )
+      .map((action) => {
+        const capabilityId = full.actions.find(
+          (item) => item.id === action.id,
+        )?.capabilityId;
+        return {
+          actionId: action.id,
+          ...(capabilityId ? { capabilityId } : {}),
+        };
+      });
+    const setters = goalSetters.map((item) => item.actionId);
+    return {
+      constraints,
+      minimal,
+      goalSetters,
+      summary: [
+        setters.length === 0
+          ? `No action can make ${goal.id} true.`
+          : `${setters.length === 1 ? `Only ${setters[0]} can` : `Only ${setters.slice(0, -1).join(", ")} and ${setters.at(-1)} can`} make ${goal.id} true.`,
+        ...constraints.map((item) => `${item.description}.`),
+      ],
+    };
+  };
+
+  for (let depth = 0; depth <= maxDepth; depth += 1) {
+    bound = depth;
+    const witness = declare(depth);
+    const found = await run(baseProblem(depth));
     if ("goal" in found) return found;
     if (found.status === "sat") {
       let values = found.model;
@@ -623,7 +879,7 @@ async function search(
               variables: witness.declarations,
               assertions: [
                 ...witness.constraints,
-                expr(model.initial, 0),
+                initialTerm,
                 expr(goal.condition, depth),
                 ...fixed,
                 { op: "le", left: choice, right: int(middle) },
@@ -644,36 +900,15 @@ async function search(
         trace: decode(values, depth),
       };
     }
-    const step = declare(depth + 1);
-    const distinct: SolverTerm[] = [];
-    for (let i = 0; i <= depth + 1; i += 1)
-      for (let j = i + 1; j <= depth + 1; j += 1)
-        distinct.push(
-          or(
-            tracked.map((id) =>
-              not(eq(variable(name(id, i)), variable(name(id, j)))),
-            ),
-          ),
-        );
-    const closed = await run({
-      variables: step.declarations,
-      assertions: [
-        ...step.constraints,
-        ...frozen.map((item) => expr(item, 0)),
-        ...Array.from({ length: depth + 1 }, (_, index) =>
-          not(expr(goal.condition, index)),
-        ),
-        expr(goal.condition, depth + 1),
-        ...distinct,
-      ],
-    });
+    const closed = await run(stepProblem(depth));
     if ("goal" in closed) return closed;
-    if (closed.status === "unsat")
-      return {
-        ...base(),
-        status: "unreachable",
-        proof: { method: "k-induction", depth },
-      };
+    if (closed.status === "unsat") {
+      const proof = { method: "k-induction" as const, depth };
+      if (!labeled) return { ...base(), status: "unreachable", proof };
+      const explanation = await explain(depth);
+      if ("goal" in explanation) return explanation;
+      return { ...base(), status: "unreachable", proof, explanation };
+    }
   }
   return {
     ...base(),

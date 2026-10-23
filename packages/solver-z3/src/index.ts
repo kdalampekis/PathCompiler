@@ -94,8 +94,40 @@ export async function createZ3SolverProvider(): Promise<SolverProvider> {
           Z3.params_dec_ref(context, params);
           for (const assertion of problem.assertions)
             Z3.solver_assert(context, solver, translate(assertion));
-          const status = await Z3.solver_check(context, solver);
-          if (status === Z3_lbool.Z3_L_FALSE) return { status: "unsat" };
+          const assumed = new Map(
+            (problem.assumptions ?? []).map((item) => [
+              constants.get(item) as Z3_ast,
+              item,
+            ]),
+          );
+          const status = problem.assumptions
+            ? await Z3.solver_check_assumptions(context, solver, [
+                ...assumed.keys(),
+              ])
+            : await Z3.solver_check(context, solver);
+          if (status === Z3_lbool.Z3_L_FALSE) {
+            if (!problem.assumptions) return { status: "unsat" };
+            const vector = Z3.solver_get_unsat_core(context, solver);
+            Z3.ast_vector_inc_ref(context, vector);
+            try {
+              const core: string[] = [];
+              for (
+                let index = 0;
+                index < Z3.ast_vector_size(context, vector);
+                index += 1
+              ) {
+                const item = assumed.get(
+                  Z3.ast_vector_get(context, vector, index),
+                );
+                if (item === undefined)
+                  throw new Error("Z3 returned a core outside the assumptions");
+                core.push(item);
+              }
+              return { status: "unsat", core: core.sort() };
+            } finally {
+              Z3.ast_vector_dec_ref(context, vector);
+            }
+          }
           if (status === Z3_lbool.Z3_L_UNDEF)
             return {
               status: "unknown",
