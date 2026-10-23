@@ -1239,3 +1239,55 @@ non-overwriting regeneration.
   generation (it needs a token; `github inspect` remains available).
 - Commit evidence is file-history based and bounded by the base commit's date.
 - Twenty-two phases are complete (0–21), leaving 9 (22–30).
+
+## Phase 22 — New Workflow Detection
+
+Complete — verified locally on 2026-10-22.
+
+- Added pure `detectNewWorkflows` to `@pathcompiler/workflow-proposals`.
+  Capabilities new at head (absent at base) with no approved or rejected workflow
+  are scored from independent signals: new user action (0.30), new write API
+  (0.25), new Playwright flow (0.20), new route or component (0.15) and a commit
+  subject naming the verb and entity (0.10).
+- No single signal is sufficient. Two or more signals plus a test-backed head
+  candidate give `new-candidate`. Two or more without a test give `needs-evidence`.
+  One signal gives `insufficient-evidence`, with no candidate.
+- The write-API signal also follows newly added `CALLS_API` edges from the
+  capability's component functions, because Phase 7 API association can attach an
+  unrelated existing API.
+- `analyzeCommitRangeDetailed` returns base and head analyses. Added
+  `pathcompiler workflows detect <base> <head>`, writing
+  `reports/new-workflows.json` and new candidate files (never replacing existing
+  ones). Commit evidence gathering is shared with `proposals generate`.
+- Made the graph-delta temp-cleanup test observe a private `TMPDIR`. It had
+  raced with concurrent suites that legitimately create temp exports.
+- Documented in README and ADR 0024.
+
+### Verification
+
+All checks passed with Node 22.23.3 and pnpm 10.34.7:
+
+| Command / check | Result |
+| --- | --- |
+| Phase 21 baseline lint/typecheck/tests | Passed before edits; 229 tests |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 164 files |
+| `pnpm typecheck` | Passed, twenty-five package builds, root tests and fixture |
+| `pnpm test` | 232 tests passed across thirty suites |
+| `git diff --check` | Passed |
+
+In a temporary fixture repository with all base workflows approved, a Duplicate
+Plan feature (button, handler, POST API, Playwright test, "Duplicate a plan from
+its row") is the only detection: `new-candidate`, confidence 0.85, with a
+test-backed `plans.duplicate` candidate. A lone new button is
+`insufficient-evidence` with no candidate. A rejected candidate suppresses
+detection. Pre-existing unapproved capabilities (`clients.edit`,
+`clients.deactivate`) are not reported. The built CLI writes the candidate, it
+approves normally, and re-detection then finds nothing.
+
+### Scope notes and limitations
+
+- All Phase 22 scope is implemented. PR titles are not read (the GitHub adapter
+  needs a token). Commit subjects come from file histories in the range.
+- Weights are fixed rule strengths, not calibrated probabilities.
+- Twenty-three phases are complete (0–22), leaving 8 (23–30).

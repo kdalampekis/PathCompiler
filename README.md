@@ -819,6 +819,27 @@ record the decision and leave the approved workflow untouched. Decided proposals
 cannot be decided again. Generation never modifies approved files.
 See [ADR 0023](docs/decisions/0023-reviewed-workflow-update-proposals.md).
 
+## Detect new workflows
+
+```sh
+pnpm pathcompiler workflows detect <base> HEAD ./fixtures/next-demo
+```
+
+`detect` compares capabilities discovered at both commits. A capability that is
+new at head and has no approved or rejected workflow (by ID or intent) is scored
+from independent signals: a new user-facing action (0.30), a new write API, either
+in its evidence or newly called from its component (0.25), a new Playwright flow
+(0.20), a new route or component such as a dialog (0.15), and a commit subject
+naming its verb and entity (0.10). No single signal is enough:
+
+- `new-candidate`: two or more signals and a test-backed candidate. The candidate
+  YAML is written (existing files are kept) for normal validation and approval.
+- `needs-evidence`: two or more signals, but no supported test flow yet.
+- `insufficient-evidence`: one signal. Reported only; no candidate.
+
+The report is `reports/new-workflows.json`. Confidence is rule strength, not
+probability. See [ADR 0024](docs/decisions/0024-multi-signal-new-workflow-detection.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -850,8 +871,8 @@ Analysis packages:
 | `@pathcompiler/http-service` | `createHttpService`, `createRequestHandler`, `HttpServiceOptions` |
 | `@pathcompiler/graph-delta` | `computeGraphDelta`, `analyzeCommitRange`, `analyzeCommitRangeDetailed`, `GraphDeltaSchema`, `GraphNodeChangeSchema` and types |
 | `@pathcompiler/impact-analysis` | `analyzeWorkflowImpact`, impact reason/impact/report schemas and types |
-| `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `decideProposal`, `workflowDiff`, `proposalFileName`, proposal schema and YAML serialize/parse, `ProposalError` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `decideProposal`, `detectNewWorkflows`, `workflowDiff`, `proposalFileName`, proposal/detection schemas and YAML serialize/parse, `ProposalError` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

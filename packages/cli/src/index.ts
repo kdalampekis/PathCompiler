@@ -49,6 +49,7 @@ import type { WorkflowV1 } from "@pathcompiler/workflow-ir";
 import {
   acceptProposal,
   decideProposal,
+  detectNewWorkflows,
   generateProposals,
   ProposalError,
   parseProposalYaml,
@@ -78,6 +79,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler surfaces discover [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler capabilities discover [directory] [--expect <json-file>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows discover [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler workflows detect <base> <head> [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows validate <id> [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows list [--out <directory>] [--json]
        pathcompiler workflows show <id> [--out <directory>] [--json]
@@ -128,6 +130,9 @@ proposals generate writes proposals/<id>.<head-sha>.yaml for medium/high impact:
 head-commit rediscovery, validation, evidence and a readable diff. Approved files change
 only through proposals accept (re-validated on a clean checkout of that head commit).
 <proposal> is the file name without .yaml.
+workflows detect finds capabilities new in base..head with no approved or rejected workflow,
+scores signals (new action, write API, Playwright flow, route/dialog, commit subject) and
+writes reports/new-workflows.json plus candidates backed by two or more signals and a test.
 build compiles only approved workflows/<id>.yaml records into generated/search-index.json,
 generated/runtime-manifest.json (browser-safe) and generated/documentation.json.
 mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
@@ -638,6 +643,60 @@ export async function runCli(
   }
   if (
     positionals[0] === "workflows" &&
+    positionals[1] === "detect" &&
+    positionals.length >= 4 &&
+    positionals.length <= 5
+  ) {
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const scanned = path.resolve(cwd, positionals[4] ?? ".");
+    const { delta, base, head } = await analyzeCommitRangeDetailed({
+      directory: scanned,
+      base: positionals[2] ?? "",
+      head: positionals[3] ?? "",
+      exclude: values.exclude ?? [],
+    });
+    const headCapabilities = discoverCapabilities(head.mined.graph);
+    const report = detectNewWorkflows({
+      delta,
+      baseCapabilities: discoverCapabilities(base.mined.graph).report
+        .capabilities,
+      headCapabilities: headCapabilities.report.capabilities,
+      candidates: discoverWorkflows(
+        headCapabilities.graph,
+        headCapabilities.report,
+        head.mined.report,
+      ).report.candidates,
+      approved: await readApproved(output),
+      rejected: await readRejected(output),
+      commitSubjects: (await rangeCommits(scanned, delta)).map(
+        (commit) => commit.message.split("\n")[0] ?? "",
+      ),
+    });
+    await writeArtifacts(output, [
+      ["reports/new-workflows.json", `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    const written: string[] = [];
+    for (const detection of report.detections) {
+      if (!detection.candidate) continue;
+      const file = path.join(
+        output,
+        reviewPaths(detection.candidate.workflow.id).candidate,
+      );
+      if ((await readOptional(file)) !== undefined) continue;
+      await writeExclusive(file, serializeCandidateYaml(detection.candidate));
+      written.push(detection.candidate.workflow.id);
+    }
+    return `${report.detections.length} new capabilities without approved workflows:\n${report.detections
+      .map(
+        (item) =>
+          `${item.status.padEnd(21)} ${item.capabilityId}  confidence ${item.confidence} (${item.signals.map((signal) => signal.signal).join(", ")})`,
+      )
+      .join(
+        "\n",
+      )}${report.detections.length ? "\n" : ""}Wrote ${written.length} candidates (${head.commit.slice(0, 12)}); existing candidate files were kept.\nReport: ${path.join(output, "reports/new-workflows.json")}\nCandidates require validation and approval at their commit.\n`;
+  }
+  if (
+    positionals[0] === "workflows" &&
     positionals[1] === "validate" &&
     positionals.length >= 3 &&
     positionals.length <= 4
@@ -785,7 +844,7 @@ export async function runCli(
   }
   if (positionals[0] !== "scan" || positionals.length !== 2 || !positionals[1])
     throw new Error(
-      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/validate/list/show/approve/reject, diff, impact, proposals, build, mcp, or serve. Use --help for arguments and options.",
+      "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/detect/validate/list/show/approve/reject, diff, impact, proposals, build, mcp, or serve. Use --help for arguments and options.",
     );
   const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
     exclude: values.exclude ?? [],
@@ -1022,25 +1081,7 @@ async function runProposals(
       capabilities.report,
       head.mined.report,
     ).report.candidates;
-    const git = await openRepository(scanned);
-    const baseCommit = await git.getCommit(delta.base.commit);
-    const commits = new Map<
-      string,
-      { sha: string; authorDate: string; message: string }
-    >();
-    for (const file of delta.summary.files.slice(0, 50)) {
-      if (file.status === "removed") continue;
-      const history = await git.getCommitsForPath(file.path, {
-        revision: delta.head.commit,
-        limit: 20,
-      });
-      for (const commit of history.commits)
-        if (
-          commit.sha !== baseCommit.sha &&
-          commit.authorDate >= baseCommit.authorDate
-        )
-          commits.set(commit.sha, commit);
-    }
+    const commits = await rangeCommits(scanned, delta);
     const proposals = generateProposals({
       impact,
       approved,
@@ -1051,15 +1092,7 @@ async function runProposals(
           traces: head.mined.report,
         }),
       changedFiles: delta.summary.files,
-      commits: [...commits.values()].sort((a, b) =>
-        a.authorDate < b.authorDate
-          ? 1
-          : a.authorDate > b.authorDate
-            ? -1
-            : a.sha < b.sha
-              ? -1
-              : 1,
-      ),
+      commits,
     });
     await writeArtifacts(output, [
       ["reports/graph-delta.json", `${JSON.stringify(delta, null, 2)}\n`],
@@ -1191,6 +1224,67 @@ async function runProposals(
   }
   throw new Error(
     "Expected: proposals generate <base> <head> [directory], list, show <proposal>, accept <proposal> [directory], reject <proposal> or ignore <proposal>.",
+  );
+}
+
+/** Commits in base..head touching changed files (date-bounded file histories). */
+async function rangeCommits(
+  scanned: string,
+  delta: {
+    base: { commit: string };
+    head: { commit: string };
+    summary: { files: { path: string; status: string }[] };
+  },
+) {
+  const git = await openRepository(scanned);
+  const baseCommit = await git.getCommit(delta.base.commit);
+  const commits = new Map<
+    string,
+    { sha: string; authorDate: string; message: string }
+  >();
+  for (const file of delta.summary.files.slice(0, 50)) {
+    if (file.status === "removed") continue;
+    const history = await git.getCommitsForPath(file.path, {
+      revision: delta.head.commit,
+      limit: 20,
+    });
+    for (const commit of history.commits)
+      if (
+        commit.sha !== baseCommit.sha &&
+        commit.authorDate >= baseCommit.authorDate
+      )
+        commits.set(commit.sha, commit);
+  }
+  return [...commits.values()].sort((a, b) =>
+    a.authorDate < b.authorDate
+      ? 1
+      : a.authorDate > b.authorDate
+        ? -1
+        : a.sha < b.sha
+          ? -1
+          : 1,
+  );
+}
+
+async function readRejected(output: string) {
+  const directory = path.join(output, "workflows/rejected");
+  let names: string[];
+  try {
+    names = (await readdir(directory))
+      .filter((name) => name.endsWith(".yaml"))
+      .sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  return Promise.all(
+    names.map(async (name) =>
+      parseStored(
+        await readFile(path.join(directory, name), "utf8"),
+        workflowId(name.slice(0, -".yaml".length)),
+        parseRejectedWorkflowYaml,
+      ),
+    ),
   );
 }
 

@@ -21,6 +21,8 @@ import {
 import { parseDocument, stringify } from "yaml";
 import { z } from "zod";
 
+export * from "./detect.js";
+
 const sha = z.string().regex(/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/);
 const decided = {
   decidedBy: ReviewerSchema,

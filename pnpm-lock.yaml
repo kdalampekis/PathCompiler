@@ -592,6 +592,12 @@ importers:
 
   packages/workflow-proposals:
     dependencies:
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/graph-delta":
+        specifier: workspace:*
+        version: link:../graph-delta
       "@pathcompiler/impact-analysis":
         specifier: workspace:*
         version: link:../impact-analysis
@@ -620,12 +626,6 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
-      "@pathcompiler/capability-engine":
-        specifier: workspace:*
-        version: link:../capability-engine
-      "@pathcompiler/graph-delta":
-        specifier: workspace:*
-        version: link:../graph-delta
       "@pathcompiler/source-model":
         specifier: workspace:*
         version: link:../source-model

@@ -217,10 +217,10 @@ export type CommitAnalysis = {
   mined: ReturnType<typeof minePlaywrightTests>;
 };
 
-/** Like `analyzeCommitRange`, also returning the head analysis for rediscovery. */
+/** Like `analyzeCommitRange`, also returning both analyses for rediscovery. */
 export async function analyzeCommitRangeDetailed(
   options: CommitRangeOptions,
-): Promise<{ delta: GraphDelta; head: CommitAnalysis }> {
+): Promise<{ delta: GraphDelta; base: CommitAnalysis; head: CommitAnalysis }> {
   const git = await openGitRepository(options.directory);
   const workspace = await mkdtemp(
     path.join(os.tmpdir(), "pathcompiler-delta-"),
@@ -254,6 +254,7 @@ export async function analyzeCommitRangeDetailed(
         head: { commit: head.commit },
         ...computeGraphDelta(base.mined.graph, head.mined.graph, files),
       }),
+      base: { commit: base.commit, project: base.project, mined: base.mined },
       head: { commit: head.commit, project: head.project, mined: head.mined },
     };
   } finally {

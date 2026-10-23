@@ -200,14 +200,19 @@ describe("graph delta", () => {
   });
 
   it("rejects unknown revisions without leaving temporary exports", async () => {
-    await expect(
-      analyzeCommitRange({ directory: app, base, head: "f".repeat(40) }),
-    ).rejects.toThrow("revision and path");
-    const leftovers = (await readdir(os.tmpdir())).filter(
-      (name) =>
-        name.startsWith("pathcompiler-delta-") &&
-        !name.startsWith("pathcompiler-delta-repo-"),
-    );
-    expect(leftovers).toEqual([]);
+    // Other suites run deltas concurrently, so observe a private temp root.
+    const root = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-tmp-"));
+    const previous = process.env.TMPDIR;
+    process.env.TMPDIR = root;
+    try {
+      await expect(
+        analyzeCommitRange({ directory: app, base, head: "f".repeat(40) }),
+      ).rejects.toThrow("revision and path");
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      if (previous === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previous;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

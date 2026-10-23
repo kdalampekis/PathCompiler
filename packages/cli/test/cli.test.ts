@@ -595,6 +595,96 @@ describe("pathcompiler CLI", () => {
       await expect(run(invalid)).rejects.toThrow();
   }, 90_000);
 
+  it("detects a new capability and writes an approvable candidate", async () => {
+    const cwd = await directory();
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.test",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.test",
+    };
+    const app = path.join(cwd, "app");
+    const git = async (...args: string[]) =>
+      (await exec("git", ["-C", app, ...args], { env })).stdout.trim();
+    const tracked = (
+      await exec("git", ["-C", fixture, "ls-files", "-z", "--", "."])
+    ).stdout
+      .split("\0")
+      .filter(Boolean);
+    for (const file of tracked) {
+      await mkdir(path.dirname(path.join(app, file)), { recursive: true });
+      await writeFile(
+        path.join(app, file),
+        await readFile(path.join(fixture, file)),
+      );
+    }
+    await git("init", "--quiet");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "base");
+    const base = await git("rev-parse", "HEAD");
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["workflows", "discover", "app"]);
+    for (const id of [
+      "clients.create",
+      "plans.create",
+      "plans.change_structure",
+    ])
+      await run(["workflows", "approve", id, "app", "--by", "Ana"]);
+    const plans = path.join(app, "components/plans.tsx");
+    await writeFile(
+      plans,
+      (await readFile(plans, "utf8"))
+        .replace(
+          '  return (\n    <>\n      <div className="page-heading">',
+          "  async function duplicate(plan: Plan) {\n    await save(`/api/plans/$" +
+            '{plan.id}/duplicate`, "POST", {});\n    setNotice("Plan duplicated");\n    router.refresh();\n  }\n\n  return (\n    <>\n      <div className="page-heading">',
+        )
+        .replace(
+          "                  Change Plan Structure\n                </button>\n              )}",
+          '                  Change Plan Structure\n                </button>\n              )}\n              {canEdit && (\n                <button\n                  data-pathcompiler="plans.duplicate"\n                  type="button"\n                  onClick={() => duplicate(plan)}\n                >\n                  Duplicate Plan\n                </button>\n              )}',
+        ),
+    );
+    await mkdir(path.join(app, "app/api/plans/[id]/duplicate"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(app, "app/api/plans/[id]/duplicate/route.ts"),
+      'import { handleRequest, readSession, writeSession } from "../../../../../lib/session";\n\nexport async function POST() {\n  return handleRequest(async () => writeSession(await readSession(), null, 201));\n}\n',
+    );
+    const tests = path.join(app, "tests/workflows.spec.ts");
+    await writeFile(
+      tests,
+      `${await readFile(tests, "utf8")}\ntest("Duplicate Plan", async ({ page }) => {\n  await page.goto("/plans");\n  await page.locator('[data-pathcompiler="plans.duplicate"]').click();\n  await expect(page.locator('[data-pathcompiler="plans.feedback"]')).toHaveText("Plan duplicated");\n});\n`,
+    );
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "Duplicate a plan");
+    const output = await run(["workflows", "detect", base, "HEAD", "app"]);
+    expect(output).toContain("new-candidate         plans.duplicate");
+    expect(output).toContain("Wrote 1 candidates");
+    const report = JSON.parse(
+      await readFile(path.join(cwd, "out/reports/new-workflows.json"), "utf8"),
+    );
+    expect(
+      report.detections.map(
+        (item: { capabilityId: string }) => item.capabilityId,
+      ),
+    ).toEqual(["plans.duplicate"]);
+    expect(
+      await run([
+        "workflows",
+        "approve",
+        "plans.duplicate",
+        "app",
+        "--by",
+        "Ana",
+      ]),
+    ).toContain("Approved plans.duplicate");
+    expect(await run(["workflows", "detect", base, "HEAD", "app"])).toContain(
+      "0 new capabilities",
+    );
+  }, 90_000);
+
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];
