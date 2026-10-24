@@ -198,10 +198,15 @@ describe("model providers", () => {
     expect(Object.values(result.redactions).reduce((a, b) => a + b, 0)).toBe(5);
   });
 
-  it("keeps vendor SDKs out of every package", async () => {
+  it("keeps vendor SDKs out of every package but its adapter (ADR 0071)", async () => {
     const root = fileURLToPath(new URL("../../", import.meta.url));
     const vendors =
       /^(openai|@anthropic-ai\/|@google\/(genai|generative-ai)|@mistralai\/|cohere-ai|ollama|@aws-sdk\/client-bedrock)/;
+    // The one adapter allowed an SDK, and the only package that may load it.
+    const adapters: Record<string, string[]> = {
+      "model-provider-anthropic": ["@anthropic-ai/sdk"],
+    };
+    const loaders = new Set(["cli"]);
     for (const name of await readdir(root)) {
       const manifest = JSON.parse(
         await readFile(`${root}${name}/package.json`, "utf8").catch(() => "{}"),
@@ -213,7 +218,16 @@ describe("model providers", () => {
       expect(
         dependencies.filter((dependency) => vendors.test(dependency)),
         name,
-      ).toEqual([]);
+      ).toEqual(adapters[name] ?? []);
+      if (!loaders.has(name))
+        expect(
+          dependencies.filter((dependency) =>
+            Object.keys(adapters).some(
+              (adapter) => dependency === `@pathcompiler/${adapter}`,
+            ),
+          ),
+          name,
+        ).toEqual([]);
     }
   });
 });

@@ -104,6 +104,11 @@ describe("pathcompiler.yaml", () => {
     ).toContain("Name an environment variable");
     expect(
       issues(
+        "version: 1\nmodel_provider:\n  provider: local\n  base_url: file:///tmp/socket\n",
+      ).join(),
+    ).toContain("model_provider.base_url");
+    expect(
+      issues(
         "version: 1\nmodel_provider:\n  provider: openai\n  api_key: sk-abcdefghijklmnop\n",
       ),
     ).toEqual([

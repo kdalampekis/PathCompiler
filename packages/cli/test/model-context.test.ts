@@ -2,6 +2,18 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { analyzeNextProject } from "@pathcompiler/adapter-nextjs";
+import {
+  discoverCapabilities,
+  discoverProductSurfaces,
+} from "@pathcompiler/capability-engine";
+import {
+  type InferCapabilitiesRequest,
+  interpretAmbiguities,
+  NoopModelProvider,
+} from "@pathcompiler/model-provider";
+import { readSourceProject } from "@pathcompiler/source-model";
+import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../src/index.js";
 
@@ -76,5 +88,119 @@ describe("scan --explain-model-context", () => {
     await expect(
       runCli(["diff", "a", "b", "--explain-model-context"], cwd),
     ).rejects.toThrow("--explain-model-context is only supported by scan.");
+  });
+});
+
+describe("analyze", () => {
+  async function ambiguousProject() {
+    const root = await directory();
+    await mkdir(path.join(root, "app", "clients"), { recursive: true });
+    await writeFile(
+      path.join(root, "app", "clients", "page.tsx"),
+      "export default function Page() { return <><button>Add Client</button><button>Archive Client</button></>; }\n",
+    );
+    return root;
+  }
+
+  it("sends nothing without a provider, and nothing for the unambiguous fixture", async () => {
+    const cwd = await directory();
+    expect(await runCli(["analyze", fixture], cwd)).toContain(
+      "0 ambiguous clusters of 6 capabilities",
+    );
+    const output = await runCli(["analyze", await ambiguousProject()], cwd);
+    expect(output).toContain(
+      "1 ambiguous clusters of 2 capabilities.\n  clients: clients.archive (low-confidence, weak-naming); clients.create (low-confidence, weak-naming)\nNo model provider is configured; nothing was sent.",
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(cwd, ".pathcompiler", "reports", "semantic-hypotheses.json"),
+        "utf8",
+      ),
+    );
+    expect(report).toMatchObject({
+      provider: "none",
+      hypotheses: [],
+      context: { sent: false, requests: [] },
+    });
+  });
+
+  it("replays recorded model answers as validated hypotheses", async () => {
+    const root = await ambiguousProject();
+    // Record the exact request the CLI will send.
+    const project = await readSourceProject(root);
+    const mined = minePlaywrightTests(
+      project,
+      analyzeNextProject(project).graph,
+    );
+    const sent: InferCapabilitiesRequest[] = [];
+    const noop = new NoopModelProvider();
+    await interpretAmbiguities({
+      provider: {
+        id: "recorder",
+        inferCapabilities: async (request) => {
+          sent.push(request);
+          return { capabilities: [] };
+        },
+        synthesizeWorkflow: () => noop.synthesizeWorkflow(),
+        explainImpact: (input) => noop.explainImpact(input),
+        generateAliases: () => noop.generateAliases(),
+        summarizeEvidence: () => noop.summarizeEvidence(),
+      },
+      graph: mined.graph,
+      surfaces: discoverProductSurfaces(mined.graph).report.surfaces,
+      capabilities: discoverCapabilities(mined.graph).report.capabilities,
+    });
+    const cwd = await directory();
+    const surface = "surface:action:ui:app/clients/page.tsx#Page:button[2]";
+    await writeFile(
+      path.join(cwd, "answers.json"),
+      JSON.stringify([
+        {
+          kind: "inferCapabilities",
+          request: sent[0],
+          response: {
+            capabilities: [
+              {
+                title: "Delete Client",
+                surfaceIds: [surface],
+                evidenceIds: ["ui:app/clients/page.tsx#Page:button[2]"],
+                confidence: 0.9,
+                rationale: "Button label",
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const output = await runCli(
+      ["analyze", root, "--model-fixtures", "answers.json"],
+      cwd,
+    );
+    expect(output).toContain(
+      'Hypotheses: 0 supported, 1 rejected (never applied).\n  - rename clients.archive → "Delete Client" [unsupported-verb]\nSent 1 requests,',
+    );
+    await expect(
+      runCli(["scan", root, "--model-fixtures", "answers.json"], cwd),
+    ).rejects.toThrow("--model-fixtures is only supported by analyze.");
+  });
+
+  it("needs the configured key in the environment", async () => {
+    const cwd = await directory();
+    await writeFile(
+      path.join(cwd, "pathcompiler.yaml"),
+      "version: 1\nmodel_provider:\n  provider: anthropic\n  api_key_env: PATHCOMPILER_TEST_MISSING_KEY\n",
+    );
+    await expect(
+      runCli(["analyze", await ambiguousProject()], cwd),
+    ).rejects.toThrow(
+      "model_provider.provider is anthropic but $PATHCOMPILER_TEST_MISSING_KEY is not set.",
+    );
+    await writeFile(
+      path.join(cwd, "pathcompiler.yaml"),
+      "version: 1\nmodel_provider:\n  provider: openai\n  api_key_env: HOME\n",
+    );
+    await expect(
+      runCli(["analyze", await ambiguousProject()], cwd),
+    ).rejects.toThrow("set model_provider.model to the model to use.");
   });
 });

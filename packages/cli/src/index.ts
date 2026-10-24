@@ -101,8 +101,17 @@ import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
   describeModelRequest,
+  FixtureModelProvider,
+  interpretAmbiguities,
+  NoopModelProvider,
+  type PathCompilerModelProvider,
   redactValue,
 } from "@pathcompiler/model-provider";
+import {
+  createLocalModelProvider,
+  createOpenAIModelProvider,
+  DEFAULT_OPENAI_KEY_ENV,
+} from "@pathcompiler/model-provider-openai";
 import {
   buildObservedGraph,
   buildTransitionModel,
@@ -240,6 +249,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler observe release-diff <base-release> <head-release> [directory] [--commits <base>..<head>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler analyze [directory] [--model-fixtures <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
@@ -400,7 +410,16 @@ flag, observe needs modes.observe, evaluate needs modes.evaluate, reasoning.impa
 --reasoning, and analytics.ingest enables serve ingestion with the analytics privacy policy.
 Without the file nothing is gated. API keys never go in the file (model_provider.api_key_env
 names an environment variable).
-No repository code is executed and no source is sent to a model or network service.
+analyze finds capabilities the deterministic rules could not name with confidence (low
+confidence, no semantic target, label conflicts, same domain and verb), sends only those
+clusters' surfaces and graph evidence to model_provider (anthropic, openai or local; none sends
+nothing), and checks every answer against that evidence. It writes
+reports/semantic-hypotheses.json: rename, merge or confirm hypotheses, each supported or
+rejected (unsupported verb or entity, evidence of other surfaces, merge across entities), and
+the exact context sent. Capabilities are never changed. --model-fixtures replays recorded
+responses ([{ kind, request | key, response }]) instead of calling a provider.
+No repository code is executed. Only analyze with a configured model_provider sends anything
+to a model, and never file contents; nothing else is sent to a network service.
 `;
 
 const CLI_OPTIONS = {
@@ -441,6 +460,7 @@ const CLI_OPTIONS = {
   weight: { type: "string", multiple: true },
   setup: { type: "string" },
   commits: { type: "string" },
+  "model-fixtures": { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -553,6 +573,15 @@ export async function runCli(
     return "";
   }
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
+  if (values["model-fixtures"] !== undefined && positionals[0] !== "analyze")
+    throw new Error("--model-fixtures is only supported by analyze.");
+  if (positionals[0] === "analyze")
+    return runAnalyze(
+      positionals,
+      values,
+      cwd,
+      configured?.config.model_provider ?? { provider: "none" },
+    );
   if (
     positionals[0] === "scan" &&
     positionals.length === 2 &&
@@ -3767,4 +3796,131 @@ async function explainModelContext(
     `Exact payload: ${path.join(output, file)}`,
     "",
   ].join("\n");
+}
+
+const ModelFixturesSchema = z.array(
+  z.strictObject({
+    kind: z.enum([
+      "inferCapabilities",
+      "synthesizeWorkflow",
+      "explainImpact",
+      "generateAliases",
+      "summarizeEvidence",
+    ]),
+    key: z.string().min(1).optional(),
+    request: z.unknown().optional(),
+    response: z.unknown(),
+  }),
+);
+
+/** The configured provider; keys come only from the environment. */
+async function configuredModelProvider(
+  config: PathCompilerConfig["model_provider"],
+): Promise<PathCompilerModelProvider> {
+  const key = (fallback: string | undefined) => {
+    const name = config.api_key_env ?? fallback;
+    const value = name ? process.env[name] : undefined;
+    if (fallback && !value)
+      throw new Error(
+        `model_provider.provider is ${config.provider} but $${name} is not set. Export the API key, or set model_provider.api_key_env to the variable that holds it.`,
+      );
+    return value;
+  };
+  const model = () => {
+    if (!config.model)
+      throw new Error(
+        `model_provider.provider is ${config.provider}; set model_provider.model to the model to use.`,
+      );
+    return config.model;
+  };
+  switch (config.provider) {
+    case "none":
+      return new NoopModelProvider();
+    case "anthropic": {
+      // Loaded only when chosen: the one package with a vendor SDK (ADR 0071).
+      const anthropic = await import("@pathcompiler/model-provider-anthropic");
+      return anthropic.createAnthropicModelProvider({
+        apiKey: key(anthropic.DEFAULT_ANTHROPIC_KEY_ENV) as string,
+        ...(config.model ? { model: config.model } : {}),
+      });
+    }
+    case "openai":
+      return createOpenAIModelProvider({
+        apiKey: key(DEFAULT_OPENAI_KEY_ENV) as string,
+        model: model(),
+        ...(config.base_url ? { baseUrl: config.base_url } : {}),
+      });
+    case "local": {
+      const apiKey = key(undefined);
+      return createLocalModelProvider({
+        model: model(),
+        ...(config.base_url ? { baseUrl: config.base_url } : {}),
+        ...(apiKey ? { apiKey } : {}),
+      });
+    }
+  }
+}
+
+async function runAnalyze(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+  config: PathCompilerConfig["model_provider"],
+): Promise<string> {
+  if (positionals.length > 2)
+    throw new Error(
+      "Expected: pathcompiler analyze [directory]. Use --help for options.",
+    );
+  const directory = path.resolve(cwd, positionals[1] ?? ".");
+  const project = await readSourceProject(directory, {
+    exclude: values.exclude ?? [],
+  });
+  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const surfaces = discoverProductSurfaces(mined.graph).report.surfaces;
+  const { capabilities } = discoverCapabilities(mined.graph).report;
+  const fixtures = values["model-fixtures"];
+  const provider = fixtures
+    ? new FixtureModelProvider(
+        ModelFixturesSchema.parse(
+          JSON.parse(await readFile(path.resolve(cwd, fixtures), "utf8")),
+        ),
+      )
+    : await configuredModelProvider(config);
+  const report = await interpretAmbiguities({
+    provider,
+    graph: mined.graph,
+    surfaces,
+    capabilities,
+  });
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = "reports/semantic-hypotheses.json";
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  const lines = [
+    `Semantic analysis (provider: ${report.provider}): ${report.clusters.length} ambiguous clusters of ${capabilities.length} capabilities.`,
+  ];
+  for (const cluster of report.clusters)
+    lines.push(
+      `  ${cluster.id}: ${cluster.capabilities.map((item) => `${item.id} (${item.reasons.join(", ")})`).join("; ")}`,
+    );
+  if (report.provider === "none")
+    lines.push(
+      "No model provider is configured; nothing was sent. Set model_provider in pathcompiler.yaml to interpret the clusters.",
+    );
+  else {
+    lines.push(
+      `Hypotheses: ${report.summary.supported} supported, ${report.summary.rejected} rejected (never applied).`,
+    );
+    for (const hypothesis of report.hypotheses)
+      lines.push(
+        `  ${hypothesis.status === "supported" ? "+" : "-"} ${hypothesis.kind} ${hypothesis.capabilityIds.join(", ") || "(none)"} → "${hypothesis.title}"${hypothesis.rejections.length ? ` [${hypothesis.rejections.join(", ")}]` : ""}`,
+      );
+    lines.push(
+      `Sent ${report.context.requests.length} requests, ${report.context.requests.reduce((sum, item) => sum + item.bytes, 0)} bytes; never file contents.`,
+    );
+  }
+  lines.push(`Report: ${path.join(output, file)}`, "");
+  return lines.join("\n");
 }

@@ -1277,9 +1277,62 @@ Models are optional. Every call goes through `guardModelProvider`:
 
 Requests are evidence packets, never file contents, hidden files (`.env`),
 binaries or excluded paths. The default `NoopModelProvider` infers nothing,
-and `FixtureModelProvider` replays recorded responses for tests. Packages
-depend on no vendor SDK. See
+and `FixtureModelProvider` replays recorded responses for tests. See
 [ADR 0057](docs/decisions/0057-model-provider-boundary.md).
+
+### Provider adapters and semantic analysis (`pathcompiler analyze`)
+
+```yaml
+# pathcompiler.yaml
+model_provider:
+  provider: anthropic        # none (default) | anthropic | openai | local
+  model: claude-opus-5       # required for openai and local
+  api_key_env: ANTHROPIC_API_KEY
+  # base_url: http://localhost:11434/v1   # openai or local (OpenAI-compatible)
+```
+
+```bash
+export ANTHROPIC_API_KEY=...            # keys only ever come from the environment
+pnpm pathcompiler analyze fixtures/next-demo
+pnpm pathcompiler analyze <dir> --model-fixtures answers.json   # replay recorded answers
+```
+
+`analyze` runs deterministic rules first. They select the capabilities they
+could not name with confidence:
+- low confidence;
+- no semantic target;
+- label conflicts;
+- the same domain and verb under different qualifiers.
+
+Ambiguous capabilities that share a domain or a page form a cluster. Only a
+cluster's surfaces and graph evidence are sent, through the guarded
+boundary. The model's answers become `SemanticHypothesis` records (`confirm`,
+`rename`, `merge`) that are checked against that evidence. A hypothesis is
+rejected when:
+- its title uses a capability verb the evidence lacks;
+- it names an entity the evidence lacks;
+- it cites another surface's evidence;
+- it merges different entities.
+
+Rejected hypotheses are never applied, and capabilities are never changed.
+The report (`reports/semantic-hypotheses.json`) includes:
+- the clusters and hypotheses;
+- per-cluster failures (refusals and invalid answers);
+- the invention rate;
+- the exact context that was sent.
+
+With `provider: none` nothing is sent. On the demo fixture nothing is
+ambiguous, so nothing is sent either.
+
+Adapters:
+- **Anthropic** (`@pathcompiler/model-provider-anthropic`, the only package
+  with a vendor SDK; default model `claude-opus-5`). It uses structured
+  outputs and enables server-side refusal fallbacks (`fallbacks: "default"`).
+- **OpenAI and local OpenAI-compatible servers**
+  (`@pathcompiler/model-provider-openai`, plain HTTP). Examples: Ollama, LM
+  Studio, vLLM.
+
+See [ADR 0071](docs/decisions/0071-provider-adapters-and-semantic-interpretation.md).
 
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
@@ -1548,7 +1601,9 @@ Analysis packages:
 | `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `instrumentGuide`, `FetchTransport`, `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
 | `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
 | `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
-| `@pathcompiler/model-provider` | `PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `fixtureKey`, `guardModelProvider`, `semanticModelFromProvider`, `redactSecrets`, `redactValue`, `describeModelRequest`, `ModelProviderError` |
+| `@pathcompiler/model-provider` | `PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `fixtureKey`, `guardModelProvider`, `semanticModelFromProvider`, `redactSecrets`, `redactValue`, `describeModelRequest`, `ModelProviderError`, `createStructuredModelProvider`, `structuredTask`, `findAmbiguousClusters`, `interpretAmbiguities`, `SemanticHypothesis` |
+| `@pathcompiler/model-provider-anthropic` | `createAnthropicModelProvider`, `DEFAULT_ANTHROPIC_MODEL` (Anthropic SDK; ADR 0071) |
+| `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
 | `@pathcompiler/reasoning-service` | `createReasoningService`, `REASONING_OPERATIONS`, `ReasoningRequestError`, `createReasoningMcpServer`, `serveReasoningStdio`, `REASONING_MCP_TOOL_NAMES` |
 | `@pathcompiler/diagnostics` | error taxonomy (`ConfigurationError` … `GitProviderError`), `errorKind`, `createJsonLogger`, `timed`, `PERFORMANCE_TARGETS_MS`, `contentKey`, `createFileCache` |
@@ -1557,7 +1612,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

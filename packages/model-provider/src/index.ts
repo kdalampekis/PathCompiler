@@ -102,7 +102,9 @@ export class ModelProviderError extends BaseModelProviderError {
       | "fixture-missing"
       | "invalid-response"
       | "unsupported"
-      | "no-provider",
+      | "no-provider"
+      | "refused"
+      | "request-failed",
     message: string,
   ) {
     super(message);
@@ -163,7 +165,7 @@ export function fixtureKey(kind: ModelRequestKind, request: unknown): string {
 export type ModelFixture = {
   kind: ModelRequestKind;
   /** `fixtureKey(kind, request)`, or the request itself. */
-  key?: string;
+  key?: string | undefined;
   request?: unknown;
   response: unknown;
 };
@@ -428,3 +430,5 @@ export function semanticModelFromProvider(
     summarizeEvidence: (input) => guarded.summarizeEvidence(input),
   };
 }
+export * from "./semantic.js";
+export * from "./structured.js";

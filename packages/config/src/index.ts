@@ -97,9 +97,13 @@ export const PathCompilerConfigSchema = z.strictObject({
   /** Channel A model provider (ADR 0034); deterministic analysis when `none`. */
   model_provider: z
     .strictObject({
-      provider: z.enum(["none", "anthropic", "openai"]).default("none"),
+      provider: z
+        .enum(["none", "anthropic", "openai", "local"])
+        .default("none"),
       model: z.string().min(1).max(200).optional(),
       api_key_env: envName.optional(),
+      /** OpenAI-compatible endpoint for `openai` or `local` (C9). */
+      base_url: z.url({ protocol: /^https?$/ }).optional(),
     })
     .default({ provider: "none" }),
   /** Improvement gating (ADR 0033); autonomous mutation is never the default. */

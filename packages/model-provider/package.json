@@ -20,6 +20,7 @@
     "@pathcompiler/diagnostics": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/evidence": "workspace:*",
+    "@pathcompiler/graph-core": "workspace:*",
     "@pathcompiler/workflow-ir": "workspace:*",
     "zod": "4.6.7"
   },

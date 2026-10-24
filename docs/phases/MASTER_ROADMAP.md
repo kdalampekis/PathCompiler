@@ -49,7 +49,7 @@ loop.
 
 | Mode | Customer outcome | Delivered by | State |
 | --- | --- | --- | --- |
-| 1 Understand | "What can users do?" | Phases 0–12, 19–23; enhanced by R0–R11, C9 | ✅ deterministic; reasoning and model assistance planned |
+| 1 Understand | "What can users do?" | Phases 0–12, 19–23; enhanced by R0–R11, C9 | ✅ deterministic, reasoning (R0–R11) and opt-in model assistance (C9 `analyze`) |
 | 2 Guide | Help users complete tasks in their own UI, chatbot or assistant | Phases 13–18, 26–29; C1 aligns contracts | ✅ (contract alignment pending in C1) |
 | 3 Observe | "What do users actually do?" | O0–O7, O11; O8 needs R2 | 🔒 starts after C1 |
 | 4 Recommend | Diagnosed, gated, human-facing recommendations | I0, IG, I1; O8–O10, R-track findings | 🔒 |
@@ -64,7 +64,7 @@ never runs an experiment and never lets AI modify code.
 
 | Channel | Direction | Purpose | Status |
 | --- | --- | --- | --- |
-| A. Internal AI: model providers (OpenAI, Anthropic, local) | PathCompiler → model, with *targeted, deterministic evidence* only | Semantic interpretation of ambiguous clusters, capability naming and merging, aliases, hypotheses | Interface only (`SemanticModel`); C5 boundary, C9 adapters |
+| A. Internal AI: model providers (OpenAI, Anthropic, local) | PathCompiler → model, with *targeted, deterministic evidence* only | Semantic interpretation of ambiguous clusters, capability naming and merging, aliases, hypotheses | ✅ C5 boundary and C9 adapters (Anthropic, OpenAI, local); `analyze` sends ambiguous clusters only, opt-in |
 | B. PathCompiler MCP | External agent → PathCompiler | Agents ask about workflows, constraints, diff impact, candidate checks | Product-help MCP ✅; developer reasoning MCP in R12 |
 | C. External harness | `HarnessTaskSpec` out, `MutationResult` in | Repository mutation | I2 / I9, mode 6 only |
 
@@ -407,7 +407,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Runtime change:** No (analysis-time only, flag default off).
 - **Unblocks:** P1; better alias recall for the resolver; real-repository
   usefulness (C6).
-- **Status:** 🟢 unblocked (C5 ✅); **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-24): `model-provider-anthropic` (SDK, ADR 0071), `model-provider-openai` (OpenAI and local, plain HTTP), `findAmbiguousClusters`, `interpretAmbiguities`, `SemanticHypothesis`, CLI `analyze`. Deviation: the local adapter lives in `model-provider-openai`; the real-provider eval needs a key (ISSUES_LOG #34).
 
 ### 4.2 R track: formal reasoning
 
@@ -615,7 +615,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Prerequisites:** P0, R1, C9 (model-produced candidate interpretations). **Packages:** `probabilistic-evidence`, `formal-abstraction`.
 - **Acceptance:** candidate interpretations are filtered by formal consistency
   and re-scored.
-- **Runtime change:** No. **Status:** 🔒 blocked on P0, C5.
+- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅, R1 ✅, C9 ✅); **recommended next phase** (§7).
 
 #### P2 — Weighted soft constraints (MaxSAT)
 - **Prerequisites:** P1, R2 (optimization-capable provider; R7 preferred).
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **C9** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅ | P1 (C9) · P2 (P1) · IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **P1** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅ | P2 (P1) · IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,18 +839,17 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: C9 — Provider adapters and semantic interpretation
+## 7. Next implementation phase: P1 — Probabilistic semantic interpretation
 
-C4 is complete. The error taxonomy, safe structured logs, phase timings and
-a content-hash analysis cache are in place, and `scan` prints the §53 counts
-table against the §83 targets (ADR 0070). Every C phase except C6 (which
-needs user repositories) and C9 is done.
+C9 is complete (ADR 0071). Anthropic, OpenAI and local adapters sit behind the
+C5 boundary. `analyze` sends only ambiguous clusters' evidence and validates
+the answers as `SemanticHypothesis` records. Every C phase except C6 (which
+needs user repositories) is done.
 
-C9 comes next. It adds model-provider adapters behind the C5 boundary, and
-evidence-first semantic interpretation (naming, merging, PR intent, aliases)
-whose model outputs are validated and fused as `model` evidence (P0). It
-unblocks P1. The planned order after C9:
-1. P1–P5 and P-RV;
+P1 comes next. It takes C9's supported hypotheses as candidate
+interpretations, filters them by formal consistency (R1) and re-scores them
+with P0 evidence fusion. The planned order after P1:
+1. P2–P5 and P-RV;
 2. the I track.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)

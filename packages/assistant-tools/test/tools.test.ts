@@ -175,13 +175,16 @@ describe("assistant tool adapters", () => {
     );
   });
 
-  it("keeps provider SDKs out of every workspace package", async () => {
+  it("keeps provider SDKs out of every workspace package but the Anthropic adapter", async () => {
     const root = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
       "../../..",
     );
     for (const group of ["packages", "apps"])
       for (const name of await readdir(path.join(root, group))) {
+        // The one adapter allowed a vendor SDK (ADR 0071).
+        if (group === "packages" && name === "model-provider-anthropic")
+          continue;
         const manifest = await readFile(
           path.join(root, group, name, "package.json"),
           "utf8",

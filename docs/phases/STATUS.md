@@ -1,19 +1,19 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after C4)
+## Current state (updated 2026-10-24, after C9)
 
 | Item | State |
 | --- | --- |
 | Original phases (`CODEX_BUILD_SPEC.md` 0–30) | ✅ all complete against phase acceptance criteria. Baseline re-verified 2026-10-22: lint, typecheck, 258 unit tests, 27 Chromium tests. |
-| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init`, the eval harness/golden tests and the model provider boundary are aligned (C1–C3, C5); alpha validation (C6) and provider adapters (C9) remain. Tracked as C1–C9. |
+| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init`, the eval harness/golden tests, the model provider boundary and its adapters are aligned (C1–C5, C7–C9); alpha validation (C6) remains. Tracked as C1–C9. |
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **C9** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories) |
-| Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
+| Unblocked | **P1** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories) |
+| Blocked | P2 (needs P1), IG (I0), I1 (IG), I2 (I1), I5–I8 (O0, O7 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8; O0–O12 (mode 3, Observe). All 2026-10-23; details per phase below. |
-| Next recommended phase | **C9 — Provider adapters and semantic interpretation** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **P1 — Probabilistic semantic interpretation** (`MASTER_ROADMAP.md` §7). Parallel candidates: P3, P4, P-RV, I0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3882,4 +3882,105 @@ No browser code changed, so the e2e suite was not rerun.
   avoid breaking APIs (ADR 0070).
 - Next recommended phase: C9 — Provider adapters and semantic
   interpretation.
+
+---
+
+## Phase C9 — Provider adapters and semantic interpretation
+
+Complete — verified locally on 2026-10-24.
+
+- **One adapter primitive in core:** `createStructuredModelProvider` maps
+  the five provider methods onto a single call. That call receives
+  instructions (evidence is data, never instructions), the guarded request
+  as JSON, and a JSON Schema generated from the response's Zod schema.
+- **`@pathcompiler/model-provider-anthropic`:**
+  - the official SDK, `@anthropic-ai/sdk` 0.133.0, with default model
+    `claude-opus-5`;
+  - structured outputs and server-side refusal fallbacks
+    (`fallbacks: "default"`);
+  - refusals, truncation, non-JSON answers and HTTP failures become typed
+    `ModelProviderError`s.
+- **`@pathcompiler/model-provider-openai`:** plain HTTP chat completions
+  with a JSON schema, for `openai` and `local` (OpenAI-compatible servers,
+  default `http://localhost:11434/v1`). Error bodies are never repeated.
+- **Configuration:** provider `local` and `base_url` were added. Keys come
+  only from the environment (`api_key_env` or the vendor default variable),
+  and a missing key or model is an actionable error.
+- **Semantic interpretation:**
+  - `findAmbiguousClusters` flags capabilities with low confidence, weak
+    naming, label conflicts or possible duplicates, and clusters them by
+    shared domain or route;
+  - `interpretAmbiguities` sends one request per cluster: its surfaces and
+    their graph evidence only;
+  - each answer becomes a `SemanticHypothesis` (confirm, rename, merge),
+    supported or rejected by deterministic checks: unsupported verb or
+    entity, evidence of other surfaces, merge across entities;
+  - a refused or invalid answer is recorded per cluster.
+
+  Hypotheses never change capabilities.
+- **CLI `analyze [directory]`:** writes `reports/semantic-hypotheses.json`
+  (clusters, hypotheses, failures, invention rates and the exact context
+  sent); `--model-fixtures` replays recorded answers.
+- **Both vendor-ban tests were narrowed** (model-provider and the Phase 28
+  test in assistant-tools). Only `model-provider-anthropic` may depend on a
+  vendor SDK, and only `cli` may depend on it, loading it lazily.
+- Recorded in ADR 0071.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 464 tests passed across 79 suites (semantic interpretation, structured tasks, both adapters, CLI `analyze`, configuration) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- ambiguity selection, including none on the demo fixture, so nothing is
+  sent there;
+- the targeted context: other domains' evidence is never sent;
+- each validation rule, and per-cluster failures;
+- fixture-provider reproducibility, and the inert `none` provider;
+- the structured task;
+- both adapters against mocked HTTP (request shape, fallbacks, keys, error
+  mapping, guard rejection);
+- CLI `analyze` with no provider, with recorded answers, and with a missing
+  key or model;
+- the `base_url` configuration check.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **Initialization order:** the task table was first a module constant, but
+  `index.ts` re-exports the module, so its schemas would not have been
+  initialized yet. It is now built lazily.
+- **Clusters by domain alone** missed same-page ambiguity: "Add Client"
+  and "Add Contact" landed in different requests, so a merge could never be
+  checked. Clusters now join on shared routes too.
+- **Ambiguity rule:** "not high confidence" first flagged medium-confidence
+  capabilities that already have an explicit semantic name. The rule is now
+  the low band.
+- **Fatal bad answers:** one invalid answer aborted the whole analysis. It
+  is now a per-cluster failure; transport and key errors still stop the run.
+- **The older vendor ban:** the Phase 28 test in assistant-tools also
+  banned SDKs and failed once the adapter existed. It was narrowed with the
+  same ADR.
+- A fixture-type mismatch under `exactOptionalPropertyTypes` was fixed in
+  `ModelFixture`.
+- **Open:**
+  - #34: no real-provider evaluation, because it needs a key;
+  - #35: real providers' acceptance of the generated JSON Schemas is
+    unverified;
+  - #36: lexical verb checks miss synonyms.
+
+### Scope notes
+
+- **Deviations:**
+  - the local adapter lives in `model-provider-openai`, because local
+    servers speak the OpenAI-compatible API;
+  - Anthropic uses the SDK rather than plain HTTP, with the explicit
+    decision the roadmap required (ADR 0071);
+  - hypotheses are not fused or applied yet; P1 consumes them.
+- Next recommended phase: P1 — Probabilistic semantic interpretation.
 

@@ -37,6 +37,8 @@
     "@pathcompiler/impact-analysis": "workspace:*",
     "@pathcompiler/mcp-server": "workspace:*",
     "@pathcompiler/model-provider": "workspace:*",
+    "@pathcompiler/model-provider-anthropic": "workspace:*",
+    "@pathcompiler/model-provider-openai": "workspace:*",
     "@pathcompiler/observed-graph": "workspace:*",
     "@pathcompiler/reasoner-core": "workspace:*",
     "@pathcompiler/reasoning-service": "workspace:*",
