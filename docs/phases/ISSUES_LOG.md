@@ -6,6 +6,7 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 16 | C2 | Gap | The GitHub App's JSON config (`"reasoning": true`) is separate from each repository's `pathcompiler.yaml`, so repository flags do not reach the check. | Open; read the prepared repository's `pathcompiler.yaml` in the worker. |
 | 15 | O5 | Limitation | `http-service` sends no CORS headers, so a browser SDK on another origin cannot post to `/v1/events/batch`. | Open; add an explicit allowed-origins option (never `*` with tokens). |
 | 14 | O3 | Limitation | Guide abandonment by navigating away is not reported as `navigated-away`: the runtime keeps waiting, so such runs end as `timed-out` or never end. | Open; detect the route leaving the workflow's routes in runtime-core or O7. |
 | 13 | O3 | Bug, resolved | A workflow whose terminal condition is `explicit_next` could never complete: `next()` was ignored in `awaiting-completion`, trapping the user until `stop`. | **Resolved** in O3, with a regression test. |

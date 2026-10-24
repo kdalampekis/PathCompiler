@@ -28,6 +28,14 @@ import {
   discoverCapabilities,
   discoverProductSurfaces,
 } from "@pathcompiler/capability-engine";
+import {
+  analyticsPolicy,
+  CONFIG_FILE,
+  defaultConfigYaml,
+  loadConfig,
+  type PathCompilerConfig,
+  reasoningEnabled,
+} from "@pathcompiler/config";
 import { buildFormalModel } from "@pathcompiler/formal-abstraction";
 import {
   type FormalProductModel,
@@ -130,6 +138,10 @@ import { z } from "zod";
 export const HELP = `PathCompiler — local Next.js source analysis
 
 Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> ...]
+       pathcompiler init [directory]
+       pathcompiler config show [--json]
+       pathcompiler graph inspect [--json] [--out <directory>]
+       pathcompiler capabilities list [--json] [--out <directory>]
        pathcompiler targets suggest [directory] [--json] [--exclude <directory> ...]
        pathcompiler tests mine [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler surfaces discover [directory] [--out <directory>] [--exclude <directory> ...]
@@ -244,6 +256,12 @@ unreachable per context, with root causes traced to changed files, in
 reports/semantic-change.json. impact and proposals generate accept --reasoning to add
 those findings as impact reasons (reachability-removed is high severity).
 Reasoning output is for developers only.
+init writes pathcompiler.yaml with every default spelled out. When pathcompiler.yaml exists in
+the working directory, it gates capabilities: reason commands need reasoning.enabled plus their
+flag, observe needs modes.observe, evaluate needs modes.evaluate, reasoning.impact turns on
+--reasoning, and analytics.ingest enables serve ingestion with the analytics privacy policy.
+Without the file nothing is gated. API keys never go in the file (model_provider.api_key_env
+names an environment variable).
 No repository code is executed and no source is sent to a model or network service.
 `;
 
@@ -293,6 +311,18 @@ export async function runCli(
 ): Promise<string> {
   const { values, positionals } = parse(args);
   if (values.help) return HELP;
+  if (positionals[0] === "init") return runInit(positionals, cwd);
+  // pathcompiler.yaml gates capabilities; without it nothing is gated.
+  const configured = await loadConfig(cwd);
+  if (positionals[0] === "config")
+    return runConfigShow(positionals, values, configured);
+  if (configured)
+    applyConfig(positionals, values, configured.config, configured.file);
+  if (
+    (positionals[0] === "graph" && positionals[1] === "inspect") ||
+    (positionals[0] === "capabilities" && positionals[1] === "list")
+  )
+    return runInspect(positionals, values, cwd);
   if (
     (values.port !== undefined || values.host !== undefined) &&
     !["serve", "mcp", "github-app"].includes(positionals[0] ?? "")
@@ -799,6 +829,9 @@ export async function runCli(
             events: {
               sink: createFileEventSink(eventsDirectory),
               ...(ingestToken ? { ingestToken } : {}),
+              ...(configured
+                ? { policy: analyticsPolicy(configured.config) }
+                : {}),
             },
           }
         : {}),
@@ -1700,6 +1733,192 @@ async function runObserve(
     `${insufficient} transitions have fewer than ${graph.minSessions} sessions; treat them as anecdotes, not evidence.`,
     `Report: ${path.join(output, file)}`,
   ].join("\n")}\n`;
+}
+
+/** Read-only summaries of existing artifacts (spec §43). */
+async function runInspect(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length !== 2)
+    throw new Error(
+      `Expected: pathcompiler ${positionals[0]} ${positionals[1]} [--json] [--out <directory>].`,
+    );
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  if (positionals[0] === "graph") {
+    // The most derived graph available: capabilities include tests and source.
+    const names = [
+      "capability-graph.json",
+      "test-graph.json",
+      "source-graph.json",
+    ];
+    for (const name of names) {
+      const text = await readOptional(path.join(output, "graph", name));
+      if (text === undefined) continue;
+      const snapshot = JSON.parse(text) as {
+        nodes: { type: string }[];
+        edges: { type: string }[];
+      };
+      const tally = (items: { type: string }[]) =>
+        Object.fromEntries(
+          [...new Set(items.map((item) => item.type))]
+            .sort()
+            .map((type) => [
+              type,
+              items.filter((item) => item.type === type).length,
+            ]),
+        );
+      const summary = {
+        graph: path.join(output, "graph", name),
+        nodes: tally(snapshot.nodes),
+        edges: tally(snapshot.edges),
+      };
+      if (values.json) return `${JSON.stringify(summary, null, 2)}\n`;
+      const lines = (record: Record<string, number>) =>
+        Object.entries(record).map(([type, n]) => `  ${type}: ${n}`);
+      return `${[
+        `Graph ${summary.graph}: ${snapshot.nodes.length} nodes, ${snapshot.edges.length} edges.`,
+        "Nodes:",
+        ...lines(summary.nodes),
+        "Edges:",
+        ...lines(summary.edges),
+      ].join("\n")}\n`;
+    }
+    throw new Error(
+      `No graph under ${path.join(output, "graph")}. Run pathcompiler scan, tests mine or capabilities discover first.`,
+    );
+  }
+  const text = await readOptional(
+    path.join(output, "reports/capabilities.json"),
+  );
+  if (text === undefined)
+    throw new Error(
+      `No ${path.join(output, "reports/capabilities.json")}. Run pathcompiler capabilities discover first.`,
+    );
+  const report = JSON.parse(text) as {
+    capabilities: {
+      id: string;
+      title: string;
+      confidence: number;
+      confidenceBand: string;
+      roles: string[];
+    }[];
+  };
+  if (values.json)
+    return `${JSON.stringify(
+      report.capabilities.map(
+        ({ id, title, confidence, confidenceBand, roles }) => ({
+          id,
+          title,
+          confidence,
+          confidenceBand,
+          roles,
+        }),
+      ),
+      null,
+      2,
+    )}\n`;
+  return `${[
+    `${report.capabilities.length} candidate capabilities (review required):`,
+    ...report.capabilities.map(
+      (item) =>
+        `  ${item.id.padEnd(28)} ${item.title} — ${item.confidenceBand} (${item.confidence})${item.roles.length ? `, roles ${item.roles.join("/")}` : ""}`,
+    ),
+  ].join("\n")}\n`;
+}
+
+async function runInit(positionals: string[], cwd: string): Promise<string> {
+  if (positionals.length > 2)
+    throw new Error("Expected: pathcompiler init [directory].");
+  const directory = path.resolve(cwd, positionals[1] ?? ".");
+  const file = path.join(directory, CONFIG_FILE);
+  if ((await readOptional(file)) !== undefined)
+    throw new Error(
+      `${file} already exists; edit it instead of re-running init.`,
+    );
+  await mkdir(directory, { recursive: true });
+  await writeExclusive(file, defaultConfigYaml(path.basename(directory)));
+  return `Wrote ${file}. Capabilities beyond understanding, guiding and evaluating are off; enable them there.\n`;
+}
+
+function runConfigShow(
+  positionals: string[],
+  values: Values,
+  configured: { config: PathCompilerConfig; file: string } | null,
+): string {
+  if (positionals[1] !== "show" || positionals.length !== 2)
+    throw new Error("Expected: pathcompiler config show [--json].");
+  if (values.json)
+    return `${JSON.stringify(configured ? { file: configured.file, config: configured.config } : { file: null, config: null }, null, 2)}\n`;
+  if (!configured)
+    return `No ${CONFIG_FILE} here: nothing is gated. Run pathcompiler init to create one.\n`;
+  const { config } = configured;
+  const on = (record: Record<string, unknown>) =>
+    Object.entries(record)
+      .filter(([, value]) => value === true)
+      .map(([key]) => key)
+      .join(", ") || "none";
+  return `${[
+    `Configuration: ${configured.file}`,
+    `Modes on: ${on(config.modes)}`,
+    `Reasoning on: ${config.reasoning.enabled ? on(config.reasoning) : "none (reasoning.enabled is false)"}`,
+    `Analytics: ${config.analytics.enabled ? "enabled" : "disabled"}; ingestion ${config.analytics.ingest ? "on" : "off"}; PII ${config.analytics.collect_pii ? "allowed" : "not collected"}; allowed context keys: ${config.analytics.allowed_context_keys.join(", ") || "none"}`,
+    `Model provider: ${config.model_provider.provider}${config.model_provider.api_key_env ? ` (key from $${config.model_provider.api_key_env})` : ""}`,
+    `Autonomous mutation: ${config.improvement_policy.autonomous_mutation ? "allowed" : "off"}`,
+  ].join("\n")}\n`;
+}
+
+/** Applies pathcompiler.yaml: refuses disabled capabilities, enables configured defaults. */
+function applyConfig(
+  positionals: string[],
+  values: Values,
+  config: PathCompilerConfig,
+  file: string,
+): void {
+  const refuse = (what: string, keys: string) => {
+    throw new Error(
+      `${what} is disabled in ${file}. Set ${keys} to enable it.`,
+    );
+  };
+  const [command, sub] = positionals;
+  if (command === "reason") {
+    const capability =
+      sub === "reachable"
+        ? "reachability"
+        : sub === "plan"
+          ? "planning"
+          : sub === "why-not"
+            ? "unsat_explanations"
+            : sub === "verify"
+              ? "property_checking"
+              : sub === "diff"
+                ? "semantic_diff"
+                : undefined;
+    if (capability && !reasoningEnabled(config, capability))
+      refuse(
+        `reason ${sub}`,
+        `reasoning.enabled and reasoning.${capability} to true`,
+      );
+  }
+  if (command === "evaluate" && !config.modes.evaluate)
+    refuse("evaluate (mode 5)", "modes.evaluate to true");
+  if (command === "observe") {
+    if (!config.modes.observe)
+      refuse(`observe ${sub ?? ""}`.trim(), "modes.observe to true");
+    if (sub === "reconcile" && !reasoningEnabled(config, "reachability"))
+      refuse(
+        "observe reconcile",
+        "reasoning.enabled and reasoning.reachability to true",
+      );
+  }
+  const flags = values as { reasoning?: boolean; events?: boolean };
+  if (command === "impact" || (command === "proposals" && sub === "generate")) {
+    if (flags.reasoning && !reasoningEnabled(config, "impact"))
+      refuse("--reasoning", "reasoning.enabled and reasoning.impact to true");
+    if (reasoningEnabled(config, "impact")) flags.reasoning = true;
+  }
+  if (command === "serve" && config.analytics.ingest) flags.events = true;
 }
 
 async function semanticChange(

@@ -296,7 +296,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Tests/evals:** schema tests; CLI golden output with and without config.
 - **Runtime change:** No (defaults preserve behavior).
 - **Unblocks:** R-WI, C9, IG, O1 privacy configuration, flag-gated rollouts.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `@pathcompiler/config`, `init`, `config show`, `graph inspect`, `capabilities list`, CLI gating, ADR 0053.
 
 #### C3 — Evaluation harness and golden tests
 - **Objective:** Fixture ground truth (§54: `capabilities.json`,
@@ -312,7 +312,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Tests/evals:** this phase *is* the eval infrastructure. Snapshot reviews.
 - **Runtime change:** No.
 - **Unblocks:** R-WI comparison, P0 calibration, model evaluation (§86).
-- **Status:** 🟢 unblocked.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### C4 — Diagnostics hardening
 - **Objective:** Error taxonomy (§51), structured logs (§52), scan counts table
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **C2** (next), O11, O12, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core) | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O9 (R7) · O10 (R6) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **C3** (next), O11, O12, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O9 (R7) · O10 (R6) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,25 +839,23 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: C2 — Configuration and feature flags
+## 7. Next implementation phase: C3 — Evaluation harness and golden tests
 
-Modes 1, 2, 3 (core) and 5 work end to end. Several capabilities are opt-in
-only through CLI flags or code, and three deferred items are waiting for a
-reviewed project configuration:
-- reasoning in impact and in the GitHub check;
-- the candidate-evaluation check section;
-- analytics privacy settings.
+C2 is complete, so configuration and flags exist. C3 builds the fixture
+ground truth and evaluation harness (CODEX spec §54–§55):
+- reviewed `capabilities.json`, `workflows/*.yaml`, `impact-cases/*.json`
+  and `queries.json`;
+- golden outputs;
+- a `pathcompiler eval` command.
 
-C2 adds `pathcompiler.yaml` with Zod validation and `pathcompiler init`. It
-adds reasoning, probabilistic and analytics flags (off by default), enabled
-operating modes, model-provider selection (keys only from the environment) and
-`improvement_policy` with `autonomous_mutation: false`. It also unblocks
-R-WI, C9 and IG. O11 (probabilistic transition model) and O12 (release
-behavior diff) are unblocked in parallel, as are C8 (browser verifier) and P0.
+It is the last prerequisite for R-WI (reasoning-assisted discovery compared
+against the baseline) and one of C9's, and it makes quality regressions
+measurable. Parallel candidates: O11, O12, C8, P0, C5.
 
-O8 (2026-10-23) reconciles the formal model with observed behavior per role
-(ADR 0052). Observed-but-impossible behavior is a high-priority discrepancy
-with reasons and candidate causes, never a verdict.
+C2 (2026-10-23) added `pathcompiler.yaml`. Without the file behavior is
+unchanged; with it, reasoning, observation and evaluation are gated, keys stay
+out of the file, and `init`, `config show`, `graph inspect` and
+`capabilities list` are available (ADR 0053).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

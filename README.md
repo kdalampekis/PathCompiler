@@ -1012,6 +1012,27 @@ dashboard has no authentication: bind it to `127.0.0.1` for local review. There 
 no graph visualization yet.
 See [ADR 0027](docs/decisions/0027-local-control-plane-dashboard.md).
 
+## Configuration (`pathcompiler.yaml`)
+
+```bash
+pnpm pathcompiler init        # writes pathcompiler.yaml with every default spelled out
+pnpm pathcompiler config show # what is on
+```
+
+Without a `pathcompiler.yaml`, nothing is gated and the CLI behaves as it
+always has. With one, capabilities are opt-in:
+- `reason` commands need `reasoning.enabled` plus their own flag;
+- `observe` needs `modes.observe`, and `evaluate` needs `modes.evaluate`;
+- `reasoning.impact` adds reasoning findings to `impact` and proposals;
+- `analytics.ingest` turns on event ingestion in `serve` with the analytics
+  privacy policy.
+
+Analytics is privacy-first by default: no PII, hashed user IDs, no context
+keys. API keys are never stored in the file; `model_provider.api_key_env`
+names an environment variable. `improvement_policy.autonomous_mutation` is
+`false`. `graph inspect` and `capabilities list` summarize existing artifacts.
+See [ADR 0053](docs/decisions/0053-configuration-and-flags.md).
+
 ## Formal Product Model (reasoning track)
 
 ```ts
@@ -1254,6 +1275,7 @@ Analysis packages:
 | `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `acceptDeprecation`, `decideProposal`, `detectNewWorkflows`, `workflowDiff`, `proposalFileName`, proposal/detection schemas and YAML serialize/parse, `ProposalError` |
 | `@pathcompiler/github-app` | `verifyWebhookSignature`, `parseWebhookEvent`, `createWebhookHandler`, `createJobQueue`, `createAppAuth`, `publishCheckRun`, `summarizeWorkflowCheck`, `createWorkflowCheckWorker`, `createLocalRepositoryProvider`, `githubAppManifest`, `APP_PERMISSIONS` |
 | `@pathcompiler/assistant-tools` | `resolveProductHelp`, `parseToolInput`, `toolResultText`, `jsonSchemaTool`, `anthropicTool`, `openAITool`, `langChainTool`, `INPUT_SCHEMA`, `STRICT_INPUT_SCHEMA`, `ToolInputError` |
+| `@pathcompiler/config` | `loadConfig`, `parseConfig`, `PathCompilerConfigSchema`, `featureFlags`, `reasoningEnabled`, `analyticsPolicy`, `defaultConfigYaml`, `ConfigError` |
 | `@pathcompiler/formal-model` | `FormalProductModelSchema`, `parseFormalModel`, `normalizeFormalModel`, `serializeFormalModel`, `formalModelHash`, `collectFormalEvidence`, `f` constructors, variable/expression/action/goal schemas and types |
 | `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
 | `@pathcompiler/solver-provider` | `SolverProvider` (assumptions, unsat cores), `SolverProblem`, `SolverTerm`, `SolverCheckResult`, `SolverProblemSchema`, `parseSolverProblem` |
@@ -1265,7 +1287,7 @@ Analysis packages:
 | `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
 | `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

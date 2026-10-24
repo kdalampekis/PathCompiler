@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after O8)
+## Current state (updated 2026-10-23, after C2)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **C2** (next), O11, O12, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **C3** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry**, **O4 — Domain events**, **O5 — Event ingestion**, **O6 — Observed Transition Graph**, **O7 — Workflow analytics**, **O8 — Possible-vs-Observed Reconciliation** (2026-10-23). Mode 3 (Observe) core is complete. The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
-| Next recommended phase | **C2 — Configuration and feature flags** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0. Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP); I3 (mode 5, Evaluate); C1, C2; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **C3 — Evaluation harness and golden tests** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2800,3 +2800,62 @@ role:
   ADR 0052). Model repair from contradictions (§148) stays a human,
   proposal-based action.
 - Next recommended phase: C2 — Configuration and feature flags.
+
+---
+
+## Phase C2 — Configuration and feature flags
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/config`: a strict `pathcompiler.yaml` schema covering
+  modes, reasoning and probabilistic flags, analytics privacy, the model
+  provider (keys only from the environment) and `improvement_policy`
+  (`autonomous_mutation: false`). Its API: `loadConfig` (`null` without a
+  file), `parseConfig` (issues by key path), `featureFlags`,
+  `reasoningEnabled`, `analyticsPolicy`, `defaultConfigYaml`.
+- **Safety rules:** text that looks like a key is rejected,
+  `max_autonomous_mutations` must be 0 while autonomous mutation is off, and
+  `source_upload` can only be `false`.
+- **CLI.** The file in the working directory gates capabilities: `reason *`
+  needs `reasoning.enabled` plus its flag, `observe` needs `modes.observe`
+  (`reconcile` also needs reachability), and `evaluate` needs
+  `modes.evaluate`. `reasoning.impact` turns on `--reasoning` (an explicit
+  `--reasoning` is refused when it is off), and `analytics.ingest` turns on
+  `serve` ingestion with the configured privacy policy. Without the file,
+  nothing changes.
+- **New commands:** `init`, `config show [--json]`, `graph inspect` and
+  `capabilities list`.
+- Recorded in ADR 0053.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 362 tests passed across 53 suites (5 config schema tests, 3 CLI configuration tests) |
+| `pnpm test:e2e` | 27 Chromium tests passed |
+| `git diff --check` | Passed |
+
+CLI output was compared with and without the file: `reason reachable` produces
+identical output without a file and with reasoning enabled in the file, and is
+refused with an actionable message when the file disables it. The CLI tests
+also cover gating for `observe` and `--reasoning`, `init` (written once, then
+refused), `config show` (text and JSON), an invalid key reported by path,
+`graph inspect` (text and JSON) and `capabilities list` on the fixture.
+
+### Errors found during the phase
+
+- Putting `init` first in the help text broke an existing help test, which
+  expects `Usage: pathcompiler scan`. `scan` is the first usage line again.
+- Doc-update and CLI edit scripts twice failed to match text that had been
+  reformatted, and were rerun. The STATUS summary rows had accumulated
+  duplicates over earlier phases and were rewritten cleanly.
+- **Open (ISSUES_LOG #16):** the GitHub App's JSON config is not derived from
+  each repository's `pathcompiler.yaml`.
+
+### Scope notes
+
+- Spec §44 fields that nothing reads yet (analysis include globs, sources,
+  runtime modes, auto-propose) are left out until a phase uses them.
+- Next recommended phase: C3 — Evaluation harness and golden tests.
