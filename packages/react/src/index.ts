@@ -1,3 +1,4 @@
+import type { Analytics } from "@pathcompiler/analytics-sdk";
 import {
   createDomEnvironment,
   createGuideRuntime,
@@ -50,6 +51,14 @@ export type PathCompilerProviderProps = {
   /** Overrides DOM observation, e.g. for tests or non-DOM hosts. */
   environment?: GuideEnvironment;
   runtimeOptions?: Omit<GuideRuntimeOptions, "environment" | "context">;
+  /**
+   * Optional analytics (`@pathcompiler/analytics-sdk`). When given, the provider
+   * reports route changes and activations of semantic targets; it never reads
+   * input values.
+   */
+  analytics?: Analytics;
+  /** Attribute that marks semantic targets. Default `data-pathcompiler`. */
+  targetAttribute?: string;
   children?: ReactNode;
 };
 
@@ -58,6 +67,7 @@ type ProviderValue = {
   route: string | undefined;
   context: Omit<ResolveContext, "route">;
   runtime: GuideRuntime | null;
+  analytics: Analytics | null;
 };
 const PathCompilerContext = createContext<ProviderValue | null>(null);
 
@@ -100,9 +110,57 @@ export function PathCompilerProvider(
   useEffect(() => {
     runtime?.refresh();
   }, [runtime, props.route]);
+  const analytics = props.analytics ?? null;
+  useEffect(() => {
+    analytics?.setContext({
+      ...(props.route === undefined ? {} : { route: props.route }),
+      ...(context.role === undefined ? {} : { role: context.role }),
+      ...(context.locale === undefined ? {} : { locale: context.locale }),
+    });
+  }, [analytics, props.route, context]);
+  const previousRoute = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!analytics || props.route === undefined) return;
+    if (previousRoute.current === props.route) return;
+    analytics.routeChanged(props.route, previousRoute.current);
+    previousRoute.current = props.route;
+  }, [analytics, props.route]);
+  const attribute = props.targetAttribute ?? "data-pathcompiler";
+  useEffect(() => {
+    if (!analytics || typeof document === "undefined") return;
+    const report = (event: Event) => {
+      const origin = event.target;
+      if (!(origin instanceof Element)) return;
+      const element = origin.closest(`[${attribute}]`);
+      const target = element?.getAttribute(attribute);
+      if (!element || !target) return;
+      const tag = element.tagName.toLowerCase();
+      if (event.type === "submit") analytics.targetActivated(target, "submit");
+      else if (event.type === "change")
+        analytics.targetActivated(
+          target,
+          tag === "select" ? "select" : "input",
+        );
+      // Field clicks are focus, not activation; forms report on submit.
+      else if (!["input", "select", "textarea", "form"].includes(tag))
+        analytics.targetActivated(target, "click");
+    };
+    const types = ["click", "change", "submit"] as const;
+    for (const type of types) document.addEventListener(type, report, true);
+    return () => {
+      for (const type of types)
+        document.removeEventListener(type, report, true);
+    };
+  }, [analytics, attribute]);
   const value = useMemo<ProviderValue>(
-    () => ({ client: props.client, route: props.route, context, runtime }),
-    [props.client, props.route, context, runtime],
+    () => ({
+      client: props.client,
+      route: props.route,
+      context,
+      runtime,
+      analytics,
+    }),
+    [props.client, props.route, context, runtime, analytics],
   );
   return createElement(PathCompilerContext.Provider, { value }, props.children);
 }
@@ -188,6 +246,11 @@ export function useProductHelp(
   };
   const key = query.trim() ? JSON.stringify(request) : null;
   return useAsync(key, () => client.resolve(request));
+}
+
+/** The provider's analytics instance, or `null` when analytics is not configured. */
+export function useAnalytics(): Analytics | null {
+  return usePathCompiler().analytics;
 }
 
 export function useWorkflow(id: string | null): AsyncResult<WorkflowDetails> {

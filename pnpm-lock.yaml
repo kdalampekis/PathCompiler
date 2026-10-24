@@ -576,6 +576,9 @@ importers:
 
   packages/react:
     dependencies:
+      "@pathcompiler/analytics-sdk":
+        specifier: workspace:*
+        version: link:../analytics-sdk
       "@pathcompiler/runtime-core":
         specifier: workspace:*
         version: link:../runtime-core

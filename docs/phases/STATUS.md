@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after O1)
+## Current state (updated 2026-10-23, after O2)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O2** (next), O3, O4, O5, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **O3** (next), O4, O5, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
-| Next recommended phase | **O2 — React integration** (`MASTER_ROADMAP.md` §7); O3, O4 and O5 can run in parallel. Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
+| Next recommended phase | **O3 — Workflow runtime telemetry** (`MASTER_ROADMAP.md` §7); O4 and O5 can run in parallel. Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2471,3 +2471,49 @@ form; shutdown flushing and then ignoring calls.
 
 - No network transport (O5 adds ingestion), and no React wiring (O2).
 - Next recommended phase: O2 — React integration.
+
+---
+
+## Phase O2 — React integration
+
+Complete — verified locally on 2026-10-23.
+
+- `PathCompilerProvider` accepts optional `analytics` and `targetAttribute`
+  (default `data-pathcompiler`). No second provider was added (ADR 0032 §7).
+- **Routes and context.** The provider keeps the analytics context's route,
+  role and locale current, and emits `route.changed` for the first route and
+  for each change (with `previousRoute`).
+- **Activations.** One capture-phase document listener emits
+  `semantic_target.activated` for the closest semantic target: `click`
+  (non-field), `input` (committed change), `select` and `submit`. Field and
+  form clicks are ignored. It never reads values, text or coordinates.
+- `useAnalytics()` returns the instance or `null`.
+- `@pathcompiler/react` now depends on `@pathcompiler/analytics-sdk`, for
+  types; it does nothing unless an instance is passed.
+- Recorded in ADR 0046.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 333 tests passed |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 335 tests passed across 47 suites (2 new React analytics tests) |
+| `pnpm test:e2e` | 27 Chromium tests passed (React provider changed) |
+| `git diff --check` | Passed |
+
+Tests check the exact event sequence: initial route, button click through a
+child element, committed input change, select change, form submit, plus route
+change. They also check that an unannotated element and a field click emit
+nothing, that the typed value ("Ada Lovelace") appears in no event, that
+role and release are bound, and that nothing happens without analytics.
+
+### Errors found during the phase
+
+- None.
+
+### Scope notes
+
+- Guide lifecycle telemetry is O3, and domain events are O4.
+- Next recommended phase: O3 — Workflow runtime telemetry.

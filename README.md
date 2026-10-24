@@ -1167,6 +1167,13 @@ privacy policy. A rejected event is reported through `onError`, never thrown.
 Transports are in-memory (the default) or console; nothing touches the network.
 See [ADR 0045](docs/decisions/0045-analytics-sdk.md).
 
+With React, pass the instance to the existing provider:
+`<PathCompilerProvider client={client} route={route} analytics={analytics}>`.
+The provider then reports route changes and activations of
+`data-pathcompiler` targets (click, committed input, select, submit), without
+reading values, and `useAnalytics()` exposes the instance (phase O2).
+See [ADR 0046](docs/decisions/0046-react-analytics-capture.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1192,7 +1199,7 @@ Analysis packages:
 | `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, `relatedWorkflows`, `supportedActions`, request/result schemas and types |
 | `@pathcompiler/sdk-js` | `PathCompiler`, `RuntimeTransport`, `createStaticTransport`, `createHttpTransport`, `PathCompilerError`, `WorkflowDetailsSchema` and types |
 | `@pathcompiler/runtime-core` | `createGuideRuntime`, `createDomEnvironment`, `routeMatches`, `idleGuideState`, environment/state types |
-| `@pathcompiler/react` | `PathCompilerProvider`, `useProductHelp`, `useWorkflow`, `useGuideRuntime`, `useWorkflowProgress` |
+| `@pathcompiler/react` | `PathCompilerProvider` (optional `analytics`), `useProductHelp`, `useWorkflow`, `useGuideRuntime`, `useWorkflowProgress`, `useAnalytics` |
 | `@pathcompiler/ui` | `ProductHelpCard`, `WorkflowChecklist`, `GuideOverlay`, `WorkflowSearch`, `defaultLabels` |
 | `@pathcompiler/mcp-server` | `createPathCompilerMcpServer`, `serveStdio`, `MCP_TOOL_NAMES` |
 | `@pathcompiler/http-service` | `createHttpService`, `createRequestHandler`, `HttpServiceOptions` |

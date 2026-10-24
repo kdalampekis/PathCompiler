@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pathcompiler/analytics-sdk": "workspace:*",
     "@pathcompiler/runtime-core": "workspace:*",
     "@pathcompiler/sdk-js": "workspace:*"
   },

@@ -672,12 +672,12 @@ Minimum sample sizes come before any conclusion.
 #### O2 — React integration
 - **Objective:** Optional analytics in the **existing** `@pathcompiler/react`
   provider (ADR 0032 §7). Semantic-target activation events.
-- **Prerequisites:** O1. **Runtime change:** Opt-in. **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Prerequisites:** O1. **Runtime change:** Opt-in. **Status:** ✅ complete (2026-10-23): `analytics` prop on `PathCompilerProvider`, `useAnalytics`, ADR 0046.
 
 #### O3 — Workflow runtime telemetry
 - **Prerequisites:** O1; `runtime-core` (✅). **Acceptance:** guide state
   transitions emit lifecycle events.
-- **Runtime change:** Opt-in. **Status:** 🟢 unblocked.
+- **Runtime change:** Opt-in. **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### O4 — Domain events
 - **Prerequisites:** O1; R0 goal IDs. **Status:** 🟢 unblocked.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **O2** (next), O3, O4, O5, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O6 (events from O1/O5) · O7–O12 (O6 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O3** (next), O4, O5, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O6 (events from O1/O5) · O7–O12 (O6 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,18 +839,17 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: O2 — React integration
+## 7. Next implementation phase: O3 — Workflow runtime telemetry
 
-O0 and O1 are complete. O2 adds optional analytics to the existing
-`@pathcompiler/react` provider (ADR 0032 §7) and emits
-`semantic_target.activated` for `data-pathcompiler` elements. O3 (guide
-lifecycle telemetry), O4 (domain events) and O5 (event ingestion endpoint) are
-also unblocked and can run in parallel. O6 (Observed Transition Graph) needs
-events from O1 or O5.
+O0–O2 are complete. O3 makes guide state transitions in `runtime-core` (and
+through the React provider) emit `workflow.started`, `workflow.step_reached`,
+`workflow.completed` and `workflow.abandoned` events with workflow ID and
+version. O7 (Workflow analytics) needs these lifecycle events. O4 (domain
+events) and O5 (ingestion endpoint) remain parallel candidates.
 
-O1 (2026-10-23) shipped the opt-in analytics SDK (ADR 0045), with batching,
-retries, a queue bound, in-memory and console transports, and privacy checks on
-every event.
+O2 (2026-10-23) added opt-in analytics to the existing React provider: route
+changes, plus semantic-target activations that never read values
+(ADR 0046).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 
