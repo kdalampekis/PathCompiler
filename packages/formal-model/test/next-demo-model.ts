@@ -39,7 +39,7 @@ const NODES: Record<string, [Kind, string]> = {
   "ui:plans.row": ["symbol", "components/plans.tsx#Plans:li[1]"],
   "ui:plans.change_structure": [
     "symbol",
-    "components/plans.tsx#Plans:button[2]",
+    "components/plans.tsx#Plans:button[3]",
   ],
   "ui:plan.structure.form": ["symbol", "components/plans.tsx#Plans:form[2]"],
   "ui:plan.structure.selector": [
@@ -48,11 +48,11 @@ const NODES: Record<string, [Kind, string]> = {
   ],
   "ui:plan.structure.submit": [
     "symbol",
-    "components/plans.tsx#Plans:button[6]",
+    "components/plans.tsx#Plans:button[7]",
   ],
   "ui:plan.structure.confirm": [
     "symbol",
-    "components/plans.tsx#Plans:button[4]",
+    "components/plans.tsx#Plans:button[5]",
   ],
   "ui:dialog.container": ["symbol", "components/modal.tsx#Modal:dialog[1]"],
   'test:tests/workflows.spec.ts#["Create, Edit and Deactivate Client with validation and modal cancellation"][1]':

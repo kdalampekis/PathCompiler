@@ -80,7 +80,7 @@ describe("headless SDK", () => {
     expect(help.content.steps).toHaveLength(4);
     expect(
       (await sdk.workflows.search("plan")).map((item) => item.workflowId),
-    ).toEqual(["plans.change_structure", "plans.create"]);
+    ).toEqual(["plans.archive", "plans.change_structure", "plans.create"]);
     expect(await sdk.workflows.search("delete a client")).toEqual([]);
     expect(
       (await sdk.workflows.search("create client")).map(
@@ -101,12 +101,18 @@ describe("headless SDK", () => {
   it("lists related workflows and supported actions from the same artifacts", async () => {
     const sdk = client();
     expect(await sdk.workflows.related("plans.create")).toEqual([
+      expect.objectContaining({ id: "plans.archive", relation: "same-entity" }),
       expect.objectContaining({
         id: "plans.change_structure",
         relation: "same-entity",
       }),
     ]);
-    expect(await sdk.workflows.related("clients.create")).toEqual([]);
+    expect(await sdk.workflows.related("clients.create")).toEqual([
+      expect.objectContaining({
+        id: "clients.deactivate",
+        relation: "same-entity",
+      }),
+    ]);
     expect(await sdk.workflows.getSupportedActions("clients.create")).toEqual({
       explain: true,
       checklist: true,

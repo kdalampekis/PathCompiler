@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "unreachable.viewer-cannot-change-structure",
+  "category": "unreachable",
+  "fixture": "next-demo",
+  "description": "A viewer can never change a plan's structure, even with the flag on.",
+  "query": {
+    "kind": "reachability",
+    "goal": "plans.structure_changed",
+    "context": {
+      "role": "unlisted",
+      "plan_structure_enabled": true
+    },
+    "expected": "unreachable"
+  }
+}

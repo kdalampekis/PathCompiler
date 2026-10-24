@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "feature-flags.archive-needs-flag",
+  "category": "feature-flags",
+  "fixture": "next-demo",
+  "description": "Archiving is unreachable while the plan archive flag is off, even for admins.",
+  "query": {
+    "kind": "reachability",
+    "goal": "plans.archived",
+    "context": {
+      "role": "admin",
+      "plan_archive_enabled": false
+    },
+    "expected": "unreachable"
+  }
+}

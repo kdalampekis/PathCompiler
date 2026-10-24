@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "commit-diffs.editor-check-renamed-to-owner",
+  "category": "commit-diffs",
+  "fixture": "next-demo",
+  "description": "Renaming the editor role to owner removes client creation for editors; admins keep it.",
+  "edits": [
+    {
+      "file": "lib/session.ts",
+      "from": "session.role !== \"editor\"",
+      "to": "session.role !== \"owner\""
+    }
+  ],
+  "query": {
+    "kind": "diff",
+    "goals": ["clients.created"],
+    "expectedRemoved": [
+      {
+        "goal": "clients.created",
+        "context": {
+          "role": "editor"
+        }
+      }
+    ]
+  }
+}

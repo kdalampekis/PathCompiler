@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "counterexamples.viewer-never-creates-holds",
+  "category": "counterexamples",
+  "fixture": "next-demo",
+  "description": "On the unmodified fixture, viewers never create clients.",
+  "query": {
+    "kind": "property",
+    "property": {
+      "kind": "never",
+      "id": "security.viewer_never_creates_client",
+      "description": "A viewer can never create a client",
+      "goal": "clients.created",
+      "context": {
+        "role": "unlisted"
+      }
+    },
+    "expected": "holds"
+  }
+}

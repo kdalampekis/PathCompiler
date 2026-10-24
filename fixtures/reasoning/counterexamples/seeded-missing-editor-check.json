@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "counterexamples.seeded-missing-editor-check",
+  "category": "counterexamples",
+  "fixture": "next-demo",
+  "description": "Seeded bug: the create-client handler forgets its editor check, so a viewer can create clients.",
+  "edits": [
+    {
+      "file": "app/api/clients/route.ts",
+      "from": "    requireEditor(session);\n",
+      "to": ""
+    }
+  ],
+  "query": {
+    "kind": "property",
+    "property": {
+      "kind": "never",
+      "id": "security.viewer_never_creates_client",
+      "description": "A viewer can never create a client",
+      "goal": "clients.created",
+      "context": {
+        "role": "unlisted"
+      }
+    },
+    "expected": "violated",
+    "lastAction": "clients.create.submit"
+  }
+}

@@ -16,13 +16,19 @@ export const StructureInputSchema = z.strictObject({
   structure: z.enum(["simple", "weekly"]),
   confirmed: z.boolean().optional(),
 });
+const RoleSchema = z.enum(["admin", "editor", "viewer"]);
 export const SessionSettingsSchema = z.strictObject({
-  role: z.enum(["editor", "viewer"]),
+  role: RoleSchema,
   planStructure: z.boolean(),
+  // Optional so older callers that only toggle plan structure keep working.
+  planArchive: z.boolean().optional(),
 });
 export const DemoSessionSchema = z.strictObject({
-  role: z.enum(["editor", "viewer"]),
-  featureFlags: z.strictObject({ planStructure: z.boolean() }),
+  role: RoleSchema,
+  featureFlags: z.strictObject({
+    planStructure: z.boolean(),
+    planArchive: z.boolean().default(false),
+  }),
   clients: z
     .array(ClientInputSchema.extend({ id: z.uuid(), active: z.boolean() }))
     .max(20),
@@ -31,6 +37,7 @@ export const DemoSessionSchema = z.strictObject({
       PlanInputSchema.extend({
         id: z.uuid(),
         structure: z.enum(["simple", "weekly"]),
+        archived: z.boolean().default(false),
       }),
     )
     .max(20),

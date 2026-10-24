@@ -370,3 +370,58 @@ test("repeated semantic actions resolve inside the selected client and plan rows
       .filter({ hasText: "First Plan" }),
   ).toContainText("Simple structure");
 });
+
+test("Deactivate Client from the edit dialog (alternative path)", async ({
+  page,
+}) => {
+  await createClient(page);
+  await page.locator('[data-pathcompiler="clients.edit"]').click();
+  await page.locator('[data-pathcompiler="client.form.deactivate"]').click();
+  await page.locator('[data-pathcompiler="client.deactivate.confirm"]').click();
+  await expect(
+    page.locator('[data-pathcompiler="clients.feedback"]'),
+  ).toHaveText("Client deactivated");
+});
+
+test("admins archive plans only while the plan archive flag is on", async ({
+  page,
+  context,
+}) => {
+  await createClient(page);
+  const state = await readSession(context.request);
+  const planResponse = await context.request.post("/api/plans", {
+    data: { title: "Archive plan", clientId: state.clients[0]?.id },
+  });
+  expect(planResponse.status()).toBe(201);
+  const id = RecordIdSchema.parse(await planResponse.json()).id;
+  await page.locator('[data-pathcompiler="nav.plans"]').click();
+  await expect(page.locator('[data-pathcompiler="plans.archive"]')).toHaveCount(
+    0,
+  );
+  expect(
+    (await context.request.post(`/api/plans/${id}/archive`)).status(),
+  ).toBe(403);
+  await page.locator('[data-pathcompiler="demo.role"]').selectOption("admin");
+  // Admins keep every editor action.
+  await expect(
+    page.locator('[data-pathcompiler="plans.create"]'),
+  ).toBeVisible();
+  await expect(page.locator('[data-pathcompiler="plans.archive"]')).toHaveCount(
+    0,
+  );
+  expect(
+    (await context.request.post(`/api/plans/${id}/archive`)).status(),
+  ).toBe(403);
+  await page.locator('[data-pathcompiler="demo.plan_archive"]').check();
+  await page.locator('[data-pathcompiler="plans.archive"]').click();
+  await expect(page.locator('[data-pathcompiler="plans.feedback"]')).toHaveText(
+    "Plan archived",
+  );
+  expect(
+    (await context.request.post(`/api/plans/${id}/archive`)).status(),
+  ).toBe(409);
+  await page.locator('[data-pathcompiler="demo.role"]').selectOption("editor");
+  await expect(page.locator('[data-pathcompiler="plans.archive"]')).toHaveCount(
+    0,
+  );
+});

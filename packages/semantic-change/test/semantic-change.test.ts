@@ -108,7 +108,8 @@ describe("semantic change between commits", () => {
     for (const change of lost) {
       expect(change.after).toBe("unreachable");
       expect(change.rootCause?.map((item) => item.description)).toEqual([
-        "clients.create.submit requires role = owner",
+        // Admins keep access; only the editor half of the guard was renamed.
+        "clients.create.submit requires role = admin or role = owner",
       ]);
       expect(change.rootCause?.[0]?.evidence.map((ref) => ref.id)).toContain(
         "symbol:lib/session.ts#requireEditor",
@@ -120,7 +121,7 @@ describe("semantic change between commits", () => {
       goal: "clients.created",
       code: "reachability-removed",
       message:
-        "clients.created is no longer reachable for role=editor: clients.create.submit requires role = owner (changed in lib/session.ts).",
+        "clients.created is no longer reachable for role=editor: clients.create.submit requires role = admin or role = owner (changed in lib/session.ts).",
     });
   });
 

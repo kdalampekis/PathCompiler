@@ -33,9 +33,10 @@ export default async function RootLayout({
           </nav>
         </header>
         <DemoControls
-          key={`${session.role}:${session.featureFlags.planStructure}`}
+          key={`${session.role}:${session.featureFlags.planStructure}:${session.featureFlags.planArchive}`}
           role={session.role}
           planStructure={session.featureFlags.planStructure}
+          planArchive={session.featureFlags.planArchive}
         />
         <main>{children}</main>
         <footer>

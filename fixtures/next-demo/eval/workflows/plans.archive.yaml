@@ -1,0 +1,7 @@
+id: plans.archive
+entrypoint: /plans
+steps:
+  - { target: plans.archive, action: click }
+terminal: { type: element_text, target: plans.feedback, text: Plan archived }
+roles: [admin]
+flags: [planArchive]

@@ -42,7 +42,7 @@ function discover(value = input()) {
 }
 
 describe("workflow candidate discovery", () => {
-  it("compiles three fixture workflows with supported major steps and explicit limits", async () => {
+  it("compiles five fixture workflows with supported major steps and explicit limits", async () => {
     const project = await readSourceProject(
       fileURLToPath(new URL("../../../fixtures/next-demo", import.meta.url)),
     );
@@ -58,7 +58,13 @@ describe("workflow candidate discovery", () => {
       mined.report,
     );
     expect(report.candidates.map((candidate) => candidate.workflow.id)).toEqual(
-      ["clients.create", "plans.change_structure", "plans.create"],
+      [
+        "clients.create",
+        "clients.deactivate",
+        "plans.archive",
+        "plans.change_structure",
+        "plans.create",
+      ],
     );
     const workflows = Object.fromEntries(
       report.candidates.map((candidate) => [
@@ -95,8 +101,13 @@ describe("workflow candidate discovery", () => {
       text: "Client created",
       match: "exact",
     });
+    // Deactivate Client is found through its alternative path test, starting
+    // at the in-dialog button: the step that opens the dialog is missing
+    // (ISSUES_LOG #23).
+    expect(
+      workflows["clients.deactivate"]?.steps.map((step) => step.target),
+    ).toEqual(["client.form.deactivate", "client.deactivate.confirm"]);
     expect(report.skipped.map((item) => item.capabilityId)).toEqual([
-      "clients.deactivate",
       "clients.edit",
     ]);
     for (const candidate of report.candidates) {
@@ -119,8 +130,15 @@ describe("workflow candidate discovery", () => {
             step.evidence.some((ref) => ref.type === "symbol"),
         ),
       ).toBe(true);
-      expect(candidate.ambiguities.map((issue) => issue.code)).toContain(
-        "input-binding-required",
+      // Only workflows that enter data need input bindings.
+      expect(
+        candidate.ambiguities.some(
+          (issue) => issue.code === "input-binding-required",
+        ),
+      ).toBe(
+        candidate.workflow.steps.some((step) =>
+          ["input", "select"].includes(step.action.type),
+        ),
       );
       expect(parseCandidateYaml(serializeCandidateYaml(candidate))).toEqual(
         candidate,
@@ -136,7 +154,7 @@ describe("workflow candidate discovery", () => {
         .find((candidate) => candidate.workflow.id === "plans.change_structure")
         ?.ambiguities.map((issue) => issue.code),
     ).toContain("weak-terminal-signal");
-    expect(graph.nodesByType("WorkflowCandidate")).toHaveLength(3);
+    expect(graph.nodesByType("WorkflowCandidate")).toHaveLength(5);
     expect(capabilities.graph.serialize()).toBe(before);
     const reversed = capabilities.graph.toJSON();
     reversed.nodes.reverse();

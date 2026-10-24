@@ -85,7 +85,7 @@ test("1–7: scan, graph, discovery, approval, compile, resolver and assistant a
   expect(transcript.graph.nodes).toBeGreaterThan(50);
   expect(transcript.graph.tests).toBeGreaterThan(0);
   expect(transcript.steps[2]?.output).toContain(
-    "Discovered 3 workflow candidates",
+    "Discovered 5 workflow candidates",
   );
   expect(transcript.steps[3]?.output.split("\n")).toHaveLength(3);
   expect(

@@ -254,6 +254,25 @@ export function discoverCapabilities(
       )
       .map((node) => node.id);
     const apiEvidence = new Map<string, "handler" | "component-context">();
+    const found: {
+      id: string;
+      association: "handler" | "component-context";
+      path: string[];
+      specific: boolean;
+    }[] = [];
+    // An action sub-resource names its verb (POST /plans/:id/archive); it
+    // belongs to that verb's capability only.
+    const actionSuffix = (path: unknown) => {
+      const last =
+        typeof path === "string" ? path.split("/").at(-1) : undefined;
+      return last &&
+        !last.startsWith(":") &&
+        last !== primary.domain &&
+        last !== primary.entity
+        ? last
+        : undefined;
+    };
+    const verbEndpoint = (path: unknown) => actionSuffix(path) === primary.verb;
     // Explicit handler calls are stronger evidence than other functions owned by the same component.
     for (const [association, starts] of [
       ["component-context", contextHandlers],
@@ -291,15 +310,37 @@ export function discoverCapabilities(
                 .some(
                   (part) => part === primary.domain || part === primary.entity,
                 ) &&
-              methods.includes(String(api.data.method))
+              (methods.includes(String(api.data.method)) ||
+                verbEndpoint(api.data.path)) &&
+              (actionSuffix(api.data.path) === undefined ||
+                verbEndpoint(api.data.path))
             )
           )
             continue;
-          apiEvidence.set(api.id, association);
-          roots.add(api.id);
-          for (const nodeId of path) roots.add(nodeId);
+          found.push({
+            id: api.id,
+            association,
+            path,
+            specific: verbEndpoint(api.data?.path),
+          });
         }
       }
+    }
+    // Component context is weak: when the component calls an endpoint named
+    // after the verb, generic same-domain endpoints are not this capability's.
+    const hasSpecific = found.some(
+      (item) => item.association === "component-context" && item.specific,
+    );
+    for (const item of found) {
+      if (
+        hasSpecific &&
+        item.association === "component-context" &&
+        !item.specific
+      )
+        continue;
+      apiEvidence.set(item.id, item.association);
+      roots.add(item.id);
+      for (const nodeId of item.path) roots.add(nodeId);
     }
     for (const handler of directHandlers) roots.add(handler);
     const roleIds: string[] = [];

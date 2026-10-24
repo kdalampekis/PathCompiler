@@ -1,0 +1,161 @@
+{
+  "family": "reasoning",
+  "total": 15,
+  "passed": 15,
+  "verdictAccuracy": 1,
+  "unknownRate": 0,
+  "planAccuracy": 1,
+  "diffAccuracy": 1,
+  "byCategory": {
+    "alternative-plans": {
+      "total": 2,
+      "passed": 2
+    },
+    "commit-diffs": {
+      "total": 2,
+      "passed": 2
+    },
+    "counterexamples": {
+      "total": 3,
+      "passed": 3
+    },
+    "feature-flags": {
+      "total": 2,
+      "passed": 2
+    },
+    "permissions": {
+      "total": 2,
+      "passed": 2
+    },
+    "reachable": {
+      "total": 2,
+      "passed": 2
+    },
+    "unreachable": {
+      "total": 2,
+      "passed": 2
+    }
+  },
+  "cases": [
+    {
+      "id": "alternative-plans.deactivate-shortest-via-row",
+      "category": "alternative-plans",
+      "kind": "plan",
+      "passed": true,
+      "unknown": false,
+      "detail": "plan navigate.nav_clients → clients.deactivate.open_clients_deactivate → clients.deactivate.confirm"
+    },
+    {
+      "id": "alternative-plans.deactivate-without-row-button",
+      "category": "alternative-plans",
+      "kind": "plan",
+      "passed": true,
+      "unknown": false,
+      "detail": "plan navigate.nav_clients → clients.edit.open → clients.deactivate.open → clients.deactivate.confirm"
+    },
+    {
+      "id": "commit-diffs.archive-flag-check-removed",
+      "category": "commit-diffs",
+      "kind": "diff",
+      "passed": true,
+      "unknown": false,
+      "detail": "2 added, 0 removed"
+    },
+    {
+      "id": "commit-diffs.editor-check-renamed-to-owner",
+      "category": "commit-diffs",
+      "kind": "diff",
+      "passed": true,
+      "unknown": false,
+      "detail": "2 added, 2 removed"
+    },
+    {
+      "id": "counterexamples.seeded-missing-admin-check",
+      "category": "counterexamples",
+      "kind": "property",
+      "passed": true,
+      "unknown": false,
+      "detail": "violated ending with plans.archive.archive (expected violated)"
+    },
+    {
+      "id": "counterexamples.seeded-missing-editor-check",
+      "category": "counterexamples",
+      "kind": "property",
+      "passed": true,
+      "unknown": false,
+      "detail": "violated ending with clients.create.submit (expected violated)"
+    },
+    {
+      "id": "counterexamples.viewer-never-creates-holds",
+      "category": "counterexamples",
+      "kind": "property",
+      "passed": true,
+      "unknown": false,
+      "detail": "holds (expected holds)"
+    },
+    {
+      "id": "feature-flags.archive-needs-flag",
+      "category": "feature-flags",
+      "kind": "reachability",
+      "passed": true,
+      "unknown": false,
+      "detail": "unreachable (expected unreachable)"
+    },
+    {
+      "id": "feature-flags.structure-needs-flag",
+      "category": "feature-flags",
+      "kind": "reachability",
+      "passed": true,
+      "unknown": false,
+      "detail": "unreachable (expected unreachable)"
+    },
+    {
+      "id": "permissions.admin-keeps-editor-rights",
+      "category": "permissions",
+      "kind": "reachability",
+      "passed": true,
+      "unknown": false,
+      "detail": "reachable (expected reachable)"
+    },
+    {
+      "id": "permissions.editor-cannot-archive",
+      "category": "permissions",
+      "kind": "explanation",
+      "passed": true,
+      "unknown": false,
+      "detail": "cites plans.archive.archive requires role = admin"
+    },
+    {
+      "id": "reachable.admin-archives-plan",
+      "category": "reachable",
+      "kind": "reachability",
+      "passed": true,
+      "unknown": false,
+      "detail": "reachable (expected reachable)"
+    },
+    {
+      "id": "reachable.editor-creates-client",
+      "category": "reachable",
+      "kind": "reachability",
+      "passed": true,
+      "unknown": false,
+      "detail": "reachable (expected reachable)"
+    },
+    {
+      "id": "unreachable.viewer-cannot-change-structure",
+      "category": "unreachable",
+      "kind": "reachability",
+      "passed": true,
+      "unknown": false,
+      "detail": "unreachable (expected unreachable)"
+    },
+    {
+      "id": "unreachable.viewer-cannot-create-client",
+      "category": "unreachable",
+      "kind": "reachability",
+      "passed": true,
+      "unknown": false,
+      "detail": "unreachable (expected unreachable)"
+    }
+  ]
+}

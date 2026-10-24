@@ -13,7 +13,7 @@ export function Clients({ session }: { session: DemoSession }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const canEdit = session.role === "editor";
+  const canEdit = session.role === "editor" || session.role === "admin";
 
   function close() {
     setEditing(null);
@@ -181,6 +181,21 @@ export function Clients({ session }: { session: DemoSession }) {
             >
               {busy ? "Saving…" : "Save Client"}
             </button>
+            {/* Intentional alternative path: deactivate from the edit dialog. */}
+            {editing !== "new" && editing.active && (
+              <button
+                data-pathcompiler="client.form.deactivate"
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() => {
+                  setEditing(null);
+                  setDeactivating(editing);
+                }}
+              >
+                Deactivate Client
+              </button>
+            )}
           </form>
         </Modal>
       )}

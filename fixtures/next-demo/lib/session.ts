@@ -20,7 +20,7 @@ export async function readSession(): Promise<DemoSession> {
   if (!stored)
     return {
       role: "editor",
-      featureFlags: { planStructure: true },
+      featureFlags: { planStructure: true, planArchive: false },
       clients: [],
       plans: [],
     };
@@ -38,9 +38,14 @@ export async function readSession(): Promise<DemoSession> {
   }
 }
 
+/** Admins can do everything editors can. */
 export function requireEditor(session: DemoSession): void {
-  if (session.role !== "editor")
+  if (session.role !== "editor" && session.role !== "admin")
     throw new DemoError("Editor role required", 403);
+}
+
+export function requireAdmin(session: DemoSession): void {
+  if (session.role !== "admin") throw new DemoError("Admin role required", 403);
 }
 
 export function writeSession(

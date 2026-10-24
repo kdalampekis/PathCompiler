@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "permissions.editor-cannot-archive",
+  "category": "permissions",
+  "fixture": "next-demo",
+  "description": "Editors cannot archive plans: the archive handler requires the admin role.",
+  "query": {
+    "kind": "explanation",
+    "goal": "plans.archived",
+    "context": {
+      "role": "editor",
+      "plan_archive_enabled": true
+    },
+    "expectedConstraints": ["plans.archive.archive requires role = admin"]
+  }
+}

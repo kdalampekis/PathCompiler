@@ -96,7 +96,7 @@
       "query": "plan",
       "expected": {
         "type": "ambiguous",
-        "ids": ["plans.change_structure", "plans.create"]
+        "ids": ["plans.archive", "plans.change_structure", "plans.create"]
       }
     }
   ]

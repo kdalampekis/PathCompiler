@@ -2,14 +2,14 @@
   "family": "workflow-discovery",
   "strategy": "baseline",
   "precision": 1,
-  "recall": 0.6,
+  "recall": 0.833,
   "entrypointAccuracy": 1,
-  "meanMajorStepScore": 1,
-  "terminalAccuracy": 0.667,
-  "inventedStepCount": 0,
-  "inventedStepRate": 0,
+  "meanMajorStepScore": 0.9,
+  "terminalAccuracy": 0.8,
+  "inventedStepCount": 1,
+  "inventedStepRate": 0.071,
   "applicabilityAccuracy": 0,
-  "meanEditDistance": 1,
+  "meanEditDistance": 0.667,
   "unexpectedCandidates": [],
   "cases": [
     {
@@ -24,13 +24,15 @@
     },
     {
       "id": "clients.deactivate",
-      "found": false,
-      "entrypointCorrect": false,
-      "majorStepScore": 0,
-      "terminalCorrect": false,
-      "inventedSteps": [],
-      "editDistance": 2,
-      "applicabilityCorrect": null
+      "found": true,
+      "entrypointCorrect": true,
+      "majorStepScore": 0.5,
+      "terminalCorrect": true,
+      "inventedSteps": [
+        "client.form.deactivate"
+      ],
+      "editDistance": 1,
+      "applicabilityCorrect": false
     },
     {
       "id": "clients.edit",
@@ -41,6 +43,16 @@
       "inventedSteps": [],
       "editDistance": 3,
       "applicabilityCorrect": null
+    },
+    {
+      "id": "plans.archive",
+      "found": true,
+      "entrypointCorrect": true,
+      "majorStepScore": 1,
+      "terminalCorrect": true,
+      "inventedSteps": [],
+      "editDistance": 0,
+      "applicabilityCorrect": false
     },
     {
       "id": "plans.change_structure",

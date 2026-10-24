@@ -38,6 +38,7 @@ export type TransitionBasis =
 export type UncertaintyKind =
   | "ambiguous-entry"
   | "capability-not-modeled"
+  | "direct-action"
   | "enabling-condition-unknown"
   | "heuristic-guard"
   | "outcome-condition-unknown"
@@ -364,6 +365,8 @@ export function buildFormalModel(
   // Test sessions: an entry click followed by interactions inside its dialog.
   const sessions: Session[] = [];
   let discarded = 0;
+  // Entries clicked inside a dialog: the capability whose session was open.
+  const hostsOf = new Map<string, Set<string>>();
   for (const trace of traces.traces) {
     if (trace.mode === "skip" || trace.mode === "fixme") continue;
     let current: Session | undefined;
@@ -397,6 +400,11 @@ export function buildFormalModel(
         }
         const capability = entryOf.get(id);
         if (capability) {
+          if (current && current.capability !== capability && dialogOf(id))
+            hostsOf.set(
+              id,
+              new Set([...(hostsOf.get(id) ?? []), current.capability]),
+            );
           close();
           current = {
             capability,
@@ -510,6 +518,8 @@ export function buildFormalModel(
     rejections: Session[];
     required: string[];
     fields: string[];
+    /** The entry click itself completes the capability: no dialog in any test. */
+    direct: boolean;
   };
   const add = (map: Map<string, Session[]>, key: string, session: Session) =>
     map.set(key, [...(map.get(key) ?? []), session]);
@@ -558,6 +568,7 @@ export function buildFormalModel(
       rejections: [],
       required: [],
       fields: [],
+      direct: false,
     };
     const textFields = new Set<string>();
     const enteredAtCommit: Set<string>[] = [];
@@ -599,6 +610,25 @@ export function buildFormalModel(
           add(analysis.backs, node, session);
       }
     }
+    // One-click actions (Archive Plan): every session is a bare entry click
+    // with no dialog, and the capability has API evidence.
+    if (
+      analysis.commits.size === 0 &&
+      own.length > 0 &&
+      own.every(
+        (session) => session.steps.length === 0 && session.dialogs.size === 0,
+      ) &&
+      capability.apiEvidence.length > 0
+    ) {
+      analysis.direct = true;
+      for (const session of own) add(analysis.commits, session.entry, session);
+      doubt(
+        "direct-action",
+        capability.id,
+        `No test opens a dialog for ${capability.id}, so clicking its entry is modeled as completing it.`,
+        [...new Set(own.map((session) => session.entry))],
+      );
+    }
     if (analysis.commits.size === 0) {
       notModeled.push(capability.id);
       doubt(
@@ -629,10 +659,12 @@ export function buildFormalModel(
   const goalVariable = (capability: Capability) =>
     `${snake(capability.domain)}_${capability.qualifier ? `${capability.qualifier}_` : ""}${past(capability.verb)}`;
   const existsVariable = (entity: string) => `${snake(entity)}_exists`;
-  const sessionVariables = analyses.flatMap((item) => [
-    openVariable(item.capability.id),
-    ...(item.stage2.size > 0 ? [confirmingVariable(item.capability.id)] : []),
-  ]);
+  const sessionVariables = analyses
+    .filter((item) => !item.direct)
+    .flatMap((item) => [
+      openVariable(item.capability.id),
+      ...(item.stage2.size > 0 ? [confirmingVariable(item.capability.id)] : []),
+    ]);
   const closeAll = sessionVariables.map((id) => f.set(id, false));
   const rowsOf = (entry: string) =>
     (parents.get(entry) ?? []).filter((id) =>
@@ -703,16 +735,17 @@ export function buildFormalModel(
     );
     const routeGuard = areaGuard(capability.routeIds);
     const goal = goalVariable(capability);
-    variables.push({
-      id: open,
-      type: "boolean",
-      scope: "state",
-      description: `${capability.title} dialog is open`,
-      evidence: refs([
-        ...dialogs,
-        ...item.sessions.map((session) => session.entry),
-      ]),
-    });
+    if (!item.direct)
+      variables.push({
+        id: open,
+        type: "boolean",
+        scope: "state",
+        description: `${capability.title} dialog is open`,
+        evidence: refs([
+          ...dialogs,
+          ...item.sessions.map((session) => session.entry),
+        ]),
+      });
     if (confirming)
       variables.push({
         id: confirming,
@@ -730,7 +763,7 @@ export function buildFormalModel(
       evidence: refs(apiIds.length > 0 ? apiIds : capability.routeIds),
     });
     initial.push(
-      f.not(f.var(open)),
+      ...(item.direct ? [] : [f.not(f.var(open))]),
       ...(confirming ? [f.not(f.var(confirming))] : []),
       f.not(f.var(goal)),
     );
@@ -802,22 +835,41 @@ export function buildFormalModel(
     const entries = sorted(item.sessions.map((session) => session.entry));
     const rows = entries.flatMap(rowsOf);
     const textFields = item.fields.filter((field) => !fieldValues.get(field));
-    for (const entry of entries)
+    // Alternative entries with the same short name (a row button and an
+    // in-dialog button) are told apart by their full semantic ID.
+    const entryName = (entry: string) =>
+      entries.filter((other) => shortName(other) === shortName(entry)).length >
+      1
+        ? snake(semanticId(entry) ?? entry)
+        : shortName(entry);
+    for (const entry of item.direct ? [] : entries) {
+      // An entry inside another capability's dialog (Deactivate inside Edit
+      // Client) needs that dialog open and hands over from it.
+      // Only a single observed host is used; otherwise the entry is left unguarded.
+      const hosts = [...(hostsOf.get(entry) ?? [])];
+      const host = hosts.length === 1 ? hosts[0] : undefined;
+      const hostOpen =
+        host && sessionVariables.includes(openVariable(host))
+          ? openVariable(host)
+          : undefined;
       action(
         {
           id:
             entries.length === 1
               ? `${id}.open`
-              : `${id}.open_${shortName(entry)}`,
+              : `${id}.open_${entryName(entry)}`,
           precondition: all([
             ...routeGuard,
-            ...sessionVariables.map((variable) => f.not(f.var(variable))),
+            ...sessionVariables.map((variable) =>
+              variable === hostOpen ? f.var(variable) : f.not(f.var(variable)),
+            ),
             ...(rows.length > 0
               ? [f.var(existsVariable(capability.entity))]
               : []),
           ]),
           effects: [
             f.set(open, true),
+            ...(hostOpen ? [f.set(hostOpen, false)] : []),
             ...(confirming ? [f.set(confirming, false)] : []),
             ...textFields.map((field) => f.set(fieldVariable(field), false)),
           ],
@@ -829,8 +881,10 @@ export function buildFormalModel(
         [
           "test-session-entry",
           ...(rows.length > 0 ? ["row-entity-exists"] : []),
+          ...(hostOpen ? ["inside-other-dialog"] : []),
         ],
       );
+    }
     const fieldNames = new Map(
       item.fields.map((field) => [field, shortName(field)]),
     );
@@ -880,7 +934,7 @@ export function buildFormalModel(
       );
     const finish: FormalEffect[] = [
       f.set(goal, true),
-      f.set(open, false),
+      ...(item.direct ? [] : [f.set(open, false)]),
       ...(confirming ? [f.set(confirming, false)] : []),
       ...(capability.verb === "create" && existence.has(capability.entity)
         ? [f.set(existsVariable(capability.entity), true)]
@@ -894,7 +948,15 @@ export function buildFormalModel(
         {
           id: `${id}.${shortName(button)}`,
           precondition: all([
-            f.var(open),
+            ...(item.direct
+              ? [
+                  ...routeGuard,
+                  ...sessionVariables.map((variable) => f.not(f.var(variable))),
+                  ...(rowsOf(button).length > 0
+                    ? [f.var(existsVariable(capability.entity))]
+                    : []),
+                ]
+              : [f.var(open)]),
             ...(confirming
               ? [stage2 ? f.var(confirming) : f.not(f.var(confirming))]
               : []),
@@ -904,11 +966,19 @@ export function buildFormalModel(
           effects: finish,
           ...target(button),
           capabilityId: id,
-          evidence: [button, ...guardNodes, ...tests(list)],
+          evidence: [
+            button,
+            ...(item.direct ? rowsOf(button) : []),
+            ...guardNodes,
+            ...tests(list),
+          ],
         },
         "tests",
         [
-          "test-session-commit",
+          item.direct ? "test-session-direct" : "test-session-commit",
+          ...(item.direct && rowsOf(button).length > 0
+            ? ["row-entity-exists"]
+            : []),
           ...(guards.length > 0 ? ["api-handler-guard"] : []),
         ],
       );
@@ -977,7 +1047,7 @@ export function buildFormalModel(
       );
     }
 
-    if (routeGuard.length > 0)
+    if (routeGuard.length > 0 && !item.direct)
       invariants.push({
         id: `${id}.open_only_in_area`,
         description: `The ${capability.title} dialog is open only on its route`,

@@ -96,7 +96,7 @@ describe("unreachability explanations", () => {
     );
     expect(fromCode.constraints.map((item) => item.description)).toEqual([
       "Context fixes role = unlisted",
-      "clients.create.submit requires role = editor",
+      "clients.create.submit requires role = admin or role = editor",
       "Initially not clients_created",
     ]);
     expect(fromCode.constraints[1]?.evidence.map((ref) => ref.id)).toEqual(
@@ -119,7 +119,7 @@ describe("unreachability explanations", () => {
       "context:plan_structure_enabled",
       "precondition:plans.change_structure.confirm#4",
       "precondition:plans.change_structure.submit#4",
-      "initial#10",
+      "initial#11",
     ]);
     expect(explanation.constraints[0]?.evidence.map((ref) => ref.id)).toEqual([
       "flag:planStructure",

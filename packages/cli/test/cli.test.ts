@@ -169,11 +169,13 @@ describe("pathcompiler CLI", () => {
       ]),
     ).toEqual([
       ["clients.create", "approved"],
+      ["clients.deactivate", "candidate"],
+      ["plans.archive", "candidate"],
       ["plans.change_structure", "candidate"],
       ["plans.create", "rejected"],
     ]);
     expect(await run(["workflows", "list"])).toContain(
-      "1 approved, 1 rejected, 1 candidates",
+      "1 approved, 1 rejected, 3 candidates",
     );
     const shown = JSON.parse(
       await run(["workflows", "show", "plans.create", "--json"]),
@@ -1039,7 +1041,7 @@ describe("pathcompiler CLI", () => {
     const cwd = await directory();
     const args = [binary, "workflows", "discover", fixture];
     const first = await exec(process.execPath, args, { cwd });
-    expect(first.stdout).toContain("Discovered 3 workflow candidates");
+    expect(first.stdout).toContain("Discovered 5 workflow candidates");
     expect(first.stderr).toBe("");
     const base = path.join(cwd, ".pathcompiler");
     const reportPath = path.join(base, "reports/workflow-candidates.json");
@@ -1051,7 +1053,7 @@ describe("pathcompiler CLI", () => {
     const yaml = await readFile(yamlPath, "utf8");
     expect(parseCandidateYaml(yaml).workflow.id).toBe("clients.create");
     expect(await readdir(path.join(base, "workflows/candidates"))).toHaveLength(
-      3,
+      5,
     );
     await writeFile(
       path.join(base, "graph/source-graph.json"),
@@ -1205,7 +1207,7 @@ describe("pathcompiler CLI", () => {
     const cwd = await directory();
     const args = [binary, "tests", "mine", fixture, "--out", "evidence"];
     const first = await exec(process.execPath, args, { cwd });
-    expect(first.stdout).toContain("Mined 7 Playwright tests");
+    expect(first.stdout).toContain("Mined 9 Playwright tests");
     const traceFile = path.join(cwd, "evidence/reports/test-traces.json");
     const graphFile = path.join(cwd, "evidence/graph/test-graph.json");
     const traces = await readFile(traceFile, "utf8");
@@ -1220,7 +1222,7 @@ describe("pathcompiler CLI", () => {
       JSON.parse(graph).nodes.filter(
         (node: { type: string }) => node.type === "Test",
       ),
-    ).toHaveLength(7);
+    ).toHaveLength(9);
     await exec(process.execPath, args, { cwd });
     expect(await readFile(traceFile, "utf8")).toBe(traces);
     expect(await readFile(graphFile, "utf8")).toBe(graph);
@@ -1322,7 +1324,7 @@ describe("pathcompiler CLI", () => {
       "utf8",
     );
     const first = await exec(process.execPath, args, { cwd });
-    expect(first.stdout).toContain("Discovered 5 candidate capabilities");
+    expect(first.stdout).toContain("Discovered 6 candidate capabilities");
     expect(first.stdout).toContain("False positives: 0; false negatives: 0");
     expect(first.stderr).toBe("");
     const reportPath = path.join(cwd, "artifacts/reports/capabilities.json");
@@ -1367,7 +1369,7 @@ describe("pathcompiler CLI", () => {
         "utf8",
       ),
     );
-    expect(noTests.capabilities).toHaveLength(5);
+    expect(noTests.capabilities).toHaveLength(6);
     expect(
       noTests.evidence.graph.nodes.some(
         (node: { type: string }) => node.type === "Test",
@@ -1393,7 +1395,7 @@ describe("pathcompiler CLI", () => {
         ],
         cwd,
       ),
-    ).toContain("False positives: 4; false negatives: 1");
+    ).toContain("False positives: 5; false negatives: 1");
     expect(await readFile(graphPath, "utf8")).toBe(graph);
     await writeFile(path.join(cwd, "invalid.json"), "{}");
     for (const invalid of [

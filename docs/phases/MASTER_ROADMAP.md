@@ -366,7 +366,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
   commit diffs.
 - **Runtime change:** Fixture only.
 - **Unblocks:** R5, R6 and R8–R10 evaluations; I demos.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-24): admin role, `planArchive` flag, Archive Plan, alternative Deactivate path, `fixtures/reasoning/` (15 cases), `eval reasoning`, ADR 0058. Harness fixtures deferred to I2.
 
 #### C8 — Generalized browser verification
 - **Objective:** Generalize the Phase 10 runner from `clients.create` to
@@ -520,18 +520,18 @@ change to default discovery or runtime until R-WI's evaluation passes.
   and minimal.
 - **Runtime change:** No.
 - **Unblocks:** permission audit and minimal-enablement modules.
-- **Status:** 🟢 unblocked.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### R6 — Plan Enumeration and semantic trace clustering
 - **Objective:** Bounded enumeration with blocking constraints, and
   `trace-clustering` into business variants.
-- **Prerequisites:** R3; C7 (an alternative-path fixture).
+- **Prerequisites:** R3; C7 (an alternative-path fixture, ✅).
 - **Packages:** `reasoner-core`, new `trace-clustering`.
 - **Acceptance:** alternative-path fixture yields the expected variants with a
   low duplicate rate.
 - **Runtime change:** No.
 - **Unblocks:** R7, O10, workflow breadth.
-- **Status:** 🔒 blocked on C7.
+- **Status:** 🟢 unblocked (C7 ✅).
 
 #### R7 — Optimization (OMT / MaxSAT)
 - **Objective:** Rank plans by explicit costs and derive UX metrics (§30).
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **C7** (next), O11, O12, R5, R7, R9, R10, R12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅ | R6 (C7) · P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · O9 (R7) · O10 (R6) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R5** (next), R6, O11, O12, R7, R9, R10, R12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅ | P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · O9 (R7) · O10 (R6) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,18 +839,22 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: C7 — Reasoning and harness fixture enrichment
+## 7. Next implementation phase: R5 — MUS / MCS
 
-C5 is complete. `@pathcompiler/model-provider` defines the vendor-free
-boundary: no-op and fixture providers, request redaction, a context log and
-response validation. `scan --explain-model-context` shows the exact payload a
-provider would receive (ADR 0057). C9 is now unblocked.
+C7 is complete. The fixture now has three roles (admin, editor, viewer), a
+second flag (`planArchive`), an admin-only Archive Plan and an alternative
+Deactivate Client path. `fixtures/reasoning/` holds 15 reviewed cases in
+seven categories, and `pathcompiler eval reasoning` runs them, all passing
+(ADR 0058). The enrichment also fixed API association, one-click actions,
+in-dialog entries and a resolver verb group.
 
-C7 comes next. It enriches the fixture with more roles, a second flag, an
-alternative path and seedable bugs, and adds `fixtures/reasoning/` and
-`fixtures/harness/` cases. It unblocks R6 and gives R5, R9 and R10 real
-evaluation cases (ISSUES_LOG #6). The planned order after C7:
-1. R5, R6, R7, R9, R10, R12;
+R5 comes next. It adds minimal correction sets: the smallest change to
+context, guards or initial state that makes an unreachable goal reachable,
+such as "what minimal change lets a viewer create a client". These are
+diagnostics that never change permissions automatically, and the new
+permission and flag cases are their evaluation material. The planned order
+after R5:
+1. R6, R7, R9, R10, R12;
 2. C8, O11, O12, C4;
 3. C9;
 4. P1–P5 and P-RV;

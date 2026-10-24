@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "counterexamples.seeded-missing-admin-check",
+  "category": "counterexamples",
+  "fixture": "next-demo",
+  "description": "Seeded bug: the archive handler forgets its admin check, so an editor can archive.",
+  "edits": [
+    {
+      "file": "app/api/plans/[id]/archive/route.ts",
+      "from": "    requireAdmin(session);\n",
+      "to": ""
+    }
+  ],
+  "query": {
+    "kind": "property",
+    "property": {
+      "kind": "never",
+      "id": "security.only_admins_archive",
+      "description": "Editors can never archive a plan",
+      "goal": "plans.archived",
+      "context": {
+        "role": "editor"
+      }
+    },
+    "expected": "violated",
+    "lastAction": "plans.archive.archive"
+  }
+}

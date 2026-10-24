@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "commit-diffs.archive-flag-check-removed",
+  "category": "commit-diffs",
+  "fixture": "next-demo",
+  "description": "Removing the server-side archive flag check makes archiving reachable with the flag off.",
+  "edits": [
+    {
+      "file": "app/api/plans/[id]/archive/route.ts",
+      "from": "    if (!session.featureFlags.planArchive)\n      throw new DemoError(\"Plan archive feature is disabled\", 403);\n",
+      "to": ""
+    }
+  ],
+  "query": {
+    "kind": "diff",
+    "goals": ["plans.archived"],
+    "expectedAdded": [
+      {
+        "goal": "plans.archived",
+        "context": {
+          "role": "admin",
+          "plan_archive_enabled": false
+        }
+      }
+    ]
+  }
+}

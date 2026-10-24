@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "reachable.admin-archives-plan",
+  "category": "reachable",
+  "fixture": "next-demo",
+  "description": "Admins can archive a plan while the archive flag is on.",
+  "query": {
+    "kind": "reachability",
+    "goal": "plans.archived",
+    "context": {
+      "role": "admin",
+      "plan_archive_enabled": true
+    },
+    "expected": "reachable"
+  }
+}

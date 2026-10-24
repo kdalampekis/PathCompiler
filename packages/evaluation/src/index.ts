@@ -42,6 +42,8 @@ import { validateWorkflow } from "@pathcompiler/workflow-validator";
 import { parse } from "yaml";
 import { z } from "zod";
 
+export * from "./reasoning.js";
+
 /**
  * Evaluation harness (CODEX spec §54): reviewed ground truth per fixture and
  * one deterministic report per metric family. Never tune against these cases;

@@ -18,6 +18,8 @@ export async function POST(request: Request) {
     const session = await readSession();
     session.role = settings.role;
     session.featureFlags.planStructure = settings.planStructure;
+    if (settings.planArchive !== undefined)
+      session.featureFlags.planArchive = settings.planArchive;
     return writeSession(session, { ok: true });
   });
 }

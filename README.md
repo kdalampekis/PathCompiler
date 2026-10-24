@@ -41,10 +41,15 @@ pnpm dev
 ```
 
 Open <http://127.0.0.1:3000>. The fixture contains Create Client, Edit Client,
-Deactivate Client, Create Plan and Change Plan Structure. Create an active client
-before adding a plan. Expanding a plan to Weekly saves immediately; switching back
-to Simple asks for confirmation. The controls at the top exercise role and feature
-gates, which are also enforced by the API.
+Deactivate Client, Create Plan, Change Plan Structure and Archive Plan. Create an
+active client before adding a plan. Expanding a plan to Weekly saves immediately;
+switching back to Simple asks for confirmation. Clients can also be deactivated
+from the Edit Client dialog (an intentional alternative path).
+
+The controls at the top switch the role (Admin, Editor or Viewer) and two
+feature flags (plan structure, and plan archive, which is off by default). Admins
+can do everything editors can, and only admins can archive plans. The API
+enforces all of these gates.
 
 This is a local demo with fictional data and simulated roles. Each browser session
 stores a small dataset in a cookie. Clear site cookies to reset it. It is not a
@@ -156,9 +161,10 @@ call-site evidence. Direct API calls remain request actions, and negative/soft
 assertions retain their meaning. Unique source-target matches add `TESTED_BY`
 edges; ambiguous matches remain candidates.
 
-The fixture produces seven traces. Two workflow tests are fully extracted; five
-are partial because some setup/data-processing/control-flow code is unsupported.
-The API-only test has a null start route. All seven retain terminal assertions,
+The fixture produces nine traces. Three tests are fully extracted; six are
+partial because some setup, data-processing or control-flow code is
+unsupported. The API-only test has a null start route. All nine retain terminal
+assertions,
 and the client creation sequence is recoverable from semantic targets and its
 feedback assertion. These are test observations, not approved workflows or test
 pass results. See [mining boundaries](docs/decisions/0005-static-playwright-evidence.md).
@@ -320,8 +326,8 @@ The current analyzer does not connect implicit Next layouts to routes; unreachab
 controls are omitted with diagnostics. Redirect-only routes remain page candidates
 with an unresolved-render diagnostic. Static candidates do not prove live visibility.
 
-The fixture yields 24 candidates: three pages, one shared modal, three forms and
-17 actions, including all five primary workflow action anchors. Synthetic tests
+The fixture yields 26 candidates: three pages, one shared modal, three forms and
+19 actions, including all six primary workflow action anchors. Synthetic tests
 also cover named/ARIA panels. See the [surface and evidence contract](docs/decisions/0008-product-surface-candidates.md).
 
 `SemanticModel` defines optional `classifyCapabilities` and `summarizeEvidence`
@@ -381,7 +387,7 @@ passing test run or verifies authorization.
 `capabilityIds` list. It does not guide inference. The report lists matched,
 unexpected and missing IDs with false-positive/negative counts. Without an explicit
 reference list, counts are null and the CLI says “not evaluated”. The fixture's
-reviewed list produces all five intended capabilities with **0 false positives
+reviewed list produces all six intended capabilities with **0 false positives
 and 0 false negatives**; this is a fixture result, not a general accuracy claim.
 
 ```ts
@@ -406,9 +412,10 @@ pnpm pathcompiler workflows discover ./fixtures/next-demo
 
 Writes `workflows/candidates/*.yaml`, `reports/workflow-candidates.json` and
 `graph/workflow-graph.json` under `.pathcompiler` or `--out`. The fixture produces
-`clients.create`, `plans.create` and `plans.change_structure`. Edit/deactivate
-remain explicitly skipped because their completion assertions cannot yet be
-resolved to semantic observation targets.
+`clients.create`, `clients.deactivate` (through its alternative-path test),
+`plans.archive`, `plans.create` and `plans.change_structure`. Edit Client stays
+explicitly skipped, because its completion assertion cannot yet be resolved to a
+semantic observation target.
 
 Each YAML document is a versioned candidate envelope containing a Workflow V1,
 confidence, evidence, commit, observed test segments, unresolved ambiguities and
@@ -1068,6 +1075,22 @@ accuracy and edit distance. On the fixture, reasoning reaches recall 1
 against 0.6, but its terminals are weaker, so the baseline remains the default.
 See [ADR 0055](docs/decisions/0055-reasoning-assisted-workflow-discovery.md).
 
+## Reasoning evaluation cases (`fixtures/reasoning/`)
+
+```bash
+pnpm pathcompiler eval reasoning fixtures/reasoning
+```
+
+`fixtures/reasoning/` holds reviewed cases in seven categories: reachable,
+unreachable, permissions, feature flags, alternative plans, counterexamples and
+commit diffs. Each case runs one query against the model extracted from a
+fixture: reachability, a plan, an unreachability explanation, a property, or a
+diff against the unedited fixture. Seeded bugs (a removed editor or admin check,
+a removed flag check, a renamed role) are applied to a temporary copy. The
+report gives verdict accuracy, plan accuracy, diff accuracy and the unknown rate
+(reasoning spec §89). See
+[ADR 0058](docs/decisions/0058-reasoning-fixture-enrichment.md).
+
 ## Model provider boundary (`@pathcompiler/model-provider`)
 
 ```bash
@@ -1357,7 +1380,7 @@ Analysis packages:
 | `@pathcompiler/model-provider` | `PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `fixtureKey`, `guardModelProvider`, `semanticModelFromProvider`, `redactSecrets`, `redactValue`, `describeModelRequest`, `ModelProviderError` |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
-| `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates` |
+| `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
 | `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 

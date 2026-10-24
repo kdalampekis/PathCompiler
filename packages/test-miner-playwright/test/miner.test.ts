@@ -286,7 +286,7 @@ describe("Playwright static test mining", () => {
       input,
       analyzeNextProject(input).graph,
     );
-    expect(report.traces).toHaveLength(7);
+    expect(report.traces).toHaveLength(9);
     expect(
       report.traces.every((trace) => trace.terminalAssertion !== null),
     ).toBe(true);
@@ -315,7 +315,7 @@ describe("Playwright static test mining", () => {
       expected: { value: "Client created" },
       target: { graphNodeIds: ["ui:clients.feedback"] },
     });
-    expect(graph.nodesByType("Test")).toHaveLength(7);
+    expect(graph.nodesByType("Test")).toHaveLength(9);
     expect(graph.nodesByType("WorkflowCandidate")).toEqual([]);
   });
 });

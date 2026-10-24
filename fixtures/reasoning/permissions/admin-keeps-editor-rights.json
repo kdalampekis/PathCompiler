@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "permissions.admin-keeps-editor-rights",
+  "category": "permissions",
+  "fixture": "next-demo",
+  "description": "Admins keep every editor action, such as editing a client.",
+  "query": {
+    "kind": "reachability",
+    "goal": "clients.edited",
+    "context": {
+      "role": "admin"
+    },
+    "expected": "reachable"
+  }
+}

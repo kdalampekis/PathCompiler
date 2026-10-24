@@ -5,4 +5,4 @@ steps:
   - { target: client.form.name, action: input }
   - { target: client.form.submit, action: click }
 terminal: { type: element_text, target: clients.feedback, text: Client updated }
-roles: [editor]
+roles: [admin, editor]

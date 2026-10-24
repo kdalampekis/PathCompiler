@@ -49,7 +49,7 @@ describe("pathcompiler eval", () => {
       cwd,
     );
     expect(output).toContain(
-      "Workflow discovery (baseline): precision 1, recall 0.6,",
+      "Workflow discovery (baseline): precision 1, recall 0.833,",
     );
     expect(output).toContain(
       "Workflow discovery (reasoning): precision 1, recall 1,",
@@ -70,9 +70,22 @@ describe("pathcompiler eval", () => {
     );
   }, 120_000);
 
+  it("runs the reviewed reasoning cases", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-eval-cli-"));
+    temporary.push(cwd);
+    const cases = fileURLToPath(
+      new URL("../../../fixtures/reasoning", import.meta.url),
+    );
+    const output = await runCli(["eval", "reasoning", cases], cwd);
+    expect(output).toMatch(
+      /^Reasoning cases: (\d+)\/\1 passed; verdicts 1, plans 1, diffs 1, unknown rate 0\./,
+    );
+    expect(output).not.toContain("FAIL");
+  }, 300_000);
+
   it("rejects unknown families and unsupported options", async () => {
     await expect(runCli(["eval", "graphs"])).rejects.toThrow(
-      "Expected: pathcompiler eval capabilities|workflow-discovery|resolver|impact [directory].",
+      "Expected: pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory].",
     );
     await expect(
       runCli(["eval", "resolver", fixture, "--exclude", "x"]),

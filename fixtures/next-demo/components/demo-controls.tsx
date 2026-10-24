@@ -8,26 +8,29 @@ import { errorMessage, save } from "./request";
 export function DemoControls({
   role,
   planStructure,
+  planArchive,
 }: {
   role: DemoSession["role"];
   planStructure: boolean;
+  planArchive: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [refreshing, startTransition] = useTransition();
   const [error, setError] = useState("");
-  const [settings, setSettings] = useState({ role, planStructure });
+  const [settings, setSettings] = useState({
+    role,
+    planStructure,
+    planArchive,
+  });
 
-  async function update(nextRole: DemoSession["role"], nextFlag: boolean) {
+  async function update(next: typeof settings) {
     const previous = settings;
-    setSettings({ role: nextRole, planStructure: nextFlag });
+    setSettings(next);
     setBusy(true);
     setError("");
     try {
-      await save("/api/session", "POST", {
-        role: nextRole,
-        planStructure: nextFlag,
-      });
+      await save("/api/session", "POST", next);
       startTransition(() => router.refresh());
     } catch (cause) {
       setSettings(previous);
@@ -48,12 +51,18 @@ export function DemoControls({
           value={settings.role}
           disabled={busy || refreshing}
           onChange={(event) =>
-            void update(
-              event.target.value === "viewer" ? "viewer" : "editor",
-              settings.planStructure,
-            )
+            void update({
+              ...settings,
+              role:
+                event.target.value === "viewer"
+                  ? "viewer"
+                  : event.target.value === "admin"
+                    ? "admin"
+                    : "editor",
+            })
           }
         >
+          <option value="admin">Admin</option>
           <option value="editor">Editor</option>
           <option value="viewer">Viewer</option>
         </select>
@@ -64,9 +73,23 @@ export function DemoControls({
           type="checkbox"
           checked={settings.planStructure}
           disabled={busy || refreshing}
-          onChange={(event) => void update(settings.role, event.target.checked)}
+          onChange={(event) =>
+            void update({ ...settings, planStructure: event.target.checked })
+          }
         />{" "}
         Plan structure feature
+      </label>
+      <label className="checkbox">
+        <input
+          data-pathcompiler="demo.plan_archive"
+          type="checkbox"
+          checked={settings.planArchive}
+          disabled={busy || refreshing}
+          onChange={(event) =>
+            void update({ ...settings, planArchive: event.target.checked })
+          }
+        />{" "}
+        Plan archive feature
       </label>
       {error && <p role="alert">{error}</p>}
     </aside>

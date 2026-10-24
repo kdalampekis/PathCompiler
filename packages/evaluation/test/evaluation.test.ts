@@ -47,11 +47,12 @@ beforeAll(async () => {
 
 describe("ground truth", () => {
   it("loads every reviewed file of the fixture", () => {
-    expect(truth.capabilities).toHaveLength(5);
+    expect(truth.capabilities).toHaveLength(6);
     expect(truth.workflows.map((item) => item.id)).toEqual([
       "clients.create",
       "clients.deactivate",
       "clients.edit",
+      "plans.archive",
       "plans.change_structure",
       "plans.create",
     ]);

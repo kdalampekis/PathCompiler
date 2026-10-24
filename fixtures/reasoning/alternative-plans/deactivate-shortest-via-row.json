@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "alternative-plans.deactivate-shortest-via-row",
+  "category": "alternative-plans",
+  "fixture": "next-demo",
+  "description": "Two paths deactivate a client; the shortest uses the row button.",
+  "query": {
+    "kind": "plan",
+    "goal": "clients.deactivated",
+    "context": {
+      "role": "editor"
+    },
+    "expectedTargets": ["clients.deactivate", "client.deactivate.confirm"]
+  }
+}

@@ -18,6 +18,37 @@
     }
   },
   {
+    "id": "clients.deactivate",
+    "entrypoints": [
+      "/clients"
+    ],
+    "steps": [
+      "click client.form.deactivate",
+      "click client.deactivate.confirm"
+    ],
+    "terminal": {
+      "type": "element_text",
+      "target": "clients.feedback",
+      "text": "Client deactivated",
+      "match": "exact"
+    }
+  },
+  {
+    "id": "plans.archive",
+    "entrypoints": [
+      "/plans"
+    ],
+    "steps": [
+      "click plans.archive"
+    ],
+    "terminal": {
+      "type": "element_text",
+      "target": "plans.feedback",
+      "text": "Plan archived",
+      "match": "exact"
+    }
+  },
+  {
     "id": "plans.change_structure",
     "entrypoints": [
       "/plans"

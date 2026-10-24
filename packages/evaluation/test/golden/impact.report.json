@@ -1,7 +1,7 @@
 {
   "family": "impact",
   "affectedRecall": 1,
-  "falsePositiveRate": 0.25,
+  "falsePositiveRate": 0.375,
   "severityAccuracy": 1,
   "cases": [
     {
@@ -11,6 +11,16 @@
           "workflowId": "clients.create",
           "expected": "low",
           "actual": "low"
+        },
+        {
+          "workflowId": "clients.deactivate",
+          "expected": "none",
+          "actual": "low"
+        },
+        {
+          "workflowId": "plans.archive",
+          "expected": "none",
+          "actual": "none"
         },
         {
           "workflowId": "plans.change_structure",
@@ -31,6 +41,16 @@
           "workflowId": "clients.create",
           "expected": "none",
           "actual": "none"
+        },
+        {
+          "workflowId": "clients.deactivate",
+          "expected": "none",
+          "actual": "none"
+        },
+        {
+          "workflowId": "plans.archive",
+          "expected": "none",
+          "actual": "low"
         },
         {
           "workflowId": "plans.change_structure",

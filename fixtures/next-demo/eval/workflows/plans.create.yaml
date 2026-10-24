@@ -6,4 +6,4 @@ steps:
   - { target: plan.form.client, action: select }
   - { target: plan.form.submit, action: click }
 terminal: { type: element_text, target: plans.feedback, text: Plan created }
-roles: [editor]
+roles: [admin, editor]

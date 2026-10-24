@@ -39,6 +39,7 @@ describe("reasoning-assisted workflow discovery", () => {
       "clients.create",
       "clients.deactivate",
       "clients.edit",
+      "plans.archive",
       "plans.change_structure",
       "plans.create",
     ]);
@@ -64,7 +65,12 @@ describe("reasoning-assisted workflow discovery", () => {
 
   it("derives applicability from reachability per role and flag", () => {
     for (const item of report.candidates)
-      expect(item.workflow.roles).toEqual(["editor"]);
+      expect(item.workflow.roles).toEqual(
+        item.capabilityId === "plans.archive" ? ["admin"] : ["admin", "editor"],
+      );
+    expect(candidate("plans.archive")?.workflow.preconditions).toEqual([
+      { type: "feature_flag", flag: "planArchive", enabled: true },
+    ]);
     expect(candidate("plans.change_structure")?.workflow.preconditions).toEqual(
       [{ type: "feature_flag", flag: "planStructure", enabled: true }],
     );
@@ -92,7 +98,7 @@ describe("reasoning-assisted workflow discovery", () => {
       maxDepth: 1,
     });
     expect(shallow.candidates).toEqual([]);
-    expect(shallow.skipped).toHaveLength(5);
+    expect(shallow.skipped).toHaveLength(6);
     for (const item of shallow.skipped)
       expect(item.reason).toMatch(
         /^Planning was inconclusive \(bound-insufficient\)/,

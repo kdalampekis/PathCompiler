@@ -509,7 +509,7 @@ describe("GitHub App", () => {
     const check = await worker({ ...job, base, head });
     expect(check.conclusion).toBe("neutral");
     expect(check.summary).toContain("⚠ 1 workflow requires review");
-    expect(check.summary).toContain("✓ 2 workflows unaffected");
+    expect(check.summary).toContain("✓ 4 workflows unaffected");
     expect(check.text).toContain("plans.change_structure (high)");
     const published = JSON.parse(String(calls.at(-1)?.init.body));
     expect(published).toMatchObject({

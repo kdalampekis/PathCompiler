@@ -11,7 +11,9 @@
   ],
   "expected": {
     "clients.create": "low",
-    "plans.create": "none",
-    "plans.change_structure": "none"
+    "clients.deactivate": "none",
+    "plans.archive": "none",
+    "plans.change_structure": "none",
+    "plans.create": "none"
   }
 }

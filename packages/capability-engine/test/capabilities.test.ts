@@ -27,7 +27,7 @@ function source(content: string) {
 }
 
 describe("capability discovery", () => {
-  it("identifies all five fixture capabilities and measures false positives independently", async () => {
+  it("identifies all six fixture capabilities and measures false positives independently", async () => {
     const directory = fileURLToPath(
       new URL("../../../fixtures/next-demo", import.meta.url),
     );
@@ -57,7 +57,9 @@ describe("capability discovery", () => {
     for (const capability of report.capabilities) {
       expect(capability).toMatchObject({
         status: "candidate",
-        roles: ["editor"],
+        // Component-level role checks: Archive Plan's admin-only guard lives
+        // in its API handler, so the heuristic lists both (not authoritative).
+        roles: ["admin", "editor"],
         rolesAreAuthoritative: false,
         reviewRequired: true,
         confidenceMeaning: "rule-strength-not-probability",
@@ -68,7 +70,9 @@ describe("capability discovery", () => {
           nodeId:
             capability.verb === "create"
               ? `api:POST:/api/${capability.domain}`
-              : `api:PATCH:/api/${capability.domain}/:id`,
+              : capability.verb === "archive"
+                ? `api:POST:/api/${capability.domain}/:id/archive`
+                : `api:PATCH:/api/${capability.domain}/:id`,
           association: "component-context",
         },
       ]);

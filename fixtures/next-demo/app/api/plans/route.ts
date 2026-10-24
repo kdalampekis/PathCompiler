@@ -21,7 +21,12 @@ export async function POST(request: Request) {
     ) {
       throw new DemoError("Choose an active client");
     }
-    const plan = { ...input, id: randomUUID(), structure: "simple" as const };
+    const plan = {
+      ...input,
+      id: randomUUID(),
+      structure: "simple" as const,
+      archived: false,
+    };
     session.plans.push(plan);
     return writeSession(session, plan, 201);
   });

@@ -43,9 +43,11 @@ import {
   type DiscoveryEvaluationReport,
   evaluateCapabilityExtraction,
   evaluateImpact,
+  evaluateReasoningCases,
   evaluateResolverAccuracy,
   evaluateWorkflowDiscovery,
   loadGroundTruth,
+  loadReasoningCases,
   reasoningStrategy,
 } from "@pathcompiler/evaluation";
 import { buildFormalModel } from "@pathcompiler/formal-abstraction";
@@ -186,7 +188,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
-       pathcompiler eval capabilities|workflow-discovery|resolver|impact [directory] [--compare] [--json] [--out <directory>]
+       pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -264,6 +266,10 @@ eval scores PathCompiler itself against the reviewed ground truth in <directory>
 precision/recall, workflow discovery (recall, entrypoints, major steps, terminals, invented
 steps), resolver accuracy, or impact recall/false positives/severity on edited Git copies of
 the Git-tracked directory. It writes reports/eval/<family>.json; results are deterministic.
+eval reasoning [directory] runs the reviewed reasoning cases under <directory> (for example
+fixtures/reasoning: reachable, unreachable, permissions, feature-flags, alternative-plans,
+counterexamples, commit-diffs) against the model extracted from each case's fixture, with
+seeded edits applied to a temporary copy. With pathcompiler.yaml it needs reasoning.reachability.
 eval workflow-discovery --compare also runs reasoning-assisted discovery (formal model, shortest
 plan per capability goal, roles and flags from reachability) and reports both strategies side by
 side, adding invented-step rate, applicability accuracy and edit distance; the baseline stays the
@@ -1954,6 +1960,15 @@ function applyConfig(
   }
   if (
     command === "eval" &&
+    sub === "reasoning" &&
+    !reasoningEnabled(config, "reachability")
+  )
+    refuse(
+      "eval reasoning",
+      "reasoning.enabled and reasoning.reachability to true",
+    );
+  if (
+    command === "eval" &&
     (values as { compare?: boolean }).compare &&
     !reasoningEnabled(config, "planning")
   )
@@ -2750,6 +2765,7 @@ const EVAL_FAMILIES = [
   "workflow-discovery",
   "resolver",
   "impact",
+  "reasoning",
 ] as const;
 async function runEval(
   positionals: string[],
@@ -2766,9 +2782,25 @@ async function runEval(
   if (values.compare && family !== "workflow-discovery")
     throw new Error("--compare is only supported by eval workflow-discovery.");
   const directory = path.resolve(cwd, positionals[2] ?? ".");
-  const truth = await loadGroundTruth(path.join(directory, "eval"));
-  const report =
-    family === "workflow-discovery" && values.compare
+  // Reasoning cases name their fixture; the directory is the cases root.
+  const truth =
+    family === "reasoning"
+      ? undefined
+      : await loadGroundTruth(path.join(directory, "eval"));
+  const report = !truth
+    ? await (async () => {
+        const solver = await createZ3SolverProvider();
+        try {
+          return await evaluateReasoningCases(
+            directory,
+            await loadReasoningCases(directory),
+            solver,
+          );
+        } finally {
+          await solver.close();
+        }
+      })()
+    : family === "workflow-discovery" && values.compare
       ? await (async () => {
           const analysis = await analyzeFixture(directory);
           const solver = await createZ3SolverProvider();
@@ -2815,6 +2847,13 @@ async function runEval(
   if (report.family === "workflow-discovery-comparison")
     lines.push(...report.strategies.flatMap(discovery));
   if (report.family === "workflow-discovery") lines.push(...discovery(report));
+  if (report.family === "reasoning")
+    lines.push(
+      `Reasoning cases: ${report.passed}/${report.total} passed; verdicts ${report.verdictAccuracy}, plans ${report.planAccuracy}, diffs ${report.diffAccuracy}, unknown rate ${report.unknownRate}.`,
+      ...report.cases
+        .filter((item) => !item.passed)
+        .map((item) => `  FAIL ${item.id}: ${item.detail}`),
+    );
   if (report.family === "resolver")
     lines.push(
       `Resolver: top-1 ${report.top1Accuracy}, ambiguity ${report.ambiguityAccuracy}, unsupported ${report.unsupportedAccuracy}, controls ${report.controlsPassed ? "passed" : "failed"}.`,

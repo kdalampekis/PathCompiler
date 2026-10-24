@@ -117,7 +117,10 @@ const ACTION_GROUPS: Record<string, readonly string[]> = {
     "setup",
   ],
   change: ["change", "modify", "update", "edit", "alter", "adjust", "switch"],
-  delete: ["delete", "remove", "deactivate", "archive"],
+  delete: ["delete", "remove"],
+  // Reversible state changes are not deletion: "delete a client" must not
+  // resolve to Deactivate Client.
+  deactivate: ["deactivate", "disable", "archive", "suspend"],
 };
 const ACTION_OF = new Map(
   Object.entries(ACTION_GROUPS).flatMap(([group, words]) =>

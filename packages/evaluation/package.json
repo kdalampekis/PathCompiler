@@ -19,8 +19,11 @@
   "dependencies": {
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
+    "@pathcompiler/formal-abstraction": "workspace:*",
+    "@pathcompiler/formal-model": "workspace:*",
     "@pathcompiler/graph-delta": "workspace:*",
     "@pathcompiler/impact-analysis": "workspace:*",
+    "@pathcompiler/reasoner-core": "workspace:*",
     "@pathcompiler/reasoning-discovery": "workspace:*",
     "@pathcompiler/resolver": "workspace:*",
     "@pathcompiler/solver-provider": "workspace:*",

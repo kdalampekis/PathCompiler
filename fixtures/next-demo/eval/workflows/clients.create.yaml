@@ -7,4 +7,4 @@ steps:
   - { target: client.form.email, action: input }
   - { target: client.form.submit, action: click }
 terminal: { type: element_text, target: clients.feedback, text: Client created }
-roles: [editor]
+roles: [admin, editor]

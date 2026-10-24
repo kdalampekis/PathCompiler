@@ -15,7 +15,9 @@ export function Plans({ session }: { session: DemoSession }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const canEdit = session.role === "editor";
+  const canEdit = session.role === "editor" || session.role === "admin";
+  const canArchive =
+    session.role === "admin" && session.featureFlags.planArchive;
   const activeClients = session.clients.filter((client) => client.active);
 
   function close() {
@@ -40,6 +42,20 @@ export function Plans({ session }: { session: DemoSession }) {
       router.refresh();
     } catch (cause) {
       setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function archive(plan: Plan) {
+    setBusy(true);
+    setNotice("");
+    try {
+      await save(`/api/plans/${plan.id}/archive`, "POST", {});
+      setNotice("Plan archived");
+      router.refresh();
+    } catch (cause) {
+      setNotice(errorMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -128,7 +144,19 @@ export function Plans({ session }: { session: DemoSession }) {
                 <span className="badge">
                   {plan.structure === "simple" ? "Simple" : "Weekly"} structure
                 </span>
+                {plan.archived && <span className="badge">Archived</span>}
               </div>
+              {canArchive && !plan.archived && (
+                <button
+                  data-pathcompiler="plans.archive"
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => void archive(plan)}
+                >
+                  Archive Plan
+                </button>
+              )}
               {canEdit && session.featureFlags.planStructure && (
                 <button
                   data-pathcompiler="plans.change_structure"

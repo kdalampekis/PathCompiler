@@ -360,12 +360,21 @@ importers:
       "@pathcompiler/capability-engine":
         specifier: workspace:*
         version: link:../capability-engine
+      "@pathcompiler/formal-abstraction":
+        specifier: workspace:*
+        version: link:../formal-abstraction
+      "@pathcompiler/formal-model":
+        specifier: workspace:*
+        version: link:../formal-model
       "@pathcompiler/graph-delta":
         specifier: workspace:*
         version: link:../graph-delta
       "@pathcompiler/impact-analysis":
         specifier: workspace:*
         version: link:../impact-analysis
+      "@pathcompiler/reasoner-core":
+        specifier: workspace:*
+        version: link:../reasoner-core
       "@pathcompiler/reasoning-discovery":
         specifier: workspace:*
         version: link:../reasoning-discovery

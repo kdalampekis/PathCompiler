@@ -68,6 +68,8 @@ describe("workflow compiler", () => {
     expect(output.searchIndex.compilerVersion).toBe(COMPILER_VERSION);
     expect(output.searchIndex.workflows.map((item) => item.id)).toEqual([
       "clients.create",
+      "clients.deactivate",
+      "plans.archive",
       "plans.change_structure",
       "plans.create",
     ]);
@@ -265,6 +267,8 @@ describe("workflow compiler", () => {
     expect(pages.map(([file]) => file)).toEqual([
       "index.md",
       "clients.create.md",
+      "clients.deactivate.md",
+      "plans.archive.md",
       "plans.change_structure.md",
       "plans.create.md",
     ]);

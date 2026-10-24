@@ -6,6 +6,7 @@
     "clients.create",
     "clients.deactivate",
     "clients.edit",
+    "plans.archive",
     "plans.change_structure",
     "plans.create"
   ],

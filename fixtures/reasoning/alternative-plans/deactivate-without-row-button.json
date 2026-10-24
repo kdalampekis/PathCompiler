@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "alternative-plans.deactivate-without-row-button",
+  "category": "alternative-plans",
+  "fixture": "next-demo",
+  "description": "Without the row button, deactivation still works through the Edit Client dialog.",
+  "edits": [
+    {
+      "file": "components/clients.tsx",
+      "from": "data-pathcompiler=\"clients.deactivate\"",
+      "to": "data-testid=\"row-deactivate\""
+    }
+  ],
+  "query": {
+    "kind": "plan",
+    "goal": "clients.deactivated",
+    "context": {
+      "role": "editor"
+    },
+    "expectedTargets": [
+      "clients.edit",
+      "client.form.deactivate",
+      "client.deactivate.confirm"
+    ]
+  }
+}

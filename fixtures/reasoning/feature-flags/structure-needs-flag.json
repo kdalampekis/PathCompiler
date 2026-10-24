@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "feature-flags.structure-needs-flag",
+  "category": "feature-flags",
+  "fixture": "next-demo",
+  "description": "Changing plan structure is unreachable while its flag is off.",
+  "query": {
+    "kind": "reachability",
+    "goal": "plans.structure_changed",
+    "context": {
+      "role": "editor",
+      "plan_structure_enabled": false
+    },
+    "expected": "unreachable"
+  }
+}

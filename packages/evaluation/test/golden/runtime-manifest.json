@@ -73,6 +73,89 @@
       }
     },
     {
+      "id": "clients.deactivate",
+      "revision": "<revision>",
+      "version": 1,
+      "title": "Deactivate Client",
+      "entrypoints": [
+        {
+          "route": "/clients"
+        }
+      ],
+      "preconditions": [],
+      "steps": [
+        {
+          "id": "step.1",
+          "target": "client.form.deactivate",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Deactivate Client"
+          },
+          "next": "step.2"
+        },
+        {
+          "id": "step.2",
+          "target": "client.deactivate.confirm",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Confirm Deactivation"
+          },
+          "expected": {
+            "type": "element_text",
+            "target": "clients.feedback",
+            "text": "Client deactivated",
+            "match": "exact"
+          }
+        }
+      ],
+      "terminal": {
+        "type": "element_text",
+        "target": "clients.feedback",
+        "text": "Client deactivated",
+        "match": "exact"
+      }
+    },
+    {
+      "id": "plans.archive",
+      "revision": "<revision>",
+      "version": 1,
+      "title": "Archive Plan",
+      "entrypoints": [
+        {
+          "route": "/plans"
+        }
+      ],
+      "preconditions": [],
+      "steps": [
+        {
+          "id": "step.1",
+          "target": "plans.archive",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Archive Plan"
+          },
+          "expected": {
+            "type": "element_text",
+            "target": "plans.feedback",
+            "text": "Plan archived",
+            "match": "exact"
+          }
+        }
+      ],
+      "terminal": {
+        "type": "element_text",
+        "target": "plans.feedback",
+        "text": "Plan archived",
+        "match": "exact"
+      }
+    },
+    {
       "id": "plans.change_structure",
       "revision": "<revision>",
       "version": 1,

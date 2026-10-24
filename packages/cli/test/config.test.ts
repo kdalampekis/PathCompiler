@@ -112,16 +112,16 @@ describe("pathcompiler.yaml in the CLI", () => {
     expect(graph).toMatch(
       /^Graph .*capability-graph\.json: \d+ nodes, \d+ edges\./,
     );
-    expect(graph).toContain("  Capability: 5");
+    expect(graph).toContain("  Capability: 6");
     expect(
       JSON.parse(
         await runCli(["graph", "inspect", "--json", "--out", "out"], cwd),
       ).edges,
     ).toHaveProperty("TESTED_BY");
     const listed = await runCli(["capabilities", "list", "--out", "out"], cwd);
-    expect(listed).toContain("5 candidate capabilities (review required):");
+    expect(listed).toContain("6 candidate capabilities (review required):");
     expect(listed).toMatch(
-      /clients\.create\s+Create Client — high \(0\.9\), roles editor/,
+      /clients\.create\s+Create Client — high \(0\.9\), roles admin\/editor/,
     );
   });
 });

@@ -93,8 +93,9 @@ describe("formal abstraction builder", () => {
         .filter((item) => item.scope === "context")
         .map((item) => [item.id, "values" in item ? item.values : item.type]),
     ).toEqual([
+      ["plan_archive_enabled", "boolean"],
       ["plan_structure_enabled", "boolean"],
-      ["role", ["editor", "unlisted"]],
+      ["role", ["admin", "editor", "unlisted"]],
     ]);
     expect(
       result.model.variables.find((item) => item.id === "current_area"),
@@ -201,7 +202,9 @@ describe("formal abstraction builder", () => {
     expect(coverage.actions.map((item) => item.actionId)).toEqual(
       result.model.actions.map((item) => item.id),
     );
-    expect(result.model.actions).toHaveLength(25);
+    // 25 for the original five workflows, plus the alternative Deactivate
+    // Client entry and the one-click Archive Plan action.
+    expect(result.model.actions).toHaveLength(27);
     expect(coverage.transitions).toEqual({
       total: result.model.actions.length,
       deterministic: 3,
@@ -210,11 +213,12 @@ describe("formal abstraction builder", () => {
       semanticOnly: 0,
     });
     expect(coverage.capabilities).toEqual({
-      total: 5,
+      total: 6,
       modeled: [
         "clients.create",
         "clients.deactivate",
         "clients.edit",
+        "plans.archive",
         "plans.change_structure",
         "plans.create",
       ],
@@ -230,6 +234,42 @@ describe("formal abstraction builder", () => {
       actionId: "plans.change_structure.submit",
       basis: "tests",
       rules: ["api-handler-guard", "test-session-commit"],
+    });
+    // A one-click action, guarded by the admin role and the archive flag.
+    const archive = result.model.actions.find(
+      (item) => item.id === "plans.archive.archive",
+    );
+    expect(contextIn(result.model, archive?.precondition ?? TRUE)).toEqual([
+      "plan_archive_enabled",
+      "role",
+    ]);
+    expect(
+      coverage.actions.find((item) => item.actionId === "plans.archive.archive")
+        ?.rules,
+    ).toEqual([
+      "api-handler-guard",
+      "row-entity-exists",
+      "test-session-direct",
+    ]);
+    expect(uncertainty("direct-action", "plans.archive")).toBeDefined();
+    // The alternative Deactivate Client entry is a second open action.
+    expect(
+      result.model.actions
+        .filter((item) => item.id.startsWith("clients.deactivate.open"))
+        .map((item) => item.semanticTarget),
+    ).toEqual(["client.form.deactivate", "clients.deactivate"]);
+    // ...which needs the Edit Client dialog open (observed in the test) and
+    // hands over from it.
+    const inDialog = result.model.actions.find(
+      (item) => item.id === "clients.deactivate.open_client_form_deactivate",
+    );
+    expect(JSON.stringify(inDialog?.precondition)).toContain(
+      '{"type":"var","id":"clients_edit_open"}',
+    );
+    expect(inDialog?.effects).toContainEqual({
+      type: "assign",
+      variable: "clients_edit_open",
+      value: { type: "const", value: false },
     });
   });
 

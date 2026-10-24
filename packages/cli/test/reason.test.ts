@@ -52,7 +52,7 @@ describe("pathcompiler reason reachable", () => {
       "5. clients.create.submit [client.form.submit]",
     );
     expect(reachable).toMatch(
-      /Model coverage: 25 transitions \(3 deterministic, 22 from tests, 0 semantic-only\); \d+ uncertainties\./,
+      /Model coverage: 27 transitions \(3 deterministic, 24 from tests, 0 semantic-only\); \d+ uncertainties\./,
     );
     const report = JSON.parse(
       await readFile(
@@ -197,7 +197,9 @@ describe("pathcompiler reason reachable", () => {
     expect(output).toContain(
       "  Only clients.create.submit can make clients.created true.",
     );
-    expect(output).toContain("  clients.create.submit requires role = editor.");
+    expect(output).toContain(
+      "  clients.create.submit requires role = admin or role = editor.",
+    );
     expect(output).toMatch(
       /precondition:clients\.create\.submit#4: .*symbol:lib\/session\.ts#requireEditor/,
     );
@@ -260,7 +262,7 @@ describe("pathcompiler reason reachable", () => {
       `PathCompiler Product Logic ${base.slice(0, 12)}..${head.slice(0, 12)}`,
     );
     expect(diff).toContain(
-      "- clients.created is no longer reachable for role=editor: clients.create.submit requires role = owner (changed in lib/session.ts).",
+      "- clients.created is no longer reachable for role=editor: clients.create.submit requires role = admin or role = owner (changed in lib/session.ts).",
     );
     expect(diff).toContain(
       "+ clients.created is newly reachable for role=owner.",
