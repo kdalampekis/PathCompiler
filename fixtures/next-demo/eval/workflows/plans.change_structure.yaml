@@ -6,3 +6,5 @@ steps:
   - { target: plan.structure.submit, action: click }
 terminal:
   { type: element_text, target: plans.feedback, text: Plan structure changed }
+roles: [editor]
+flags: [planStructure]

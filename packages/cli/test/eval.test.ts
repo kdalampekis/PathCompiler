@@ -41,6 +41,35 @@ describe("pathcompiler eval", () => {
     );
   });
 
+  it("compares reasoning-assisted discovery with the baseline", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-eval-cli-"));
+    temporary.push(cwd);
+    const output = await runCli(
+      ["eval", "workflow-discovery", fixture, "--compare"],
+      cwd,
+    );
+    expect(output).toContain(
+      "Workflow discovery (baseline): precision 1, recall 0.6,",
+    );
+    expect(output).toContain(
+      "Workflow discovery (reasoning): precision 1, recall 1,",
+    );
+    expect(output).toContain(
+      `Report: ${path.join(cwd, ".pathcompiler", "reports", "eval", "workflow-discovery-comparison.json")}`,
+    );
+    await runCli(["init"], cwd);
+    await expect(
+      runCli(["eval", "workflow-discovery", fixture, "--compare"], cwd),
+    ).rejects.toThrow(
+      /eval workflow-discovery --compare is disabled .* reasoning\.planning to true/,
+    );
+    await expect(
+      runCli(["eval", "resolver", fixture, "--compare"]),
+    ).rejects.toThrow(
+      "--compare is only supported by eval workflow-discovery.",
+    );
+  }, 120_000);
+
   it("rejects unknown families and unsupported options", async () => {
     await expect(runCli(["eval", "graphs"])).rejects.toThrow(
       "Expected: pathcompiler eval capabilities|workflow-discovery|resolver|impact [directory].",

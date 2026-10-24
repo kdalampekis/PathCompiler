@@ -38,11 +38,15 @@ import {
 } from "@pathcompiler/config";
 import {
   analyzeFixture,
+  baselineStrategy,
+  compareDiscoveryStrategies,
+  type DiscoveryEvaluationReport,
   evaluateCapabilityExtraction,
   evaluateImpact,
   evaluateResolverAccuracy,
   evaluateWorkflowDiscovery,
   loadGroundTruth,
+  reasoningStrategy,
 } from "@pathcompiler/evaluation";
 import { buildFormalModel } from "@pathcompiler/formal-abstraction";
 import {
@@ -178,7 +182,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
-       pathcompiler eval capabilities|workflow-discovery|resolver|impact [directory] [--json] [--out <directory>]
+       pathcompiler eval capabilities|workflow-discovery|resolver|impact [directory] [--compare] [--json] [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -256,6 +260,10 @@ eval scores PathCompiler itself against the reviewed ground truth in <directory>
 precision/recall, workflow discovery (recall, entrypoints, major steps, terminals, invented
 steps), resolver accuracy, or impact recall/false positives/severity on edited Git copies of
 the Git-tracked directory. It writes reports/eval/<family>.json; results are deterministic.
+eval workflow-discovery --compare also runs reasoning-assisted discovery (formal model, shortest
+plan per capability goal, roles and flags from reachability) and reports both strategies side by
+side, adding invented-step rate, applicability accuracy and edit distance; the baseline stays the
+discovery used everywhere else. With pathcompiler.yaml it needs reasoning.planning.
 evaluate independently evaluates a candidate commit (a human PR or harness output) against its
 base: intended vs. observed semantic change (--criteria: expectedChanges, protectedProperties,
 recommendationId, mutation), invariant and protected-property checks on both commits, approved
@@ -310,6 +318,7 @@ const CLI_OPTIONS = {
   tests: { type: "string" },
   events: { type: "boolean" },
   release: { type: "string" },
+  compare: { type: "boolean" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -389,6 +398,8 @@ export async function runCli(
       "--release is only supported by observe graph and observe workflows.",
     );
   if (positionals[0] === "observe") return runObserve(positionals, values, cwd);
+  if (values.compare && positionals[0] !== "eval")
+    throw new Error("--compare is only supported by eval workflow-discovery.");
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (
@@ -1916,6 +1927,15 @@ function applyConfig(
         `reasoning.enabled and reasoning.${capability} to true`,
       );
   }
+  if (
+    command === "eval" &&
+    (values as { compare?: boolean }).compare &&
+    !reasoningEnabled(config, "planning")
+  )
+    refuse(
+      "eval workflow-discovery --compare",
+      "reasoning.enabled and reasoning.planning to true",
+    );
   if (command === "evaluate" && !config.modes.evaluate)
     refuse("evaluate (mode 5)", "modes.evaluate to true");
   if (command === "observe") {
@@ -2718,21 +2738,36 @@ async function runEval(
     );
   if (values.exclude !== undefined)
     throw new Error("--exclude is not supported by eval.");
+  if (values.compare && family !== "workflow-discovery")
+    throw new Error("--compare is only supported by eval workflow-discovery.");
   const directory = path.resolve(cwd, positionals[2] ?? ".");
   const truth = await loadGroundTruth(path.join(directory, "eval"));
   const report =
-    family === "impact"
-      ? await evaluateImpact(directory, truth)
-      : await (async () => {
+    family === "workflow-discovery" && values.compare
+      ? await (async () => {
           const analysis = await analyzeFixture(directory);
-          return family === "capabilities"
-            ? evaluateCapabilityExtraction(analysis, truth)
-            : family === "workflow-discovery"
-              ? evaluateWorkflowDiscovery(analysis, truth)
-              : evaluateResolverAccuracy(analysis, truth);
-        })();
+          const solver = await createZ3SolverProvider();
+          try {
+            return await compareDiscoveryStrategies(analysis, truth, [
+              baselineStrategy,
+              reasoningStrategy(solver),
+            ]);
+          } finally {
+            await solver.close();
+          }
+        })()
+      : family === "impact"
+        ? await evaluateImpact(directory, truth)
+        : await (async () => {
+            const analysis = await analyzeFixture(directory);
+            return family === "capabilities"
+              ? evaluateCapabilityExtraction(analysis, truth)
+              : family === "workflow-discovery"
+                ? await evaluateWorkflowDiscovery(analysis, truth)
+                : evaluateResolverAccuracy(analysis, truth);
+          })();
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
-  const file = `reports/eval/${family}.json`;
+  const file = `reports/eval/${values.compare ? "workflow-discovery-comparison" : family}.json`;
   const text = `${JSON.stringify(report, null, 2)}\n`;
   await writeArtifacts(output, [[file, text]]);
   if (values.json) return text;
@@ -2743,16 +2778,18 @@ async function runEval(
       ...report.falsePositives.map((id) => `  unexpected ${id}`),
       ...report.falseNegatives.map((id) => `  missed ${id}`),
     );
-  if (report.family === "workflow-discovery")
-    lines.push(
-      `Workflow discovery: precision ${report.precision}, recall ${report.recall}, entrypoints ${report.entrypointAccuracy}, major steps ${report.meanMajorStepScore}, terminals ${report.terminalAccuracy}, invented steps ${report.inventedStepCount}.`,
-      ...report.cases.map((item) =>
-        item.found
-          ? `  ${item.id}: steps ${item.majorStepScore}, terminal ${item.terminalCorrect ? "correct" : "wrong"}${item.entrypointCorrect ? "" : ", entrypoint wrong"}`
-          : `  ${item.id}: not discovered`,
-      ),
-      ...report.unexpectedCandidates.map((id) => `  unexpected ${id}`),
-    );
+  const discovery = (item: DiscoveryEvaluationReport) => [
+    `Workflow discovery (${item.strategy}): precision ${item.precision}, recall ${item.recall}, entrypoints ${item.entrypointAccuracy}, major steps ${item.meanMajorStepScore}, terminals ${item.terminalAccuracy}, invented steps ${item.inventedStepCount} (rate ${item.inventedStepRate}), applicability ${item.applicabilityAccuracy}, mean edit distance ${item.meanEditDistance}.`,
+    ...item.cases.map((entry) =>
+      entry.found
+        ? `  ${entry.id}: steps ${entry.majorStepScore}, edit distance ${entry.editDistance}, terminal ${entry.terminalCorrect ? "correct" : "wrong"}${entry.entrypointCorrect ? "" : ", entrypoint wrong"}${entry.applicabilityCorrect === false ? ", applicability wrong" : ""}`
+        : `  ${entry.id}: not discovered`,
+    ),
+    ...item.unexpectedCandidates.map((id) => `  unexpected ${id}`),
+  ];
+  if (report.family === "workflow-discovery-comparison")
+    lines.push(...report.strategies.flatMap(discovery));
+  if (report.family === "workflow-discovery") lines.push(...discovery(report));
   if (report.family === "resolver")
     lines.push(
       `Resolver: top-1 ${report.top1Accuracy}, ambiguity ${report.ambiguityAccuracy}, unsupported ${report.unsupportedAccuracy}, controls ${report.controlsPassed ? "passed" : "failed"}.`,

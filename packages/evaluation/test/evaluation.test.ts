@@ -2,12 +2,17 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createZ3SolverProvider } from "@pathcompiler/solver-z3";
 import { compileWorkflows } from "@pathcompiler/workflow-compiler";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   analyzeFixture,
   approveAllCandidates,
   baselineDiscovery,
+  baselineStrategy,
+  compareDiscoveryStrategies,
+  type DiscoveryEvaluationReport,
+  type DiscoveryStrategy,
   evaluateCapabilityExtraction,
   evaluateImpact,
   evaluateResolverAccuracy,
@@ -15,6 +20,7 @@ import {
   type FixtureAnalysis,
   type GroundTruth,
   loadGroundTruth,
+  reasoningStrategy,
 } from "../src/index.js";
 
 const fixture = fileURLToPath(
@@ -86,16 +92,13 @@ describe("ground truth", () => {
 
 describe("evaluation reports", () => {
   it("are deterministic and match the reviewed goldens", async () => {
-    const reports = [
+    const run = async () => [
       evaluateCapabilityExtraction(analysis, truth),
-      evaluateWorkflowDiscovery(analysis, truth),
+      await evaluateWorkflowDiscovery(analysis, truth),
       evaluateResolverAccuracy(analysis, truth),
     ];
-    expect(reports).toEqual([
-      evaluateCapabilityExtraction(analysis, truth),
-      evaluateWorkflowDiscovery(analysis, truth),
-      evaluateResolverAccuracy(analysis, truth),
-    ]);
+    const reports = await run();
+    expect(reports).toEqual(await run());
     for (const report of reports)
       await expect(json(report)).toMatchFileSnapshot(
         golden(`${report.family}.report.json`),
@@ -110,12 +113,11 @@ describe("evaluation reports", () => {
     expect(report.affectedRecall).toBe(1);
   }, 120_000);
 
-  it("compares an alternative discovery strategy against the same truth", () => {
+  it("compares an alternative discovery strategy against the same truth", async () => {
     // Drops the first step, swaps the order of the input fields and invents a step.
-    const worse = evaluateWorkflowDiscovery(
-      analysis,
-      truth,
-      (input) =>
+    const mutated: DiscoveryStrategy = {
+      name: "mutated",
+      discover: (input) =>
         baselineDiscovery(input).map((workflow) =>
           workflow.id === "clients.create"
             ? {
@@ -133,17 +135,50 @@ describe("evaluation reports", () => {
               }
             : workflow,
         ),
-      "mutated",
-    );
-    const baseline = evaluateWorkflowDiscovery(analysis, truth);
-    const item = (report: typeof baseline) =>
+    };
+    const { strategies } = await compareDiscoveryStrategies(analysis, truth, [
+      baselineStrategy,
+      mutated,
+    ]);
+    const [baseline, worse] = strategies as [
+      DiscoveryEvaluationReport,
+      DiscoveryEvaluationReport,
+    ];
+    const item = (report: DiscoveryEvaluationReport) =>
       report.cases.find((entry) => entry.id === "clients.create");
     expect(worse.strategy).toBe("mutated");
-    expect(item(baseline)?.majorStepScore).toBe(1);
+    expect(item(baseline)).toMatchObject({
+      majorStepScore: 1,
+      editDistance: 0,
+    });
     expect(item(worse)?.majorStepScore).toBeLessThan(1);
+    expect(item(worse)?.editDistance).toBe(2);
     expect(item(worse)?.inventedSteps).toEqual(["clients.extra"]);
     expect(worse.inventedStepCount).toBe(baseline.inventedStepCount + 1);
+    expect(worse.inventedStepRate).toBeGreaterThan(baseline.inventedStepRate);
   });
+
+  it("compares reasoning-assisted discovery with the baseline", async () => {
+    const solver = await createZ3SolverProvider();
+    try {
+      const report = await compareDiscoveryStrategies(analysis, truth, [
+        baselineStrategy,
+        reasoningStrategy(solver),
+      ]);
+      await expect(json(report)).toMatchFileSnapshot(
+        golden("workflow-discovery-comparison.report.json"),
+      );
+      const [baseline, reasoning] = report.strategies as [
+        DiscoveryEvaluationReport,
+        DiscoveryEvaluationReport,
+      ];
+      expect(reasoning.recall).toBeGreaterThan(baseline.recall);
+      expect(reasoning.inventedStepCount).toBe(0);
+      expect(reasoning.applicabilityAccuracy).toBe(1);
+    } finally {
+      await solver.close();
+    }
+  }, 120_000);
 });
 
 describe("golden outputs", () => {

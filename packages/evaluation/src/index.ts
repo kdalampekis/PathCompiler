@@ -20,10 +20,15 @@ import {
 import { analyzeCommitRange } from "@pathcompiler/graph-delta";
 import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import {
+  discoverWorkflowsByReasoning,
+  type ReasoningDiscoveryOptions,
+} from "@pathcompiler/reasoning-discovery";
+import {
   createResolver,
   EvaluationDatasetSchema,
   evaluateResolver as runResolverEvaluation,
 } from "@pathcompiler/resolver";
+import type { SolverProvider } from "@pathcompiler/solver-provider";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import { compileWorkflows } from "@pathcompiler/workflow-compiler";
@@ -55,6 +60,9 @@ export const ExpectedWorkflowSchema = z.strictObject({
     target: z.string().min(1).optional(),
     text: z.string().optional(),
   }),
+  /** Applicability: roles that can complete it and feature flags it needs on. */
+  roles: z.array(z.string().min(1)).optional(),
+  flags: z.array(z.string().min(1)).optional(),
 });
 export type ExpectedWorkflow = z.infer<typeof ExpectedWorkflowSchema>;
 const severity = z.enum(["none", "low", "medium", "high"]);
@@ -189,9 +197,35 @@ export function evaluateCapabilityExtraction(
 }
 
 /** Any discovery strategy: the baseline, or an alternative to compare (spec §117). */
-export type DiscoveryFunction = (analysis: FixtureAnalysis) => WorkflowV1[];
-export const baselineDiscovery: DiscoveryFunction = (analysis) =>
+export type DiscoveryFunction = (
+  analysis: FixtureAnalysis,
+) => WorkflowV1[] | Promise<WorkflowV1[]>;
+export type DiscoveryStrategy = { name: string; discover: DiscoveryFunction };
+export const baselineDiscovery = (analysis: FixtureAnalysis): WorkflowV1[] =>
   candidates(analysis).map((candidate) => candidate.workflow);
+export const baselineStrategy: DiscoveryStrategy = {
+  name: "baseline",
+  discover: baselineDiscovery,
+};
+/** Reasoning-assisted discovery (R-WI), with the caller's solver. */
+export function reasoningStrategy(
+  solver: SolverProvider,
+  options: ReasoningDiscoveryOptions = {},
+): DiscoveryStrategy {
+  return {
+    name: "reasoning",
+    discover: async (analysis) =>
+      (
+        await discoverWorkflowsByReasoning(
+          analysis.capabilities.graph,
+          analysis.capabilities.report,
+          analysis.mined.report,
+          solver,
+          options,
+        )
+      ).candidates.map((candidate) => candidate.workflow),
+  };
+}
 const candidates = (analysis: FixtureAnalysis): WorkflowCandidate[] =>
   discoverWorkflows(
     analysis.capabilities.graph,
@@ -226,6 +260,10 @@ export type WorkflowCaseResult = {
   terminalCorrect: boolean;
   /** Candidate steps whose target the reviewed workflow does not contain. */
   inventedSteps: string[];
+  /** Step insertions, deletions and substitutions a reviewer needs (inputs order-free). */
+  editDistance: number;
+  /** Roles and required flags match the truth; null when the truth gives neither. */
+  applicabilityCorrect: boolean | null;
 };
 export type DiscoveryEvaluationReport = {
   family: "workflow-discovery";
@@ -238,6 +276,12 @@ export type DiscoveryEvaluationReport = {
   meanMajorStepScore: number;
   terminalAccuracy: number;
   inventedStepCount: number;
+  /** Invented steps over all steps of found candidates. */
+  inventedStepRate: number;
+  /** Over found workflows whose truth states roles or flags. */
+  applicabilityAccuracy: number;
+  /** Over every reviewed workflow: a missing one costs all of its steps. */
+  meanEditDistance: number;
   unexpectedCandidates: string[];
   cases: WorkflowCaseResult[];
 };
@@ -271,13 +315,31 @@ function lcs(a: string[], b: string[]): number {
     }
   return (table[a.length] as number[])[b.length] as number;
 }
-export function evaluateWorkflowDiscovery(
+function levenshtein(a: string[], b: string[]): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j += 1)
+      row[j] = Math.min(
+        (previous[j] as number) + 1,
+        (row[j - 1] as number) + 1,
+        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    previous = row;
+  }
+  return previous[b.length] as number;
+}
+const same = (a: string[], b: string[]) =>
+  a.length === b.length &&
+  [...a]
+    .sort(compare)
+    .every((item, index) => item === [...b].sort(compare)[index]);
+export async function evaluateWorkflowDiscovery(
   analysis: FixtureAnalysis,
   truth: GroundTruth,
-  discover: DiscoveryFunction = baselineDiscovery,
-  strategy = "baseline",
-): DiscoveryEvaluationReport {
-  const candidates = discover(analysis);
+  strategy: DiscoveryStrategy = baselineStrategy,
+): Promise<DiscoveryEvaluationReport> {
+  const candidates = await strategy.discover(analysis);
   const byId = new Map(candidates.map((item) => [item.id, item]));
   const cases = [...truth.workflows]
     .sort((a, b) => compare(a.id, b.id))
@@ -291,6 +353,8 @@ export function evaluateWorkflowDiscovery(
           majorStepScore: 0,
           terminalCorrect: false,
           inventedSteps: [],
+          editDistance: normalize(expected.steps).length,
+          applicabilityCorrect: null,
         };
       const actualSteps = found.steps.flatMap((item) =>
         item.target ? [{ target: item.target, action: item.action.type }] : [],
@@ -299,6 +363,11 @@ export function evaluateWorkflowDiscovery(
       const got = normalize(actualSteps);
       const terminal = found.terminal as Record<string, unknown>;
       const targets = new Set(expected.steps.map((item) => item.target));
+      const flags = (found.preconditions ?? []).flatMap((item) =>
+        item.type === "feature_flag" && item.enabled ? [item.flag] : [],
+      );
+      const measured =
+        expected.roles !== undefined || expected.flags !== undefined;
       return {
         id: expected.id,
         found: true,
@@ -315,6 +384,13 @@ export function evaluateWorkflowDiscovery(
         inventedSteps: actualSteps
           .map((item) => item.target)
           .filter((target) => !targets.has(target)),
+        editDistance: levenshtein(wanted, got),
+        applicabilityCorrect: measured
+          ? (expected.roles === undefined ||
+              (found.roles !== undefined &&
+                same(found.roles, expected.roles))) &&
+            same(flags, expected.flags ?? [])
+          : null,
       };
     });
   const expectedIds = new Set(truth.workflows.map((item) => item.id));
@@ -324,9 +400,20 @@ export function evaluateWorkflowDiscovery(
       ? 0
       : Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 1000) /
         1000;
+  const foundSteps = candidates
+    .filter((item) => expectedIds.has(item.id))
+    .reduce(
+      (sum, item) => sum + item.steps.filter((step) => step.target).length,
+      0,
+    );
+  const inventedStepCount = found.reduce(
+    (sum, item) => sum + item.inventedSteps.length,
+    0,
+  );
+  const applicable = found.filter((item) => item.applicabilityCorrect !== null);
   return {
     family: "workflow-discovery",
-    strategy,
+    strategy: strategy.name,
     precision: ratio(
       candidates.filter((item) => expectedIds.has(item.id)).length,
       candidates.length,
@@ -341,16 +428,37 @@ export function evaluateWorkflowDiscovery(
       found.filter((item) => item.terminalCorrect).length,
       found.length,
     ),
-    inventedStepCount: found.reduce(
-      (sum, item) => sum + item.inventedSteps.length,
-      0,
+    inventedStepCount,
+    inventedStepRate:
+      foundSteps === 0 ? 0 : ratio(inventedStepCount, foundSteps),
+    applicabilityAccuracy: ratio(
+      applicable.filter((item) => item.applicabilityCorrect).length,
+      applicable.length,
     ),
+    meanEditDistance: mean(cases.map((item) => item.editDistance)),
     unexpectedCandidates: candidates
       .map((item) => item.id)
       .filter((id) => !expectedIds.has(id))
       .sort(compare),
     cases,
   };
+}
+
+export type DiscoveryComparisonReport = {
+  family: "workflow-discovery-comparison";
+  /** One report per strategy, in the order given; the first is the reference. */
+  strategies: DiscoveryEvaluationReport[];
+};
+/** Runs each strategy against the same truth (reasoning spec §117). */
+export async function compareDiscoveryStrategies(
+  analysis: FixtureAnalysis,
+  truth: GroundTruth,
+  strategies: DiscoveryStrategy[],
+): Promise<DiscoveryComparisonReport> {
+  const reports: DiscoveryEvaluationReport[] = [];
+  for (const strategy of strategies)
+    reports.push(await evaluateWorkflowDiscovery(analysis, truth, strategy));
+  return { family: "workflow-discovery-comparison", strategies: reports };
 }
 
 export type ResolverEvaluationReport = {

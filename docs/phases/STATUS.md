@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after C3)
+## Current state (updated 2026-10-23, after R-WI)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R-WI** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **P0** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP); I3 (mode 5, Evaluate); C1, C2, C3; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **R-WI — Reasoning-assisted workflow discovery** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI; I3 (mode 5, Evaluate); C1, C2, C3; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **P0 — Probabilistic Evidence Model** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2929,5 +2929,88 @@ changed, so the e2e suite was not rerun.
   stay visible. Cases were not tuned to pass.
 - `eval` is not gated by `pathcompiler.yaml`: it measures PathCompiler and
   changes no product behavior.
-- Next recommended phase: R-WI — Reasoning-assisted workflow discovery.
+- R-WI followed.
+
+---
+
+## Phase R-WI — Reasoning-assisted workflow discovery
+
+Complete — verified locally on 2026-10-23.
+
+- **New `@pathcompiler/reasoning-discovery`:** `discoverWorkflowsByReasoning`
+  takes the formal model, finds the shortest plan per capability goal and
+  turns it into a workflow candidate:
+  - steps come from the plan's capability actions, and navigation becomes the
+    route entrypoint;
+  - roles come from reachability per role, and flag preconditions from
+    unreachability with the flag off;
+  - terminals come from test assertions after the planned path, or
+    `explicit_next` with a `terminal-not-derived` ambiguity.
+
+  Inconclusive planning is reported as `skipped`, never as impossible.
+- **`@pathcompiler/evaluation`** gains:
+  - `DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy` and
+    `compareDiscoveryStrategies`;
+  - an async `evaluateWorkflowDiscovery`;
+  - invented-step rate, applicability accuracy (new `roles`/`flags` in the
+    ground truth) and step edit distance.
+- **CLI:** `pathcompiler eval workflow-discovery --compare`, gated by
+  `reasoning.planning` when `pathcompiler.yaml` exists.
+- The baseline stays the default discovery. Reasoning candidates are not
+  written to the review queue.
+- Recorded in ADR 0055.
+
+### Comparison on the fixture
+
+| Metric | Baseline | Reasoning |
+| --- | --- | --- |
+| Precision / recall | 1 / 0.6 | 1 / 1 |
+| Major-step score (found) | 1 | 0.867 |
+| Terminal accuracy (found) | 0.667 | 0.4 |
+| Invented steps | 0 | 0 |
+| Applicability accuracy | 0 | 1 |
+| Mean edit distance (all reviewed) | 1 | 0.4 |
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 377 tests passed across 56 suites (4 reasoning-discovery tests, a reasoning comparison test, a CLI `--compare` test) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- candidates for all five capabilities, with evidence on every step;
+- navigation becoming the entrypoint;
+- roles and the `planStructure` precondition;
+- derived and not-derived terminals;
+- determinism (two runs compared);
+- `maxDepth: 1` reported as inconclusive skips;
+- the golden comparison report;
+- the CLI `--compare` output and its configuration gate.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- The first terminal search stopped at the first activation of the last
+  target. Fixture tests submit invalid input first and see a validation
+  alert, so Create Plan's terminal was missed. The search now tries every
+  activation before the path restarts.
+- The mean edit distance first averaged only found workflows, which
+  flattered the baseline. It now covers every reviewed workflow.
+- A check chain piped `pnpm lint` and `pnpm typecheck` through `tail`, which
+  hid their exit codes: a local commit was made with a lockfile formatting
+  error and a test tuple type error. Both were fixed and the commit amended
+  before pushing. Check chains now use `set -o pipefail`.
+- **Open (ISSUES_LOG #20, #21):** reasoning terminals and prefilled-form
+  steps, and the baseline omitting roles.
+
+### Scope notes
+
+- The strategy lives in a new package, not in `workflow-discovery` as the
+  roadmap suggested, to keep baseline discovery solver-free and avoid a
+  package cycle (ADR 0055).
+- Next recommended phase: P0 — Probabilistic Evidence Model.
 

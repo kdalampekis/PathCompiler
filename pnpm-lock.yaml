@@ -363,9 +363,15 @@ importers:
       "@pathcompiler/impact-analysis":
         specifier: workspace:*
         version: link:../impact-analysis
+      "@pathcompiler/reasoning-discovery":
+        specifier: workspace:*
+        version: link:../reasoning-discovery
       "@pathcompiler/resolver":
         specifier: workspace:*
         version: link:../resolver
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
       "@pathcompiler/source-model":
         specifier: workspace:*
         version: link:../source-model
@@ -393,6 +399,10 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
 
   packages/evidence:
     dependencies:
@@ -753,6 +763,49 @@ importers:
       "@pathcompiler/test-miner-playwright":
         specifier: workspace:*
         version: link:../test-miner-playwright
+      "@pathcompiler/workflow-discovery":
+        specifier: workspace:*
+        version: link:../workflow-discovery
+
+  packages/reasoning-discovery:
+    dependencies:
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/formal-abstraction":
+        specifier: workspace:*
+        version: link:../formal-abstraction
+      "@pathcompiler/formal-model":
+        specifier: workspace:*
+        version: link:../formal-model
+      "@pathcompiler/graph-core":
+        specifier: workspace:*
+        version: link:../graph-core
+      "@pathcompiler/reasoner-core":
+        specifier: workspace:*
+        version: link:../reasoner-core
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
+      "@pathcompiler/workflow-ir":
+        specifier: workspace:*
+        version: link:../workflow-ir
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
       "@pathcompiler/workflow-discovery":
         specifier: workspace:*
         version: link:../workflow-discovery

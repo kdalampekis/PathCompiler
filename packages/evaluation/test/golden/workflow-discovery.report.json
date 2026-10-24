@@ -7,6 +7,9 @@
   "meanMajorStepScore": 1,
   "terminalAccuracy": 0.667,
   "inventedStepCount": 0,
+  "inventedStepRate": 0,
+  "applicabilityAccuracy": 0,
+  "meanEditDistance": 1,
   "unexpectedCandidates": [],
   "cases": [
     {
@@ -15,7 +18,9 @@
       "entrypointCorrect": true,
       "majorStepScore": 1,
       "terminalCorrect": true,
-      "inventedSteps": []
+      "inventedSteps": [],
+      "editDistance": 0,
+      "applicabilityCorrect": false
     },
     {
       "id": "clients.deactivate",
@@ -23,7 +28,9 @@
       "entrypointCorrect": false,
       "majorStepScore": 0,
       "terminalCorrect": false,
-      "inventedSteps": []
+      "inventedSteps": [],
+      "editDistance": 2,
+      "applicabilityCorrect": null
     },
     {
       "id": "clients.edit",
@@ -31,7 +38,9 @@
       "entrypointCorrect": false,
       "majorStepScore": 0,
       "terminalCorrect": false,
-      "inventedSteps": []
+      "inventedSteps": [],
+      "editDistance": 3,
+      "applicabilityCorrect": null
     },
     {
       "id": "plans.change_structure",
@@ -39,7 +48,9 @@
       "entrypointCorrect": true,
       "majorStepScore": 1,
       "terminalCorrect": false,
-      "inventedSteps": []
+      "inventedSteps": [],
+      "editDistance": 0,
+      "applicabilityCorrect": false
     },
     {
       "id": "plans.create",
@@ -47,7 +58,9 @@
       "entrypointCorrect": true,
       "majorStepScore": 1,
       "terminalCorrect": true,
-      "inventedSteps": []
+      "inventedSteps": [],
+      "editDistance": 0,
+      "applicabilityCorrect": false
     }
   ]
 }

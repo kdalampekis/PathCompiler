@@ -5,3 +5,4 @@ steps:
   - { target: client.deactivate.confirm, action: click }
 terminal:
   { type: element_text, target: clients.feedback, text: Client deactivated }
+roles: [editor]

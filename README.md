@@ -1059,6 +1059,15 @@ files under `packages/*/test/golden/` cover the graph summary, candidates,
 the runtime manifest and the reports.
 See [ADR 0054](docs/decisions/0054-evaluation-harness-and-golden-tests.md).
 
+`pnpm pathcompiler eval workflow-discovery fixtures/next-demo --compare` also
+runs reasoning-assisted discovery (`@pathcompiler/reasoning-discovery`). It
+plans each capability goal in the formal model, derives roles and flag
+preconditions from reachability, and takes terminals from the tests. It then
+reports both strategies side by side, with invented-step rate, applicability
+accuracy and edit distance. On the fixture, reasoning reaches recall 1
+against 0.6, but its terminals are weaker, so the baseline remains the default.
+See [ADR 0055](docs/decisions/0055-reasoning-assisted-workflow-discovery.md).
+
 ## Formal Product Model (reasoning track)
 
 ```ts
@@ -1312,7 +1321,8 @@ Analysis packages:
 | `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `instrumentGuide`, `FetchTransport`, `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
 | `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
 | `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
-| `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryFunction`, `baselineDiscovery`), `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates` |
+| `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
+| `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
 | `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
