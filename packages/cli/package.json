@@ -42,6 +42,7 @@
     "@pathcompiler/semantic-change": "workspace:*",
     "@pathcompiler/solver-z3": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
+    "@pathcompiler/test-generator": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*",
     "@pathcompiler/trace-clustering": "workspace:*",
     "@pathcompiler/workflow-compiler": "workspace:*",

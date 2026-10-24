@@ -39,6 +39,7 @@ export type UncertaintyKind =
   | "ambiguous-entry"
   | "capability-not-modeled"
   | "direct-action"
+  | "enabling-condition-from-tests"
   | "enabling-condition-unknown"
   | "heuristic-guard"
   | "outcome-condition-unknown"
@@ -83,6 +84,8 @@ type Session = {
   capability: string;
   trace: string;
   entry: string;
+  /** Test order of the entry click. */
+  order: number;
   steps: Step[];
   dialogs: Set<string>;
 };
@@ -441,6 +444,7 @@ export function buildFormalModel(
             capability,
             trace: trace.id,
             entry: id,
+            order: action.order,
             steps: [],
             dialogs: new Set(),
           };
@@ -720,6 +724,53 @@ export function buildFormalModel(
       evidence: refs(rows),
     });
 
+  // Enabling conditions from tests: an entry observed disabled, then used
+  // after another capability created an entity in the same test, needs that
+  // entity to exist (Create Plan stays disabled until a client exists).
+  const completed = new Set(
+    analyses.flatMap((item) => [...item.commits.values()].flat()),
+  );
+  const capabilityById = new Map(
+    capabilities.capabilities.map((item) => [item.id, item]),
+  );
+  const enablers = new Map<string, Set<string>>();
+  const enabledAssertions = new Set<string>();
+  for (const trace of traces.traces)
+    for (const assertion of trace.assertions) {
+      const ids = assertion.target?.graphNodeIds ?? [];
+      const node = ids.length === 1 ? ids[0] : undefined;
+      if (
+        assertion.matcher !== "toBeDisabled" ||
+        assertion.negated ||
+        !node ||
+        !entryOf.has(node)
+      )
+        continue;
+      const later = sessions
+        .filter(
+          (item) =>
+            item.trace === trace.id &&
+            item.entry === node &&
+            item.order > assertion.order,
+        )
+        .sort((a, b) => a.order - b.order)[0];
+      if (!later) continue;
+      const entities = sessions
+        .filter(
+          (item) =>
+            item.trace === trace.id &&
+            completed.has(item) &&
+            item.order > assertion.order &&
+            item.order < later.order,
+        )
+        .map((item) => capabilityById.get(item.capability))
+        .filter((item) => item?.verb === "create" && existence.has(item.entity))
+        .map((item) => item?.entity as string);
+      if (entities.length === 0) continue;
+      enablers.set(node, new Set([...(enablers.get(node) ?? []), ...entities]));
+      enabledAssertions.add(`${trace.id}\u0000${assertion.order}`);
+    }
+
   const actions: FormalAction[] = [];
   const coverage: ActionCoverage[] = [];
   const invariants: FormalInvariant[] = [];
@@ -897,6 +948,11 @@ export function buildFormalModel(
             ...(rows.length > 0
               ? [f.var(existsVariable(capability.entity))]
               : []),
+            ...sorted(enablers.get(entry) ?? [])
+              .filter(
+                (entity) => !(rows.length > 0 && entity === capability.entity),
+              )
+              .map((entity) => f.var(existsVariable(entity))),
           ]),
           effects: [
             f.set(open, true),
@@ -913,6 +969,7 @@ export function buildFormalModel(
           "test-session-entry",
           ...(rows.length > 0 ? ["row-entity-exists"] : []),
           ...(hostOpen ? ["inside-other-dialog"] : []),
+          ...(enablers.has(entry) ? ["test-enabling-condition"] : []),
         ],
       );
     }
@@ -1120,12 +1177,20 @@ export function buildFormalModel(
         node &&
         entryIds.has(node)
       )
-        doubt(
-          "enabling-condition-unknown",
-          `${entryOf.get(node)}.open`,
-          `${trace.testName} observes ${semanticId(node) ?? node} disabled; the enabling condition is not modeled.`,
-          [node, trace.id],
-        );
+        if (enabledAssertions.has(`${trace.id}\u0000${assertion.order}`))
+          doubt(
+            "enabling-condition-from-tests",
+            `${entryOf.get(node)}.open`,
+            `${trace.testName} observes ${semanticId(node) ?? node} disabled until ${sorted(enablers.get(node) ?? []).join(", ")} exists; that existence is modeled as its enabling condition (other conditions, such as an active record, are not).`,
+            [node, trace.id],
+          );
+        else
+          doubt(
+            "enabling-condition-unknown",
+            `${entryOf.get(node)}.open`,
+            `${trace.testName} observes ${semanticId(node) ?? node} disabled; the enabling condition is not modeled.`,
+            [node, trace.id],
+          );
     }
 
   const model = normalizeFormalModel({

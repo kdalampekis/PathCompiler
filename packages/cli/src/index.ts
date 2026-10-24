@@ -126,6 +126,12 @@ import {
 } from "@pathcompiler/semantic-change";
 import { createZ3SolverProvider } from "@pathcompiler/solver-z3";
 import { readSourceProject } from "@pathcompiler/source-model";
+import {
+  type GenerationReport,
+  generateTests,
+  type TestSetup,
+  TestSetupSchema,
+} from "@pathcompiler/test-generator";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import { clusterTraces } from "@pathcompiler/trace-clustering";
 import {
@@ -180,6 +186,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler capabilities list [--json] [--out <directory>]
        pathcompiler targets suggest [directory] [--json] [--exclude <directory> ...]
        pathcompiler tests mine [directory] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler tests generate [directory] [--setup <json-file>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler surfaces discover [directory] [--out <directory>] [--exclude <directory> ...]
        pathcompiler capabilities discover [directory] [--expect <json-file>] [--out <directory>] [--exclude <directory> ...]
        pathcompiler workflows discover [directory] [--out <directory>] [--exclude <directory> ...]
@@ -328,6 +335,13 @@ request a model provider would receive (product surfaces and graph evidence; nev
 contents, hidden files such as .env, binaries or excluded paths), redacts obvious secrets,
 and writes the exact payload with its size, evidence counts, referenced paths and redaction
 counts to reports/model-context.json. Nothing is sent; no provider is called.
+tests generate writes candidate Playwright tests to <out>/generated-tests/ (review required):
+one positive test per reachable capability goal, planned from an empty product, and one
+negative test per role value or flag the reasoner proves blocks the goal. --setup names a
+JSON file mapping context variables to UI controls ({ schemaVersion: 1, start, context:
+{ <variable>: { control: "select", target, values } | { control: "checkbox", target } } });
+contexts it cannot establish are skipped. Completion assertions come from test-backed
+workflow candidates; tests without one are flagged as weak.
 init writes pathcompiler.yaml with every default spelled out. When pathcompiler.yaml exists in
 the working directory, it gates capabilities: reason commands need reasoning.enabled plus their
 flag, observe needs modes.observe, evaluate needs modes.evaluate, reasoning.impact turns on
@@ -372,6 +386,7 @@ const CLI_OPTIONS = {
   "explain-model-context": { type: "boolean" },
   slack: { type: "string" },
   weight: { type: "string", multiple: true },
+  setup: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -459,6 +474,10 @@ export async function runCli(
     throw new Error("--slack is only supported by reason alternatives.");
   if (values.compare && positionals[0] !== "eval")
     throw new Error("--compare is only supported by eval workflow-discovery.");
+  if (values.setup !== undefined && positionals[0] !== "tests")
+    throw new Error("--setup is only supported by tests generate.");
+  if (positionals[0] === "tests" && positionals[1] === "generate")
+    return runGenerateTests(positionals, values, cwd);
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (
     positionals[0] === "scan" &&
@@ -1259,6 +1278,84 @@ export async function runCli(
   ] as const;
   await writeArtifacts(output, artifacts);
   return `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.\nArtifacts: ${output}\nDiagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).\n`;
+}
+
+async function runGenerateTests(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length > 3)
+    throw new Error(
+      "Expected: pathcompiler tests generate [directory]. Use --help for options.",
+    );
+  if (values.model !== undefined)
+    throw new Error(
+      "tests generate extracts the model from the repository; --model is not supported.",
+    );
+  const project = await readSourceProject(
+    path.resolve(cwd, positionals[2] ?? "."),
+    { exclude: values.exclude ?? [] },
+  );
+  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const discovered = discoverCapabilities(mined.graph);
+  const { model } = buildFormalModel(
+    discovered.graph,
+    discovered.report,
+    mined.report,
+  );
+  const terminals = Object.fromEntries(
+    discoverWorkflows(
+      discovered.graph,
+      discovered.report,
+      mined.report,
+    ).report.candidates.map((candidate) => [
+      candidate.capabilityId,
+      candidate.workflow.terminal,
+    ]),
+  );
+  let setup: TestSetup | undefined;
+  if (values.setup !== undefined) {
+    const parsed = TestSetupSchema.safeParse(
+      JSON.parse(await readFile(path.resolve(cwd, values.setup), "utf8")),
+    );
+    if (!parsed.success)
+      throw new Error(
+        `Invalid test setup ${values.setup}: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`,
+      );
+    setup = parsed.data;
+  }
+  const solver = await createZ3SolverProvider();
+  let report: GenerationReport;
+  try {
+    report = await generateTests({
+      reasoner: createProductReasoner(solver),
+      model,
+      graph: discovered.graph,
+      terminals,
+      ...(setup ? { setup } : {}),
+    });
+  } finally {
+    await solver.close();
+  }
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  await writeArtifacts(output, [
+    ...report.tests.map(
+      (item) => [`generated-tests/${item.file}`, item.content] as const,
+    ),
+    [
+      "reports/generated-tests.json",
+      `${JSON.stringify({ ...report, tests: report.tests.map(({ content: _content, ...rest }) => rest) }, null, 2)}\n`,
+    ],
+  ]);
+  const positive = report.tests.filter((item) => item.kind === "positive");
+  const weak = report.tests.filter((item) => item.weakAssertion).length;
+  return [
+    `Generated ${report.tests.length} candidate tests (${positive.length} positive, ${report.tests.length - positive.length} negative) in ${path.join(output, "generated-tests")}; ${weak} have a weak completion check.`,
+    ...report.skipped.map((item) => `  skipped ${item.goal}: ${item.reason}`),
+    "Review before adopting: generated tests are candidates, not part of the product's suite.",
+    "",
+  ].join("\n");
 }
 
 async function runDeadFeatures(
@@ -2326,6 +2423,15 @@ function applyConfig(
         `reasoning.enabled and reasoning.${capability} to true`,
       );
   }
+  if (
+    command === "tests" &&
+    sub === "generate" &&
+    !reasoningEnabled(config, "planning")
+  )
+    refuse(
+      "tests generate",
+      "reasoning.enabled and reasoning.planning to true",
+    );
   if (
     command === "eval" &&
     sub === "reasoning" &&

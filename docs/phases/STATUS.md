@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after R9)
+## Current state (updated 2026-10-24, after R10)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R10** (next), O9, O10, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R12** (next), O9, O10, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **R10 — Automated test generation** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **R12 — Developer reasoning surfaces** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3438,5 +3438,71 @@ The tests cover:
 
 - Product dead ends (§71: reachable states from which a goal is lost) need a
   reach-then-cannot-reach query and are deferred.
-- Next recommended phase: R10 — Automated test generation.
+- R10 followed.
+
+---
+
+## Phase R10 — Automated test generation
+
+Complete — verified locally on 2026-10-24.
+
+- **New `@pathcompiler/test-generator`:**
+  - `freshStateModel` plans from an empty product;
+  - `generateTests` writes one positive test per capability goal and one
+    negative test per role value or flag proven to block it, each marked as
+    a candidate;
+  - `TestSetupSchema` is a declarative mapping of context variables to UI
+    controls. Contexts it cannot set are skipped.
+- **Completion assertions** come from test-backed workflow terminals.
+  Otherwise a weak "dialog closed" check is used and flagged.
+- **CLI:** `pathcompiler tests generate [directory] --setup <json>` writes
+  `<out>/generated-tests/` (gated by `reasoning.planning`). The fixture setup
+  is in `fixtures/next-demo/eval/test-setup.json`.
+- **Browser suite:** `test-generator test:browser` generates from the
+  fixture and runs the 15 candidates (6 positive, 9 negative) against a
+  fresh build. It is part of `pnpm test:e2e`.
+- **Formal abstraction:** enabling conditions are derived from tests
+  (`enabling-condition-from-tests`).
+- Recorded in ADR 0063.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 422 tests passed across 66 suites (5 generator tests, a CLI generate test) |
+| `pnpm test:e2e` | 44 Chromium tests passed (including the 15 generated candidates) |
+| `git diff --check` | Passed |
+
+The generated suite was also run three times in a row (15/15 each time) after
+the race fix.
+
+### Errors found during the phase
+
+- **The browser exposed a model gap** (ISSUES_LOG #29). The first generated
+  positive tests for Create Plan, Archive Plan and Change Plan Structure
+  timed out: the model allowed Create Plan with no client, but the button is
+  disabled. This is the kind of model/browser discrepancy spec §37 asks for.
+  It was fixed in the abstraction with enabling conditions from tests.
+- **The weak "no alert" check always failed:** Next.js renders a route
+  announcer with `role="alert"`. It now checks that the dialog closed.
+- **A generated negative test raced the context re-render:** a control
+  counted as present disappeared before `isEnabled`. The setup now waits for
+  the network to go idle, and vanishing controls count as blocked.
+- **Workflow terminals can be `all`/`any` combinations;** the typecheck
+  caught the narrower type. `all` asserts each condition; `any` falls back.
+- **The first CLI draft analyzed the repository twice;** it was simplified
+  to one pass.
+- **A local commit carried a lockfile formatting error.** A check chain used
+  `;`, so a failed `pnpm lint` did not stop the commit. The lockfile was
+  reformatted and the commit amended before pushing.
+- **Open (ISSUES_LOG #30, #31):** "exists" versus "active" enabling
+  conditions, and weak assertions.
+
+### Scope notes
+
+- Context is set through UI controls from a reviewed setup file, not product
+  APIs (ADR 0063).
+- Next recommended phase: R12 — Developer reasoning surfaces.
 

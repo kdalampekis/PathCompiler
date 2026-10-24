@@ -6,6 +6,9 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 31 | R10 | Limitation | Generated tests without a test-backed completion signal (Edit Client, Change Plan Structure negatives) only check that the dialog closed; they are flagged `weakAssertion`. | Open; resolves with #20 (terminals from role/text locators). |
+| 30 | R10 | Limitation | Enabling conditions derived from tests model "an X exists", not "an active X exists": after deactivating the only client the model still allows Create Plan, the browser does not. | Open; needs entity status state (e.g. from the deactivate effect). |
+| 29 | R10 | Bug, resolved | The model allowed Create Plan with no client (the button is disabled until one exists); generated positive tests for Create, Archive and Change Plan Structure timed out in the browser. Also, a generated negative test raced the context re-render. | **Resolved** in R10: enabling conditions from tests (`enabling-condition-from-tests`); setup waits for the page to settle and blocked-control checks tolerate vanishing controls. |
 | 28 | R7 | Limitation | `findCheapestPlan` proves optimality with a length bound (best cost ÷ cheapest action). With heavy weights (e.g. `--weight entry=5`) the bound exceeds the default 2 extra steps, the search takes ~30 s and the answer is `not-guaranteed`. | Open; add solver-side cost bounds (integer sums in the solver language) or a tighter lower bound per goal. |
 | 27 | C7 | Deferred | `fixtures/harness/{tasks,results}/` (handoff §76) are not created: they need I2's `HarnessTaskSpec` and `MutationResult` schemas. | Open; create them in I2. |
 | 26 | C7 | Bug, resolved | The resolver treated deactivate and archive as synonyms of delete, so "delete a client" resolved to Deactivate Client once that workflow existed. | **Resolved** in C7: separate verb group for reversible state changes. |

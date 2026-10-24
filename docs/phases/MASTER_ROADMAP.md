@@ -565,7 +565,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   `.pathcompiler/generated-tests/` (review required).
 - **Acceptance:** generated positive and negative Playwright candidates run
   against the fixture.
-- **Runtime change:** No. **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Runtime change:** No. **Status:** ✅ complete (2026-10-24): `@pathcompiler/test-generator` (positive and negative Playwright candidates from plans and proofs), `tests generate`, a browser suite of 15 generated tests on the fixture, enabling conditions from tests, ADR 0063.
 
 #### R11 — Commit semantic reasoning
 - **Objective:** Formal model diff, reachability and applicability diff, and
@@ -592,7 +592,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   (or a separate entry point).
 - **Acceptance:** never exposed to end-user tokens; product-semantic results only.
 - **Runtime change:** Yes (new developer-only endpoints).
-- **Status:** 🟢 unblocked.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 ### 4.3 P track: probabilistic reasoning
 
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **R10** (next), O9, O10, O11, O12, R12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅ | P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R12** (next), O9, O10, O11, O12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅ | P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,22 +839,21 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: R10 — Automated test generation
+## 7. Next implementation phase: R12 — Developer reasoning surfaces
 
-R9 is complete. `detectDeadFeatures` flags unreachable capabilities, actions
-that can never fire, and capabilities with UI and API but no formal
-transitions, each as a candidate with possible causes. `reason dead-features`
-exposes it, and a seeded orphan case is flagged (ADR 0062).
+R10 is complete. `tests generate` writes positive and negative Playwright
+candidates from plans and proofs, and the fixture's 15 generated tests run
+green in `pnpm test:e2e`. The browser run exposed a missing enabling
+condition (Create Plan needs a client), which the abstraction now derives
+from tests (ADR 0063).
 
-R10 comes next. It generates positive Playwright candidates from plans and
-negative ones from proofs and counterexamples into
-`.pathcompiler/generated-tests/` (review required), and runs them against the
-fixture. The planned order after R10:
-1. R12;
-2. C8, O9, O10, O11, O12, C4;
-3. C9;
-4. P1–P5 and P-RV;
-5. the I track.
+R12 comes next. It exposes the reasoning features through developer
+surfaces: MCP tools and the HTTP and SDK APIs (spec §73–§74). The planned
+order after R12:
+1. C8, O9, O10, O11, O12, C4;
+2. C9;
+3. P1–P5 and P-RV;
+4. the I track.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

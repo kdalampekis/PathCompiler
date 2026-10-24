@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "start": "/",
+  "context": {
+    "role": {
+      "control": "select",
+      "target": "demo.role",
+      "values": { "admin": "admin", "editor": "editor", "unlisted": "viewer" }
+    },
+    "plan_structure_enabled": {
+      "control": "checkbox",
+      "target": "demo.plan_structure"
+    },
+    "plan_archive_enabled": {
+      "control": "checkbox",
+      "target": "demo.plan_archive"
+    }
+  }
+}
