@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after O11)
+## Current state (updated 2026-10-24, after O12)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O12** (next), P5, C9, P3, I4, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **C4** (next), P5, C9, P3, I4, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7, C8; O0–O11 (mode 3, Observe). All 2026-10-23; details per phase below. |
-| Next recommended phase | **O12 — Release behavior diff** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7, C8; O0–O12 (mode 3, Observe). All 2026-10-23; details per phase below. |
+| Next recommended phase | **C4 — Diagnostics hardening** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3766,5 +3766,56 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 
 - First-order chain with frequentist intervals (ADR 0068); Bayesian
   posteriors are left to P5 if needed.
-- Next recommended phase: O12 — Release behavior diff.
+- O12 followed.
+
+---
+
+## Phase O12 — Release behavior diff
+
+Complete — verified locally on 2026-10-24.
+
+- **`compareReleaseBehavior`** (`observed-graph`) compares, per goal, the
+  share of sessions reaching it in two releases, with Wilson intervals (a
+  change needs non-overlapping intervals and 30+ sessions each). Against
+  formal changes (added, removed, or `changed` when both), each goal is
+  classified as:
+  - expected change;
+  - unexplained behavior change;
+  - formal change not observed;
+  - stable;
+  - insufficient data.
+- **CLI:** `pathcompiler observe release-diff <base> <head> [directory]
+  [--commits <base>..<head>]`. The formal side runs R11, gated by
+  `reasoning.semantic_diff`.
+- Recorded in ADR 0069.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 440 tests passed across 73 suites (3 release-diff tests, CLI checks) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- every class on simulated releases;
+- the mixed formal direction (`changed`);
+- behavior-only comparison and thin samples;
+- the CLI end to end on a real commit pair (the editor → owner guard
+  rename): goal share 0.875 → 0.125, formal `changed`, `expected-change`.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- The first mapping from the semantic diff kept only the last direction per
+  goal. A guard rename removes reachability for one role and adds it for
+  another, so mixed directions now mean `changed`.
+
+### Scope notes
+
+- There is no stored release → commit map; the caller passes `--commits`
+  (ADR 0069).
+- Next recommended phase: C4 — Diagnostics hardening.
 

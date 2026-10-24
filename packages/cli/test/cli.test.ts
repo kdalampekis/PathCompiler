@@ -421,6 +421,9 @@ describe("pathcompiler CLI", () => {
       expect(await run(["observe", "transitions"])).toContain(
         "  P(reach clients.created from session start) = 1 (insufficient data on some path)",
       );
+      expect(await run(["observe", "release-diff", "r1", "r2"])).toContain(
+        "no formal diff: pass --commits",
+      );
       expect(await run(["observe", "drop-offs", fixture])).toMatch(
         /^Drop-offs \(hypotheses; rates need 30\+ attempts/,
       );

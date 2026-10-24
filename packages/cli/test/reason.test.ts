@@ -418,6 +418,59 @@ describe("pathcompiler reason reachable", () => {
     await git("commit", "--quiet", "-am", "Only owners may edit");
     const head = await git("rev-parse", "HEAD");
 
+    // Release-tagged sessions: r1 (base) and r2 (head) of the same app.
+    const events = path.join(cwd, "out", "events", path.basename(cwd));
+    await mkdir(events, { recursive: true });
+    const lines = [];
+    for (const [release, reaching] of [
+      ["r1", 35],
+      ["r2", 5],
+    ] as const)
+      for (let index = 0; index < 40; index += 1) {
+        const sessionId = `${release}-${index}`;
+        const event = (
+          type: string,
+          extra: Record<string, unknown>,
+          at: number,
+        ) => ({
+          schemaVersion: 1,
+          eventId: `${sessionId}-${at}`,
+          timestamp: `2026-10-24T10:00:0${at}.000Z`,
+          projectId: path.basename(cwd),
+          sessionId,
+          release,
+          privacy: { pii: false, userIdHashed: false },
+          type,
+          ...extra,
+        });
+        lines.push(
+          JSON.stringify(event("route.changed", { route: "/clients" }, 0)),
+        );
+        if (index < reaching)
+          lines.push(
+            JSON.stringify(
+              event("goal.reached", { goalId: "clients.created" }, 1),
+            ),
+          );
+      }
+    await writeFile(
+      path.join(events, "2026-10-24.ndjson"),
+      `${lines.join("\n")}\n`,
+    );
+    expect(
+      await run([
+        "observe",
+        "release-diff",
+        "r1",
+        "r2",
+        "app",
+        "--commits",
+        `${base}..${head}`,
+      ]),
+    ).toContain(
+      "  clients.created: 0.875 → 0.125 (down; formal changed) — expected-change",
+    );
+
     const diff = await run(["reason", "diff", base, "HEAD", "app"]);
     expect(diff).toContain(
       `PathCompiler Product Logic ${base.slice(0, 12)}..${head.slice(0, 12)}`,

@@ -96,7 +96,9 @@ import {
 import {
   buildObservedGraph,
   buildTransitionModel,
+  compareReleaseBehavior,
   computeWorkflowAnalytics,
+  type FormalGoalChange,
   readEventDirectory,
 } from "@pathcompiler/observed-graph";
 import {
@@ -225,6 +227,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler observe efficiency [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler observe drop-offs [directory] [--model <json-file>] [--json] [--out <directory>]
+       pathcompiler observe release-diff <base-release> <head-release> [directory] [--commits <base>..<head>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
@@ -301,6 +304,11 @@ observe transitions estimates a Markov chain from the observed graph: per-state 
 probabilities with 95% Wilson intervals (30+ outgoing transitions to count as sufficient) and the
 probability of eventually reaching each goal from session start, written to
 reports/transition-model.json. Estimates describe observed users, not what the product allows.
+observe release-diff compares, per goal, the share of sessions reaching it in two releases (95%
+Wilson intervals; a change needs 30+ sessions per release and non-overlapping intervals). With
+--commits it also runs the semantic diff between the releases' commits and classifies each goal:
+expected change, unexplained behavior change, formal change not observed, stable, or
+insufficient data. Writes reports/release-behavior.json.
 observe drop-offs counts, per goal and observed role, sessions that activated one of the goal's
 controls but never reached it, and where they stopped. Points where 20%+ of attempts end (with
 30+ attempts) are friction, listed with the valid formal routes (R6 variants) that avoid them.
@@ -421,6 +429,7 @@ const CLI_OPTIONS = {
   slack: { type: "string" },
   weight: { type: "string", multiple: true },
   setup: { type: "string" },
+  commits: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -2240,15 +2249,17 @@ async function runObserve(
   const reconcile = positionals[1] === "reconcile";
   const efficiency = positionals[1] === "efficiency";
   const dropOffs = positionals[1] === "drop-offs";
+  const releaseDiff = positionals[1] === "release-diff";
   if (
     !(
       (["graph", "workflows", "transitions"].includes(positionals[1] ?? "") &&
         positionals.length === 2) ||
-      ((reconcile || efficiency || dropOffs) && positionals.length <= 3)
+      ((reconcile || efficiency || dropOffs) && positionals.length <= 3) ||
+      (releaseDiff && positionals.length >= 4 && positionals.length <= 5)
     )
   )
     throw new Error(
-      "Expected: pathcompiler observe graph|workflows|transitions, or observe reconcile|efficiency|drop-offs [directory]. Use --help for options.",
+      "Expected: pathcompiler observe graph|workflows|transitions, observe reconcile|efficiency|drop-offs [directory], or observe release-diff <base-release> <head-release> [directory]. Use --help for options.",
     );
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   // Same project name `serve` uses for ingestion.
@@ -2259,6 +2270,55 @@ async function runObserve(
     throw new Error(
       `No stored events under ${directory}. Run pathcompiler serve --events and send events first.`,
     );
+  if (values.commits !== undefined && !releaseDiff)
+    throw new Error("--commits is only supported by observe release-diff.");
+  if (releaseDiff) {
+    const [baseRelease, headRelease] = positionals.slice(2, 4) as [
+      string,
+      string,
+    ];
+    let formalChanges: FormalGoalChange[] | undefined;
+    if (values.commits !== undefined) {
+      const [base, head] = values.commits.split("..");
+      if (!base || !head)
+        throw new Error(
+          "--commits expects <base-commit>..<head-commit>, the commits the two releases were built from.",
+        );
+      const semantic = await semanticChange(
+        await analyzeCommitRangeDetailed({
+          directory: path.resolve(cwd, positionals[4] ?? "."),
+          base,
+          head,
+          exclude: values.exclude ?? [],
+        }),
+      );
+      formalChanges = [
+        ...semantic.removedReachability.map((item) => ({
+          goal: item.goal,
+          direction: "removed" as const,
+        })),
+        ...semantic.newReachability.map((item) => ({
+          goal: item.goal,
+          direction: "added" as const,
+        })),
+      ];
+    }
+    const diff = compareReleaseBehavior(events, baseRelease, headRelease, {
+      ...(formalChanges ? { formalChanges } : {}),
+    });
+    await writeArtifacts(output, [
+      ["reports/release-behavior.json", `${JSON.stringify(diff, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(diff, null, 2)}\n`;
+    return `${[
+      `Release behavior ${baseRelease} → ${headRelease} (hypotheses; ${diff.sessions.base} → ${diff.sessions.head} sessions, ${diff.minSessions}+ per release to call a change${formalChanges ? "" : "; no formal diff: pass --commits"}):`,
+      ...diff.goals.map(
+        (goal) =>
+          `  ${goal.goal}: ${goal.base.share} → ${goal.head.share} (${goal.observed}; formal ${goal.formal}) — ${goal.class}`,
+      ),
+      `Report: ${path.join(output, "reports/release-behavior.json")}`,
+    ].join("\n")}\n`;
+  }
   if (dropOffs) {
     const { model } = await loadReasoningModel(positionals[2], values, cwd);
     const solver = await createZ3SolverProvider();
@@ -2641,6 +2701,15 @@ function applyConfig(
       refuse(
         "observe drop-offs",
         "reasoning.enabled and reasoning.enumeration to true",
+      );
+    if (
+      sub === "release-diff" &&
+      (values as { commits?: string }).commits !== undefined &&
+      !reasoningEnabled(config, "semantic_diff")
+    )
+      refuse(
+        "observe release-diff --commits",
+        "reasoning.enabled and reasoning.semantic_diff to true",
       );
     if (sub === "efficiency" && !reasoningEnabled(config, "optimization"))
       refuse(
