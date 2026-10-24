@@ -17,11 +17,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pathcompiler/observability-core": "workspace:*",
     "@pathcompiler/sdk-js": "workspace:*",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/analytics-sdk": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*",

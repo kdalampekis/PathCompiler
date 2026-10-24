@@ -39,6 +39,66 @@ export class ConsoleTransport implements AnalyticsTransport {
   }
 }
 
+export type FetchTransportOptions = {
+  /** The ingestion endpoint, e.g. https://example.test/v1/events/batch. */
+  url: string;
+  /** Bearer token; use an ingest-only token in browser builds. */
+  token?: string;
+  fetch?: typeof fetch;
+  /** Lets the last batch survive page unload in browsers. */
+  keepalive?: boolean;
+  /** Events the server refused (privacy or schema); they are not retried. */
+  onRejected?: (rejected: {
+    events: ProductRuntimeEvent[];
+    reason: string;
+  }) => void;
+};
+/**
+ * Posts batches to `POST /v1/events/batch` (phase O5). 429 and 5xx responses
+ * throw so the SDK retries; other client errors and per-event rejections are
+ * reported through `onRejected` and not retried.
+ */
+export class FetchTransport implements AnalyticsTransport {
+  readonly #options: FetchTransportOptions;
+  constructor(options: FetchTransportOptions) {
+    this.#options = options;
+  }
+  async send(events: ProductRuntimeEvent[]): Promise<void> {
+    const { url, token, keepalive, onRejected } = this.#options;
+    const request = this.#options.fetch ?? globalThis.fetch;
+    const response = await request(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ events }),
+      ...(keepalive ? { keepalive: true } : {}),
+    });
+    if (response.status === 429 || response.status >= 500)
+      throw new Error(
+        `Event ingestion responded ${response.status}; retrying later.`,
+      );
+    if (!response.ok) {
+      onRejected?.({ events, reason: `HTTP ${response.status}` });
+      return;
+    }
+    const result = (await response.json()) as {
+      rejected?: { index: number; issues: string[] }[];
+    };
+    if (result.rejected?.length)
+      onRejected?.({
+        events: result.rejected.flatMap((item) => {
+          const event = events[item.index];
+          return event ? [event] : [];
+        }),
+        reason: result.rejected
+          .map((item) => `#${item.index}: ${item.issues.join("; ")}`)
+          .join(" | "),
+      });
+  }
+}
+
 type Timers = {
   setTimeout(callback: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;

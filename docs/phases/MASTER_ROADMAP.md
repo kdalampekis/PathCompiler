@@ -685,10 +685,10 @@ Minimum sample sizes come before any conclusion.
 #### O5 — Event ingestion
 - **Prerequisites:** O0; `http-service` (✅). **Acceptance:** `POST /v1/events/batch`
   with validation, rate limits, project isolation and privacy filtering.
-- **Runtime change:** Yes (new endpoint). **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Runtime change:** Yes (new endpoint). **Status:** ✅ complete (2026-10-23): `POST /v1/events/batch`, `EventSink`, `FetchTransport`, `serve --events`, ADR 0049.
 
 #### O6 — Observed Transition Graph
-- **Prerequisites:** O0 and events from O1 or O5. **Status:** 🔒 blocked.
+- **Prerequisites:** O0 and events from O1 or O5. **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### O7 — Workflow analytics
 - **Prerequisites:** O6, O3. **Acceptance:** completion, abandonment, duration and
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **O5** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O6 (events from O1/O5) · O7–O12 (O6 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O6** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O7–O12 (O6 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,16 +839,18 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: O5 — Event ingestion
+## 7. Next implementation phase: O6 — Observed Transition Graph
 
-O0–O4 are complete. O5 adds `POST /v1/events/batch` to `http-service`. The
-endpoint validates every event with the O0 schema and privacy policy, isolates
-projects, rate-limits, and stores events as canonical NDJSON. It gives the
-SDK's transports a destination. O6 (Observed Transition Graph) then works from
-the stored events.
+O0–O5 are complete: events can be emitted, validated, sent and stored as
+NDJSON. O6 builds the observed transition graph (spec §141), states and
+transitions with counts, from stored events. It works per release and per
+workflow version, kept separate from the formal model (possible vs. observed,
+§131). O7 (workflow analytics) and O8 (reconciliation with the formal model)
+then build on it.
 
-O4 (2026-10-23) added payload-free domain events and goal and event-name
-allowlists (ADR 0048).
+O5 (2026-10-23) added the ingestion endpoint with per-event privacy
+validation, project isolation, batch and rate limits, NDJSON storage and the
+SDK's fetch transport (ADR 0049).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

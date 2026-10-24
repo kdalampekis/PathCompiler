@@ -331,7 +331,7 @@ describe("pathcompiler CLI", () => {
     const token = "cli-test-token-0123456789";
     const child = spawn(
       process.execPath,
-      [binary, "serve", "--out", "out", "--port", "0"],
+      [binary, "serve", "--out", "out", "--port", "0", "--events"],
       { cwd, env: { ...process.env, PATHCOMPILER_API_TOKEN: token } },
     );
     try {
@@ -356,6 +356,35 @@ describe("pathcompiler CLI", () => {
         type: "workflow_help",
         workflowId: "clients.create",
       });
+      const ingest = await fetch(`${url}/v1/events/batch`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          events: [
+            {
+              schemaVersion: 1,
+              eventId: "evt-1",
+              timestamp: "2026-10-23T10:00:00.000Z",
+              // The served project is named after the output's parent directory.
+              projectId: path.basename(cwd),
+              sessionId: "s-1",
+              privacy: { pii: false, userIdHashed: false },
+              type: "goal.reached",
+              goalId: "clients.created",
+            },
+          ],
+        }),
+      });
+      expect(await ingest.json()).toEqual({ accepted: 1, rejected: [] });
+      expect(
+        await readFile(
+          path.join(cwd, "out/events", path.basename(cwd), "2026-10-23.ndjson"),
+          "utf8",
+        ),
+      ).toContain('"goalId":"clients.created"');
     } finally {
       child.kill();
     }

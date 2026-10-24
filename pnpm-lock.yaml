@@ -465,6 +465,9 @@ importers:
 
   packages/http-service:
     dependencies:
+      "@pathcompiler/observability-core":
+        specifier: workspace:*
+        version: link:../observability-core
       "@pathcompiler/sdk-js":
         specifier: workspace:*
         version: link:../sdk-js
@@ -475,6 +478,9 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+      "@pathcompiler/analytics-sdk":
+        specifier: workspace:*
+        version: link:../analytics-sdk
       "@pathcompiler/capability-engine":
         specifier: workspace:*
         version: link:../capability-engine

@@ -6,6 +6,7 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 15 | O5 | Limitation | `http-service` sends no CORS headers, so a browser SDK on another origin cannot post to `/v1/events/batch`. | Open; add an explicit allowed-origins option (never `*` with tokens). |
 | 14 | O3 | Limitation | Guide abandonment by navigating away is not reported as `navigated-away`: the runtime keeps waiting, so such runs end as `timed-out` or never end. | Open; detect the route leaving the workflow's routes in runtime-core or O7. |
 | 13 | O3 | Bug, resolved | A workflow whose terminal condition is `explicit_next` could never complete: `next()` was ignored in `awaiting-completion`, trapping the user until `stop`. | **Resolved** in O3, with a regression test. |
 | 12 | O1 | Bug, resolved | The analytics flush re-sent full batches only while a global failure counter was zero, so a single failed send would have stopped automatic full-batch flushing for the session. | **Resolved** in O1: decided per send (`delivered`). |

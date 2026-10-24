@@ -1,10 +1,19 @@
 import { timingSafeEqual } from "node:crypto";
+import { appendFile, mkdir } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
+import path from "node:path";
+import {
+  EventPolicyError,
+  type PrivacyPolicy,
+  type ProductRuntimeEvent,
+  serializeEvent,
+  validateEvent,
+} from "@pathcompiler/observability-core";
 import { type PathCompiler, PathCompilerError } from "@pathcompiler/sdk-js";
 import { z } from "zod";
 
@@ -18,7 +27,65 @@ export type HttpServiceOptions = {
   /** Called with unexpected errors; responses never include their details. */
   onError?: (error: unknown) => void;
   maxBodyBytes?: number;
+  /** Event ingestion (`POST /v1/events/batch`); the endpoint is off without it. */
+  events?: EventIngestionOptions;
 };
+
+/** Where accepted events go; one call per accepted batch, already validated. */
+export interface EventSink {
+  append(projectId: string, events: ProductRuntimeEvent[]): Promise<void>;
+}
+export type EventIngestionOptions = {
+  sink: EventSink;
+  /** Privacy policy applied to every event (allowed context keys, PII, hashing). */
+  policy?: Partial<PrivacyPolicy>;
+  /**
+   * Token that may only post events, e.g. for a browser build. The API token
+   * is accepted too.
+   */
+  ingestToken?: string;
+  /** Events per project per window. Default 10 000 per 60 s. */
+  rateLimit?: { events: number; windowMs: number };
+  /** Events per request. Default 500. */
+  maxBatch?: number;
+  now?: () => number;
+};
+
+/** Keeps accepted events in memory per project; for tests and development. */
+export class InMemoryEventSink implements EventSink {
+  readonly events = new Map<string, ProductRuntimeEvent[]>();
+  async append(projectId: string, events: ProductRuntimeEvent[]) {
+    this.events.set(projectId, [
+      ...(this.events.get(projectId) ?? []),
+      ...events,
+    ]);
+  }
+}
+
+/**
+ * Appends canonical NDJSON to `<directory>/<projectId>/<YYYY-MM-DD>.ndjson`
+ * (UTC day of each event).
+ */
+export function createFileEventSink(directory: string): EventSink {
+  return {
+    async append(projectId, events) {
+      const days = new Map<string, string[]>();
+      for (const event of events) {
+        const day = event.timestamp.slice(0, 10);
+        days.set(day, [...(days.get(day) ?? []), serializeEvent(event)]);
+      }
+      const folder = path.join(directory, encodeURIComponent(projectId));
+      await mkdir(folder, { recursive: true });
+      for (const [day, lines] of days)
+        await appendFile(
+          path.join(folder, `${day}.ndjson`),
+          `${lines.join("\n")}\n`,
+        );
+    },
+  };
+}
+
+const EventBatchSchema = z.strictObject({ events: z.array(z.unknown()) });
 
 const SearchBodySchema = z.strictObject({
   query: z.string().max(500),
@@ -55,9 +122,24 @@ export function createRequestHandler(
     throw new Error("Use an API token of at least 16 characters.");
   const expected =
     options.token === null ? null : Buffer.from(options.token, "utf8");
+  const ingestion = options.events;
+  if (ingestion?.ingestToken !== undefined && ingestion.ingestToken.length < 16)
+    throw new Error("Use an ingest token of at least 16 characters.");
+  const ingestExpected =
+    ingestion?.ingestToken === undefined
+      ? null
+      : Buffer.from(ingestion.ingestToken, "utf8");
+  const limit = ingestion?.rateLimit ?? { events: 10_000, windowMs: 60_000 };
+  const maxBatch = ingestion?.maxBatch ?? 500;
+  const now = ingestion?.now ?? (() => Date.now());
+  const windows = new Map<string, { start: number; count: number }>();
   const maxBodyBytes = options.maxBodyBytes ?? 64 * 1024;
   const { client } = options;
 
+  const matches = (supplied: Buffer, wanted: Buffer | null) =>
+    wanted !== null &&
+    supplied.length === wanted.length &&
+    timingSafeEqual(supplied, wanted);
   function authorize(request: IncomingMessage) {
     if (!expected) return;
     const header = request.headers.authorization ?? "";
@@ -65,9 +147,12 @@ export function createRequestHandler(
       header.startsWith("Bearer ") ? header.slice(7) : "",
       "utf8",
     );
+    const eventsOnly =
+      new URL(request.url ?? "/", "http://localhost").pathname ===
+      "/v1/events/batch";
     if (
-      supplied.length !== expected.length ||
-      !timingSafeEqual(supplied, expected)
+      !matches(supplied, expected) &&
+      !(eventsOnly && matches(supplied, ingestExpected))
     )
       throw new HttpError(
         401,
@@ -117,6 +202,16 @@ export function createRequestHandler(
           allow: allowed,
         });
     };
+    if (url.pathname === "/v1/events/batch") {
+      only("POST");
+      if (!ingestion)
+        throw new HttpError(
+          404,
+          "ingestion-disabled",
+          "Event ingestion is not enabled on this service.",
+        );
+      return ingest(await body(request));
+    }
     if (url.pathname === "/v1/help/resolve") {
       only("POST");
       return client.resolve((await body(request)) as never);
@@ -153,6 +248,66 @@ export function createRequestHandler(
       return client.workflows.get(id);
     }
     throw new HttpError(404, "not-found", "Unknown endpoint.");
+  }
+
+  async function ingest(input: unknown) {
+    if (!ingestion) throw new Error("Unreachable: ingestion disabled");
+    const parsed = EventBatchSchema.safeParse(input);
+    if (!parsed.success)
+      throw new HttpError(
+        400,
+        "invalid-request",
+        'Send { "events": [...] } with semantic runtime events.',
+      );
+    const { events } = parsed.data;
+    if (events.length > maxBatch)
+      throw new HttpError(
+        413,
+        "batch-too-large",
+        `Batches are limited to ${maxBatch} events.`,
+      );
+    // One service serves one project; events for others are refused.
+    const project = client.project;
+    const window = windows.get(project);
+    const at = now();
+    const current =
+      window && at - window.start < limit.windowMs
+        ? window
+        : { start: at, count: 0 };
+    if (current.count + events.length > limit.events)
+      throw new HttpError(
+        429,
+        "rate-limited",
+        `At most ${limit.events} events per ${limit.windowMs} ms for this project.`,
+        {
+          "retry-after": String(
+            Math.max(
+              1,
+              Math.ceil((current.start + limit.windowMs - at) / 1000),
+            ),
+          ),
+        },
+      );
+    current.count += events.length;
+    windows.set(project, current);
+    const accepted: ProductRuntimeEvent[] = [];
+    const rejected: { index: number; issues: string[] }[] = [];
+    for (const [index, item] of events.entries()) {
+      try {
+        const event = validateEvent(item, ingestion.policy ?? {});
+        if (event.projectId !== project)
+          rejected.push({
+            index,
+            issues: [`projectId ${event.projectId} does not match ${project}`],
+          });
+        else accepted.push(event);
+      } catch (error) {
+        if (!(error instanceof EventPolicyError)) throw error;
+        rejected.push({ index, issues: error.issues });
+      }
+    }
+    if (accepted.length) await ingestion.sink.append(project, accepted);
+    return { accepted: accepted.length, rejected };
   }
 
   return (request, response) => {

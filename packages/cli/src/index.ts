@@ -50,7 +50,10 @@ import {
   analyzeCommitRange,
   analyzeCommitRangeDetailed,
 } from "@pathcompiler/graph-delta";
-import { createHttpService } from "@pathcompiler/http-service";
+import {
+  createFileEventSink,
+  createHttpService,
+} from "@pathcompiler/http-service";
 import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
@@ -144,7 +147,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler github-app manifest --name <name> --url <url> --webhook <https-url>
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
-       pathcompiler serve [--out <directory>] [--port <number>] [--host <address>]
+       pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -196,7 +199,10 @@ pull_request events immediately, analyzes them in a background queue using confi
 clones, and publishes a "PathCompiler Workflow Check" run with a scoped installation token.
 mcp serves the read-only PathCompiler MCP tools over stdio from those generated files.
 serve runs the HTTP runtime API on 127.0.0.1:4310 by default from the same files and
-requires PATHCOMPILER_API_TOKEN (Authorization: Bearer <token>).
+requires PATHCOMPILER_API_TOKEN (Authorization: Bearer <token>). --events enables
+POST /v1/events/batch: semantic events are validated against the default privacy policy and
+appended as NDJSON under events/<project>/<day>.ndjson; PATHCOMPILER_INGEST_TOKEN optionally
+sets a token that may only post events.
 reason reachable asks whether a goal of the Formal Product Model can be reached under
 fixed context values (role, flags; omitted ones are free). Without --model it extracts the
 model from the repository and its tests (static evidence). It answers reachable (with a
@@ -253,6 +259,7 @@ const CLI_OPTIONS = {
   property: { type: "string" },
   criteria: { type: "string" },
   tests: { type: "string" },
+  events: { type: "boolean" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -308,6 +315,8 @@ export async function runCli(
     throw new Error(
       "--reasoning is only supported by impact and proposals generate.",
     );
+  if (values.events && positionals[0] !== "serve")
+    throw new Error("--events is only supported by serve.");
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (
     (values.criteria !== undefined || values.tests !== undefined) &&
@@ -748,9 +757,23 @@ export async function runCli(
     if (!Number.isInteger(port) || port < 0 || port > 65_535)
       throw new Error("--port must be an integer from 0 to 65535.");
     const host = values.host ?? "127.0.0.1";
+    const ingestToken = process.env.PATHCOMPILER_INGEST_TOKEN;
+    if (ingestToken !== undefined && ingestToken.length < 16)
+      throw new Error(
+        "PATHCOMPILER_INGEST_TOKEN must be at least 16 characters when set.",
+      );
+    const eventsDirectory = path.join(output, "events");
     const server = createHttpService({
       client: await loadGeneratedClient(output),
       token,
+      ...(values.events
+        ? {
+            events: {
+              sink: createFileEventSink(eventsDirectory),
+              ...(ingestToken ? { ingestToken } : {}),
+            },
+          }
+        : {}),
       onError: (error) =>
         process.stderr.write(
           `PathCompiler HTTP error: ${error instanceof Error ? error.message : String(error)}\n`,
@@ -762,7 +785,7 @@ export async function runCli(
     });
     const address = server.address();
     const bound = address && typeof address === "object" ? address.port : port;
-    return `PathCompiler HTTP service listening on http://${host.includes(":") ? `[${host}]` : host}:${bound} (artifacts: ${output}).\n`;
+    return `PathCompiler HTTP service listening on http://${host.includes(":") ? `[${host}]` : host}:${bound} (artifacts: ${output}).\n${values.events ? `Event ingestion: POST /v1/events/batch → ${eventsDirectory}/<project>/<day>.ndjson${ingestToken ? " (ingest token accepted)" : ""}.\n` : ""}`;
   }
   if (
     positionals[0] === "impact" &&
