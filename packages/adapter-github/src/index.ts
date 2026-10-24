@@ -1,3 +1,4 @@
+import { GitProviderError } from "@pathcompiler/diagnostics";
 import {
   CommitShaSchema,
   type GitProvider,
@@ -79,7 +80,7 @@ export function createGitHubProvider(
     token.length > 4096 ||
     !/^[\x21-\x7e]+$/.test(token)
   )
-    throw new Error(
+    throw new GitProviderError(
       "Provide a nonempty GitHub token without whitespace; it needs Pull requests read permission.",
     );
   const transport = options.fetch ?? globalThis.fetch;
@@ -104,7 +105,7 @@ export function createGitHubProvider(
         },
       });
     } catch {
-      throw new Error(
+      throw new GitProviderError(
         "GitHub request failed or timed out. Check network access and retry.",
       );
     }
@@ -116,22 +117,23 @@ export function createGitHubProvider(
           (response.headers.get("x-ratelimit-remaining") === "0" ||
             response.headers.has("retry-after")))
       )
-        throw new Error(
+        throw new GitProviderError(
           "GitHub rate limit reached. Wait for the limit to reset, then retry; no automatic retry was made.",
         );
       if (response.status === 401 || response.status === 403)
-        throw new Error(
+        throw new GitProviderError(
           "GitHub denied access. Check the token and Pull requests read permission for this repository.",
         );
       if (response.status === 404)
-        throw new Error(
+        throw new GitProviderError(
           "GitHub repository, PR or commit was not found or is not accessible with this token.",
         );
-      throw new Error(
+      throw new GitProviderError(
         `GitHub returned HTTP ${response.status}. Retry later or check the repository and request.`,
       );
     }
-    if (!response.body) throw new Error("GitHub returned an empty response.");
+    if (!response.body)
+      throw new GitProviderError("GitHub returned an empty response.");
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8", { fatal: true });
     let bytes = 0;
@@ -143,13 +145,13 @@ export function createGitHubProvider(
         bytes += chunk.value.byteLength;
         if (bytes > MAX_BYTES) {
           await reader.cancel();
-          throw new Error("Response limit");
+          throw new GitProviderError("Response limit");
         }
         body += decoder.decode(chunk.value, { stream: true });
       }
       body += decoder.decode();
     } catch {
-      throw new Error(
+      throw new GitProviderError(
         "GitHub response was interrupted, invalid UTF-8 or exceeded 4 MiB. Retry or inspect a smaller PR.",
       );
     } finally {
@@ -163,7 +165,7 @@ export function createGitHubProvider(
         ),
       };
     } catch {
-      throw new Error(
+      throw new GitProviderError(
         "GitHub returned an invalid response. No incomplete evidence was saved.",
       );
     }
@@ -185,7 +187,7 @@ export function createGitHubProvider(
         response.value.length !== Math.min(100, remaining) ||
         (remaining <= 100 && response.next)
       )
-        throw new Error(
+        throw new GitProviderError(
           "GitHub pagination disagrees with PR counts. The PR may have changed; retry.",
         );
       result.push(...response.value);
@@ -201,12 +203,12 @@ export function createGitHubProvider(
       before.number !== number ||
       before.base.repo.full_name.toLowerCase() !== repository.toLowerCase()
     )
-      throw new Error(
+      throw new GitProviderError(
         "GitHub returned a PR for a different repository or number.",
       );
     // ponytail: fail beyond documented REST list limits; add another retrieval strategy when larger PRs are needed.
     if (before.commits > 250 || before.changed_files > 3000)
-      throw new Error(
+      throw new GitProviderError(
         "PR exceeds the supported GitHub limits of 250 commits or 3,000 files. No partial evidence was returned.",
       );
     const files = await list(
@@ -221,7 +223,7 @@ export function createGitHubProvider(
     );
     const after = (await request(route, metadataSchema)).value;
     if (JSON.stringify(before) !== JSON.stringify(after))
-      throw new Error(
+      throw new GitProviderError(
         "PR changed while its evidence was being read. Retry to capture a consistent snapshot.",
       );
     try {
@@ -251,7 +253,7 @@ export function createGitHubProvider(
         commits: commits.map((commit) => commit.sha).sort(),
       });
     } catch {
-      throw new Error(
+      throw new GitProviderError(
         "GitHub returned inconsistent PR evidence, such as duplicate files/commits or an incomplete rename. Retry.",
       );
     }
@@ -268,13 +270,13 @@ export function createGitHubProvider(
         z.array(associationSchema).max(100),
       );
       if (result.next || result.value.length > 1)
-        throw new Error(
+        throw new GitProviderError(
           "Multiple pull requests are associated with this commit. Inspect an explicit PR number.",
         );
       const match = result.value[0];
       if (!match) return null;
       if (match.base.repo.full_name.toLowerCase() !== repository.toLowerCase())
-        throw new Error(
+        throw new GitProviderError(
           "GitHub returned a commit association for a different repository.",
         );
       const pr = await getPullRequest(String(match.number));

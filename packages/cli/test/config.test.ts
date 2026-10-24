@@ -102,6 +102,47 @@ describe("pathcompiler.yaml in the CLI", () => {
     );
   });
 
+  it("prints the scan counts table, caches analysis and names unsupported input", async () => {
+    const cwd = await directory();
+    const first = await runCli(["scan", fixture, "--out", "out"], cwd);
+    expect(first).toMatch(/^Scanned \d+ source files/);
+    expect(first).toContain("Scan complete");
+    expect(first).toMatch(/\nRoutes {14}\s*3\n/);
+    expect(first).toMatch(/\nCapabilities {8}\s*6\n/);
+    expect(first).toMatch(/\nCandidate workflows\s+5\n/);
+    expect(first).toMatch(
+      /Phases: read source \d+ ms, analyze \d+ ms, mine tests/,
+    );
+    const graph = await readFile(
+      path.join(cwd, "out/graph/source-graph.json"),
+      "utf8",
+    );
+    const second = await runCli(["scan", fixture, "--out", "out"], cwd);
+    expect(second).toMatch(/analyze \d+ ms \(cached\)/);
+    expect(
+      await readFile(path.join(cwd, "out/graph/source-graph.json"), "utf8"),
+    ).toBe(graph);
+    expect(
+      await runCli(["scan", fixture, "--out", "out", "--no-cache"], cwd),
+    ).not.toContain("(cached)");
+    await expect(
+      runCli(["scan", cwd, "--out", "out"], cwd),
+    ).rejects.toMatchObject({
+      name: "UnsupportedFrameworkError",
+      message: expect.stringMatching(
+        /PathCompiler currently supports Next\.js/,
+      ),
+    });
+    await expect(
+      runCli(["scan", path.join(cwd, "missing")], cwd),
+    ).rejects.toMatchObject({
+      name: "RepositoryAnalysisError",
+      message: expect.stringMatching(
+        /no such directory\. Pass the repository root\./,
+      ),
+    });
+  }, 120_000);
+
   it("inspects the graph and lists capabilities from existing artifacts", async () => {
     const cwd = await directory();
     await expect(

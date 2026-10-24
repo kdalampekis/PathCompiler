@@ -1249,6 +1249,19 @@ report gives verdict accuracy, plan accuracy, diff accuracy and the unknown rate
 (reasoning spec §89). See
 [ADR 0058](docs/decisions/0058-reasoning-fixture-enrichment.md).
 
+## Diagnostics
+
+`scan` prints a counts table (files, routes, components, UI actions, API
+endpoints, tests, capabilities, candidate workflows, warnings) and phase
+durations. It caches repository analysis by content hash under
+`.pathcompiler/cache/` (`--no-cache` to bypass); a cached result is always
+identical to a fresh one. Set `PATHCOMPILER_LOG=json` for structured logs on
+stderr; they never include source contents. Errors use a named taxonomy
+(`ConfigurationError`, `RepositoryAnalysisError`,
+`UnsupportedFrameworkError`, `GitProviderError` and others) from
+`@pathcompiler/diagnostics`. See
+[ADR 0070](docs/decisions/0070-diagnostics-hardening.md).
+
 ## Model provider boundary (`@pathcompiler/model-provider`)
 
 ```bash
@@ -1538,12 +1551,13 @@ Analysis packages:
 | `@pathcompiler/model-provider` | `PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `fixtureKey`, `guardModelProvider`, `semanticModelFromProvider`, `redactSecrets`, `redactValue`, `describeModelRequest`, `ModelProviderError` |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
 | `@pathcompiler/reasoning-service` | `createReasoningService`, `REASONING_OPERATIONS`, `ReasoningRequestError`, `createReasoningMcpServer`, `serveReasoningStdio`, `REASONING_MCP_TOOL_NAMES` |
+| `@pathcompiler/diagnostics` | error taxonomy (`ConfigurationError` … `GitProviderError`), `errorKind`, `createJsonLogger`, `timed`, `PERFORMANCE_TARGETS_MS`, `contentKey`, `createFileCache` |
 | `@pathcompiler/test-generator` | `generateTests`, `renderPositiveTest`, `renderNegativeTest`, `freshStateModel`, `TestSetupSchema`, `GENERATED_TEST_MARKER` |
 | `@pathcompiler/trace-clustering` | `traceSignature`, `clusterTraces`, `TraceClustering`, `TraceVariant` |
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

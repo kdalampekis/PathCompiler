@@ -134,6 +134,9 @@ importers:
 
   packages/adapter-github:
     dependencies:
+      "@pathcompiler/diagnostics":
+        specifier: workspace:*
+        version: link:../diagnostics
       "@pathcompiler/git-intelligence":
         specifier: workspace:*
         version: link:../git-intelligence
@@ -146,6 +149,9 @@ importers:
 
   packages/adapter-nextjs:
     dependencies:
+      "@pathcompiler/diagnostics":
+        specifier: workspace:*
+        version: link:../diagnostics
       "@pathcompiler/graph-core":
         specifier: workspace:*
         version: link:../graph-core
@@ -284,6 +290,9 @@ importers:
       "@pathcompiler/config":
         specifier: workspace:*
         version: link:../config
+      "@pathcompiler/diagnostics":
+        specifier: workspace:*
+        version: link:../diagnostics
       "@pathcompiler/evaluation":
         specifier: workspace:*
         version: link:../evaluation
@@ -372,12 +381,17 @@ importers:
 
   packages/config:
     dependencies:
+      "@pathcompiler/diagnostics":
+        specifier: workspace:*
+        version: link:../diagnostics
       yaml:
         specifier: 2.9.1
         version: 2.9.1
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/diagnostics: {}
 
   packages/evaluation:
     dependencies:
@@ -442,6 +456,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      "@pathcompiler/diagnostics":
+        specifier: workspace:*
+        version: link:../diagnostics
       "@pathcompiler/solver-z3":
         specifier: workspace:*
         version: link:../solver-z3
@@ -513,6 +530,9 @@ importers:
 
   packages/git-intelligence:
     dependencies:
+      "@pathcompiler/diagnostics":
+        specifier: workspace:*
+        version: link:../diagnostics
       "@pathcompiler/graph-core":
         specifier: workspace:*
         version: link:../graph-core
@@ -716,6 +736,9 @@ importers:
       "@pathcompiler/capability-engine":
         specifier: workspace:*
         version: link:../capability-engine
+      "@pathcompiler/diagnostics":
+        specifier: workspace:*
+        version: link:../diagnostics
       "@pathcompiler/evidence":
         specifier: workspace:*
         version: link:../evidence
@@ -1092,6 +1115,9 @@ importers:
 
   packages/source-model:
     dependencies:
+      "@pathcompiler/diagnostics":
+        specifier: workspace:*
+        version: link:../diagnostics
       zod:
         specifier: 4.6.7
         version: 4.6.7

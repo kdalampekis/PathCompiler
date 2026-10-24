@@ -13,6 +13,7 @@ import { parseArgs } from "node:util";
 import { createGitHubProvider } from "@pathcompiler/adapter-github";
 import {
   analyzeNextProject,
+  analyzeNextProjectCached,
   scanNextRepository,
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
@@ -43,6 +44,15 @@ import {
   type PathCompilerConfig,
   reasoningEnabled,
 } from "@pathcompiler/config";
+import {
+  createFileCache,
+  createJsonLogger,
+  type Logger,
+  noopLogger,
+  PERFORMANCE_TARGETS_MS,
+  type PhaseTiming,
+  timed,
+} from "@pathcompiler/diagnostics";
 import {
   analyzeFixture,
   baselineStrategy,
@@ -427,6 +437,7 @@ const CLI_OPTIONS = {
   compare: { type: "boolean" },
   "explain-model-context": { type: "boolean" },
   slack: { type: "string" },
+  "no-cache": { type: "boolean" },
   weight: { type: "string", multiple: true },
   setup: { type: "string" },
   commits: { type: "string" },
@@ -1345,10 +1356,63 @@ export async function runCli(
     throw new Error(
       "Expected: pathcompiler scan, targets suggest, tests mine, git inspect, github inspect, surfaces discover, capabilities discover, workflows discover/detect/validate/list/show/approve/reject, diff, impact, proposals, build, docs export, github-app, mcp, or serve. Use --help for arguments and options.",
     );
-  const result = await scanNextRepository(path.resolve(cwd, positionals[1]), {
-    exclude: values.exclude ?? [],
-  });
+  const directory = path.resolve(cwd, positionals[1]);
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const logger = cliLogger();
+  const timings: PhaseTiming[] = [];
+  const project = await timed(
+    timings,
+    "read source",
+    () => readSourceProject(directory, { exclude: values.exclude ?? [] }),
+    logger,
+  );
+  const result = await timed(
+    timings,
+    "analyze",
+    () =>
+      values["no-cache"]
+        ? { ...analyzeNextProject(project), cached: false }
+        : analyzeNextProjectCached(
+            project,
+            createFileCache(path.join(output, "cache", "analysis"), {
+              onCorrupt: (key) =>
+                logger.log("warn", "corrupt cache entry recomputed", { key }),
+            }),
+          ),
+    logger,
+    { commit: project.repository.commit },
+  );
+  // The §53 counts need tests, capabilities and candidates; scan writes only
+  // its own artifacts.
+  const mined = await timed(
+    timings,
+    "mine tests",
+    () => minePlaywrightTests(project, result.graph),
+    logger,
+  );
+  const discovered = await timed(
+    timings,
+    "discover capabilities",
+    () => discoverCapabilities(mined.graph),
+    logger,
+  );
+  // Discovery needs a committed repository; the table then says why the
+  // count is missing instead of failing the scan.
+  let candidates: number | "n/a" = "n/a";
+  let candidatesUnavailable: string | undefined;
+  try {
+    candidates = await timed(
+      timings,
+      "discover workflows",
+      () =>
+        discoverWorkflows(discovered.graph, discovered.report, mined.report)
+          .report.candidates.length,
+      logger,
+    );
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    candidatesUnavailable = error.message;
+  }
   const artifacts = [
     ["graph/source-graph.json", `${result.graph.serialize()}\n`],
     [
@@ -1357,7 +1421,45 @@ export async function runCli(
     ],
   ] as const;
   await writeArtifacts(output, artifacts);
-  return `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.\nArtifacts: ${output}\nDiagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).\n`;
+  const counts = result.summary.nodeCounts;
+  const total = timings.reduce((sum, item) => sum + item.durationMs, 0);
+  const rows: [string, number | "n/a"][] = [
+    ["Files", result.summary.filesAnalyzed],
+    ["Routes", counts.Route ?? 0],
+    ["Components", counts.Component ?? 0],
+    ["UI actions", counts.UIAction ?? 0],
+    ["API endpoints", counts.APIEndpoint ?? 0],
+    ["Tests", mined.report.traces.length],
+    ["Capabilities", discovered.report.capabilities.length],
+    ["Candidate workflows", candidates],
+    ["Warnings", result.summary.diagnostics.length],
+  ];
+  return `${[
+    `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.`,
+    `Artifacts: ${output}`,
+    `Diagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).`,
+    "",
+    "Scan complete",
+    "",
+    ...rows.map(
+      ([label, count]) => `${label.padEnd(20)}${String(count).padStart(5)}`,
+    ),
+    ...(candidatesUnavailable
+      ? [`Candidate workflows not counted: ${candidatesUnavailable}`]
+      : []),
+    "",
+    `Phases: ${timings.map((item) => `${item.phase} ${item.durationMs} ms${item.phase === "analyze" && result.cached ? " (cached)" : ""}`).join(", ")}; total ${total} ms (development target for a fixture-sized repository: < ${PERFORMANCE_TARGETS_MS["fixture scan"] / 1000} s).`,
+  ].join("\n")}\n`;
+}
+
+/** JSON logs on stderr when PATHCOMPILER_LOG is `json` or `debug`; silent otherwise. */
+function cliLogger(): Logger {
+  const mode = process.env.PATHCOMPILER_LOG;
+  if (mode !== "json" && mode !== "debug") return noopLogger;
+  return createJsonLogger({
+    write: (line) => process.stderr.write(line),
+    level: mode === "debug" ? "debug" : "info",
+  });
 }
 
 /** The developer reasoning service over the repository's (or a given) model. */

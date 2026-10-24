@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pathcompiler/diagnostics": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/evidence": "workspace:*",
     "@pathcompiler/workflow-ir": "workspace:*",

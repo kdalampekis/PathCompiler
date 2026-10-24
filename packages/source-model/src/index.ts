@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { RepositoryAnalysisError } from "@pathcompiler/diagnostics";
 import { z } from "zod";
 
 const exec = promisify(execFile);
@@ -80,9 +81,17 @@ export async function readSourceProject(
     snapshot?: { commit: string };
   } = {},
 ): Promise<SourceProject> {
-  const root = await realpath(directory);
+  let root: string;
+  try {
+    root = await realpath(directory);
+  } catch (error) {
+    throw new RepositoryAnalysisError(
+      `Cannot read ${directory}: ${(error as NodeJS.ErrnoException).code === "ENOENT" ? "no such directory" : "access failed"}. Pass the repository root.`,
+      { cause: error },
+    );
+  }
   if (!(await stat(root)).isDirectory())
-    throw new Error("Scan target must be a directory");
+    throw new RepositoryAnalysisError("Scan target must be a directory");
   const exclude = (options.exclude ?? []).map((entry) =>
     RelativePathSchema.parse(entry.replace(/\/$/, "")),
   );

@@ -326,7 +326,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Tests/evals:** error-class tests; cache determinism tests.
 - **Runtime change:** No.
 - **Unblocks:** none required. Improves solver diagnostics later (§90).
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-24): `@pathcompiler/diagnostics` (taxonomy, JSON logger, timings, content cache), adopted errors at boundaries, cached `scan` with the §53 table and §83 targets, ADR 0070.
 
 #### C5 — Model provider boundary (AI channel A, part 1)
 - **Objective:** `packages/model-provider` with `NoopModelProvider` and
@@ -407,7 +407,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Runtime change:** No (analysis-time only, flag default off).
 - **Unblocks:** P1; better alias recall for the resolver; real-repository
   usefulness (C6).
-- **Status:** 🟢 unblocked (C5 ✅).
+- **Status:** 🟢 unblocked (C5 ✅); **recommended next phase** (§7).
 
 ### 4.2 R track: formal reasoning
 
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **C4** (next), P5, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅ | P1 (C9) · P2 (P1) · P3 (P0 ✅, C8 ✅: unblocked) · IG (I0) · I1 (IG) · I2 (I1) · I4 (P0 ✅, C8 ✅: unblocked) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **C9** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅ | P1 (C9) · P2 (P1) · IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,23 +839,19 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: C4 — Diagnostics hardening
+## 7. Next implementation phase: C9 — Provider adapters and semantic interpretation
 
-O12 is complete, and with it the O track through O12. `observe release-diff`
-compares goal reach between releases with Wilson intervals, and classifies
-each goal against the formal semantic diff (ADR 0069).
+C4 is complete. The error taxonomy, safe structured logs, phase timings and
+a content-hash analysis cache are in place, and `scan` prints the §53 counts
+table against the §83 targets (ADR 0070). Every C phase except C6 (which
+needs user repositories) and C9 is done.
 
-C4 comes next:
-- a named error taxonomy at package boundaries (CODEX §51);
-- a `Logger` interface that never logs source contents (§52);
-- the scan counts table (§53);
-- a content-hash parse cache that never changes output (§84);
-- timings recorded against the §83 targets.
-
-The planned order after C4:
-1. C9;
-2. P1–P5 and P-RV;
-3. the I track.
+C9 comes next. It adds model-provider adapters behind the C5 boundary, and
+evidence-first semantic interpretation (naming, merging, PR intent, aliases)
+whose model outputs are validated and fused as `model` evidence (P0). It
+unblocks P1. The planned order after C9:
+1. P1–P5 and P-RV;
+2. the I track.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

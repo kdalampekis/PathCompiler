@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pathcompiler/diagnostics": "workspace:*",
     "zod": "4.6.7"
   }
 }

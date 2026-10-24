@@ -1,9 +1,15 @@
 import {
+  type ContentCache,
+  contentKey,
+  UnsupportedFrameworkError,
+} from "@pathcompiler/diagnostics";
+import {
   createEdgeId,
   createNodeId,
   type EdgeType,
   type GraphEdge,
   type GraphNode,
+  GraphSnapshotSchema,
   type NodeType,
   ProductGraph,
 } from "@pathcompiler/graph-core";
@@ -11,6 +17,7 @@ import {
   type AnalysisDiagnostic,
   compareText,
   readSourceProject,
+  type SourceProject,
   SourceProjectSchema,
 } from "@pathcompiler/source-model";
 import ts from "typescript";
@@ -88,8 +95,8 @@ export function analyzeNextProject(input: unknown): ScanResult {
     ? "app"
     : "src/app";
   if (!project.files.some((file) => discoverRoute(file.path, appDirectory)))
-    throw new Error(
-      "No supported Next.js App Router page or route files found in app/ or src/app/",
+    throw new UnsupportedFrameworkError(
+      "No supported Next.js App Router page or route files found in app/ or src/app/. PathCompiler currently supports Next.js (App Router) + React + TypeScript; pass the application's root directory.",
     );
   const { program, resolve, relative } = createSourceProgram(
     project,
@@ -735,6 +742,52 @@ export function analyzeNextProject(input: unknown): ScanResult {
     diagnostics: uniqueDiagnostics,
   });
   return { graph, summary };
+}
+
+/** Bump when analysis output changes for the same input (invalidates caches). */
+export const ADAPTER_VERSION = "nextjs-app-router-2026.10";
+/** Cache key over everything analysis reads: versions, repository and file contents. */
+export function analysisCacheKey(input: SourceProject): string {
+  const project = SourceProjectSchema.parse(input);
+  return contentKey([
+    ADAPTER_VERSION,
+    ts.version,
+    JSON.stringify(project.repository),
+    ...project.files.flatMap((file) => [file.path, file.content]),
+    ...Object.entries(project.configs).flatMap(([file, content]) => [
+      file,
+      content,
+    ]),
+  ]);
+}
+/**
+ * `analyzeNextProject` behind a content-hash cache (spec §84). A hit returns
+ * exactly what a fresh analysis would; anything unreadable is recomputed.
+ */
+export async function analyzeNextProjectCached(
+  project: SourceProject,
+  cache: ContentCache,
+): Promise<ScanResult & { cached: boolean }> {
+  const key = analysisCacheKey(project);
+  const stored = (await cache.get(key)) as
+    | { graph: unknown; summary: unknown }
+    | undefined;
+  if (stored) {
+    const graph = GraphSnapshotSchema.safeParse(stored.graph);
+    const summary = ScanSummarySchema.safeParse(stored.summary);
+    if (graph.success && summary.success)
+      return {
+        graph: ProductGraph.fromJSON(graph.data),
+        summary: summary.data,
+        cached: true,
+      };
+  }
+  const result = analyzeNextProject(project);
+  await cache.set(key, {
+    graph: result.graph.toJSON(),
+    summary: result.summary,
+  });
+  return { ...result, cached: false };
 }
 
 export async function scanNextRepository(

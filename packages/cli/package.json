@@ -26,6 +26,7 @@
     "@pathcompiler/candidate-evaluator": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/config": "workspace:*",
+    "@pathcompiler/diagnostics": "workspace:*",
     "@pathcompiler/evaluation": "workspace:*",
     "@pathcompiler/formal-abstraction": "workspace:*",
     "@pathcompiler/formal-model": "workspace:*",

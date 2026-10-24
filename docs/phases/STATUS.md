@@ -1,19 +1,19 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after O12)
+## Current state (updated 2026-10-24, after C4)
 
 | Item | State |
 | --- | --- |
 | Original phases (`CODEX_BUILD_SPEC.md` 0–30) | ✅ all complete against phase acceptance criteria. Baseline re-verified 2026-10-22: lint, typecheck, 258 unit tests, 27 Chromium tests. |
-| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init`, the eval harness/golden tests and the model provider boundary are aligned (C1–C3, C5); error taxonomy, logging, caching and alpha validation remain. Tracked as C1–C9. |
+| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init`, the eval harness/golden tests and the model provider boundary are aligned (C1–C3, C5); alpha validation (C6) and provider adapters (C9) remain. Tracked as C1–C9. |
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **C4** (next), P5, C9, P3, I4, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **C9** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories) |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7, C8; O0–O12 (mode 3, Observe). All 2026-10-23; details per phase below. |
-| Next recommended phase | **C4 — Diagnostics hardening** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8; O0–O12 (mode 3, Observe). All 2026-10-23; details per phase below. |
+| Next recommended phase | **C9 — Provider adapters and semantic interpretation** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3817,5 +3817,69 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 
 - There is no stored release → commit map; the caller passes `--commits`
   (ADR 0069).
-- Next recommended phase: C4 — Diagnostics hardening.
+- C4 followed.
+
+---
+
+## Phase C4 — Diagnostics hardening
+
+Complete — verified locally on 2026-10-24.
+
+- **New `@pathcompiler/diagnostics`:**
+  - the nine spec §51 error classes and `errorKind` (which also classifies
+    other packages' public error classes);
+  - `createJsonLogger`, which drops source-like fields unless debugging;
+  - `timed` phase timings and `PERFORMANCE_TARGETS_MS` (§83);
+  - `contentKey` and an atomic `createFileCache`, where a corrupt entry is a
+    reported miss.
+- **Adopted at boundaries:** configuration, model provider, source reading
+  (missing directories now get an actionable message), Git and GitHub, and
+  unsupported frameworks.
+- **Cached analysis:** `analysisCacheKey` and `analyzeNextProjectCached`
+  (adapter-nextjs).
+- **`scan`:** the analysis cache (`--no-cache`), the §53 counts table, phase
+  durations against the fixture target, and JSON logs with
+  `PATHCOMPILER_LOG`.
+- Recorded in ADR 0070.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 448 tests passed across 76 suites (diagnostics, cache, performance and CLI scan tests) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- the taxonomy and foreign-error classification;
+- log redaction and levels, and timings of failing phases;
+- cache round-trip, miss, corruption and key validation;
+- the adapter cache: a hit equals a fresh analysis, the key changes with
+  content, and unusable entries are recomputed;
+- CLI `scan`: the table, a cached second run with identical artifacts,
+  `--no-cache`, `UnsupportedFrameworkError` and the missing-directory
+  `RepositoryAnalysisError`;
+- §83 targets on the fixture: scan, compile and resolver lookup.
+
+On the fixture the cache cuts the analysis phase from about 114 ms to 16 ms.
+No browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- An import edit failed against reformatted code and was redone.
+- The adapter already rejected a project without App Router pages, with a
+  plain `Error`. That check now throws `UnsupportedFrameworkError` with an
+  actionable message, and a duplicate CLI check was removed.
+- **Uncommitted sources broke `scan`:** the new counts table ran workflow
+  discovery, which requires a commit. The table now shows `n/a` with the
+  reason instead of failing the scan, and two existing CLI tests caught it.
+- **Open (ISSUES_LOG #33):** only `scan` uses the cache.
+
+### Scope notes
+
+- Packages with public error classes keep them (classified by name), to
+  avoid breaking APIs (ADR 0070).
+- Next recommended phase: C9 — Provider adapters and semantic
+  interpretation.
 

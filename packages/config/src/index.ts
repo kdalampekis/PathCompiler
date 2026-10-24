@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { ConfigurationError } from "@pathcompiler/diagnostics";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
 
@@ -127,7 +128,8 @@ export const PathCompilerConfigSchema = z.strictObject({
 });
 export type PathCompilerConfig = z.infer<typeof PathCompilerConfigSchema>;
 
-export class ConfigError extends Error {
+/** A `ConfigurationError` (spec §51) listing every issue by key path. */
+export class ConfigError extends ConfigurationError {
   constructor(
     readonly file: string,
     readonly issues: string[],

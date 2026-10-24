@@ -1,4 +1,8 @@
 import {
+  GitProviderError,
+  TargetResolutionError,
+} from "@pathcompiler/diagnostics";
+import {
   createEdgeId,
   createNodeId,
   ProductGraph,
@@ -28,17 +32,20 @@ export async function enrichNodeHistory(
     .strictObject({ limit: z.number().int().min(1).max(100).default(20) })
     .parse(options);
   const selected = sourceGraph.getNode(nodeId);
-  if (!selected) throw new Error(`Unknown graph node: ${nodeId}`);
+  if (!selected)
+    throw new TargetResolutionError(`Unknown graph node: ${nodeId}`);
   const files = filesForNode(selected);
   if (!files.length)
-    throw new Error("Select a graph node with source-file provenance.");
+    throw new TargetResolutionError(
+      "Select a graph node with source-file provenance.",
+    );
   if (files.length > 5)
-    throw new Error(
+    throw new GitProviderError(
       "Node history is limited to five source files. Select a more specific node.",
     );
   const snapshot = await repository.getSnapshot();
   if (!snapshot.commit)
-    throw new Error(
+    throw new GitProviderError(
       "Create an initial Git commit before inspecting node history.",
     );
   const sourceRepository = sourceGraph.getNode("repository:.");
@@ -46,7 +53,7 @@ export async function enrichNodeHistory(
     sourceRepository?.data?.commit !== snapshot.commit ||
     sourceRepository.data.dirty !== snapshot.dirty
   )
-    throw new Error(
+    throw new GitProviderError(
       "Source graph and Git snapshot differ. Rescan the selected directory before inspecting history.",
     );
   const report: GitEvidenceReport = {
@@ -86,7 +93,7 @@ export async function enrichNodeHistory(
       });
     for (const commit of history.commits) commits.set(commit.sha, commit);
     if (commits.size > 100)
-      throw new Error(
+      throw new GitProviderError(
         "Node history exceeds 100 unique commits. Reduce --limit or select a more specific node.",
       );
   }
@@ -159,7 +166,7 @@ export async function enrichNodeHistory(
   }
   const after = await repository.getSnapshot();
   if (JSON.stringify(after) !== JSON.stringify(snapshot))
-    throw new Error(
+    throw new GitProviderError(
       "Repository changed while inspecting history. Rescan and retry.",
     );
   return { graph, report: GitEvidenceReportSchema.parse(report) };

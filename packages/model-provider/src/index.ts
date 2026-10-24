@@ -9,6 +9,7 @@ import {
   parseEvidenceSummary,
   type SemanticModel,
 } from "@pathcompiler/capability-engine";
+import { ModelProviderError as BaseModelProviderError } from "@pathcompiler/diagnostics";
 import { EvidenceBundleSchema } from "@pathcompiler/evidence";
 import { WorkflowV1Schema } from "@pathcompiler/workflow-ir";
 import { z } from "zod";
@@ -95,7 +96,7 @@ export type ModelRequestKind =
   | "generateAliases"
   | "summarizeEvidence";
 
-export class ModelProviderError extends Error {
+export class ModelProviderError extends BaseModelProviderError {
   constructor(
     readonly code:
       | "fixture-missing"
@@ -105,7 +106,6 @@ export class ModelProviderError extends Error {
     message: string,
   ) {
     super(message);
-    this.name = "ModelProviderError";
   }
 }
 
