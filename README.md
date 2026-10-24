@@ -1145,9 +1145,27 @@ semantic events that later observability phases build on:
 The schemas reject raw values, DOM, coordinates and query strings.
 `validateEvent` enforces the privacy policy, which by default has analytics
 off, no PII, hashed user IDs and no context keys. Events serialize canonically
-as NDJSON, and `createEventFactory` binds project, session and release. There
-is no transport yet (O1).
+as NDJSON, and `createEventFactory` binds project, session and release. The
+core package has no transport; the SDK below adds one.
 See [ADR 0044](docs/decisions/0044-semantic-event-model.md).
+
+```ts
+import { createAnalytics, ConsoleTransport } from '@pathcompiler/analytics-sdk';
+const analytics = createAnalytics({
+  projectId: 'next-demo',
+  release: process.env.APP_RELEASE,
+  policy: { enabled: true }, // off by default
+  transport: new ConsoleTransport(),
+});
+analytics.workflowStarted({ workflowId: 'clients.create', workflowVersion: 1 }, 'guide');
+analytics.goalReached('clients.created');
+```
+
+`@pathcompiler/analytics-sdk` (phase O1) is opt-in. It batches events, retries
+failed sends within a bounded queue, and validates every event against the
+privacy policy. A rejected event is reported through `onError`, never thrown.
+Transports are in-memory (the default) or console; nothing touches the network.
+See [ADR 0045](docs/decisions/0045-analytics-sdk.md).
 
 ## Packages
 
@@ -1190,6 +1208,7 @@ Analysis packages:
 | `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ProductReasoner.compareModels`, `ProductReasoner.verifyProperty`, `ProductPropertySchema`, `PropertyResult`, `propertiesFromInvariants`, `ModelComparison`, `ReachabilityChange`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
 | `@pathcompiler/semantic-change` | `analyzeSemanticChange`, `buildCommitModel`, `summarizeSemanticChange`, `collapseContexts`, `describeContext`, `SemanticChangeReport`, `SemanticWorkflowImpact` |
 | `@pathcompiler/observability-core` | `ProductRuntimeEventSchema` (eight semantic event types), `RuntimeEventBaseSchema`, `PrivacyPolicySchema`, `DEFAULT_PRIVACY_POLICY`, `validateEvent`, `hashUserId`, `serializeEvent`, `parseEvents`, `createEventFactory`, `EventPolicyError` |
+| `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 

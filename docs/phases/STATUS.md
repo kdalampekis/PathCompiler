@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after O0)
+## Current state (updated 2026-10-23, after O1)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O1** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **O2** (next), O3, O4, O5, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
-| Next recommended phase | **O1 — Lightweight Analytics SDK** (`MASTER_ROADMAP.md` §7). Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
+| Next recommended phase | **O2 — React integration** (`MASTER_ROADMAP.md` §7); O3, O4 and O5 can run in parallel. Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2418,3 +2418,56 @@ Tests cover:
 - Explicit domain events (`track("client.created")`) are O4. Batching and
   transports are O1.
 - Next recommended phase: O1 — Lightweight Analytics SDK.
+
+---
+
+## Phase O1 — Lightweight Analytics SDK
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/analytics-sdk`. `createAnalytics({ projectId, release,
+  policy, transport, batchSize, flushIntervalMs, maxQueue, onError })`
+  provides `track`, lifecycle helpers for all eight event types, `setContext`
+  (sticky fields), `flush`, `shutdown` and `stats`.
+- It is off unless `policy.enabled`. Then every call is a no-op: no queue, no
+  timer and no transport call.
+- Each event passes the O0 privacy validation with release binding. A rejected
+  event is counted and reported through `onError`, never thrown into the host
+  app and never sent.
+- **Batching:** full batches are sent at once, and partial ones after the
+  interval. One send runs at a time. A failed batch is kept and retried on the
+  next flush or timer, not in a tight loop. The queue is bounded, and the
+  oldest events are dropped and counted.
+- **Transports:** `AnalyticsTransport`, `InMemoryTransport` (the default) and
+  `ConsoleTransport` (canonical JSON lines). Nothing touches the network.
+- `observability-core` now exports `EventInput`.
+- Recorded in ADR 0045 and documented in the README. Opt-in only.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 328 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 333 tests passed across 46 suites (5 new) |
+| `git diff --check` | Passed |
+
+Tests cover: disabled-by-default no-ops; batching by size and by timer;
+release, sticky-context and override rules; privacy rejections reported
+without throwing (and accepted once allowlisted); send failures kept and
+retried, with the queue bound and drop counts; console output in canonical
+form; shutdown flushing and then ignoring calls.
+
+### Errors found during the phase
+
+- First draft: after one failed send, the full-batch re-flush condition read a
+  global failure counter, which would have disabled automatic flushing
+  permanently. It now depends on whether that send was delivered. Fixed before
+  the tests ran; logged as ISSUES_LOG #12.
+
+### Scope notes
+
+- No network transport (O5 adds ingestion), and no React wiring (O2).
+- Next recommended phase: O2 — React integration.

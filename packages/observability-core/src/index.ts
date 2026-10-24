@@ -281,7 +281,8 @@ export function parseEvents(text: string): ProductRuntimeEvent[] {
 }
 
 type Distribute<T> = T extends unknown ? T : never;
-type EventInput<T extends ProductRuntimeEventType> = Distribute<
+/** Caller-supplied fields of an event; the factory adds the bound ones. */
+export type EventInput<T extends ProductRuntimeEventType> = Distribute<
   Omit<
     Extract<ProductRuntimeEvent, { type: T }>,
     | "type"

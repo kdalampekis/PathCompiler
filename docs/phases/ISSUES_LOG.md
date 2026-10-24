@@ -6,6 +6,7 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 12 | O1 | Bug, resolved | The analytics flush re-sent full batches only while a global failure counter was zero, so a single failed send would have stopped automatic full-batch flushing for the session. | **Resolved** in O1: decided per send (`delivered`). |
 | 11 | O0 | Bug, resolved | The event-schema helper spread base and type shapes generically, so overridden fields (`workflowId`) were typed `never` and the factory input was unusable. | **Resolved** in O0: Zod `extend`. |
 | 10 | O0 | Bug, resolved | The sensitive context-key check matched substrings, so `domain` was refused ("dom"). | **Resolved** in O0: whole-word matching on snake_case and camelCase words. |
 | 9 | C1 (2026-10-23) | Tooling | The auto-mode safety classifier repeatedly returned "no verdict" for Bash and Edit calls mid-phase, and the session paused with C1 uncommitted. | Environment fault; no code impact. Retry: rerun the step. |
