@@ -70,6 +70,7 @@ import {
 import {
   actionCategories,
   buildFormalModel,
+  interpretCapabilities,
 } from "@pathcompiler/formal-abstraction";
 import {
   type FormalProductModel,
@@ -416,8 +417,13 @@ clusters' surfaces and graph evidence to model_provider (anthropic, openai or lo
 nothing), and checks every answer against that evidence. It writes
 reports/semantic-hypotheses.json: rename, merge or confirm hypotheses, each supported or
 rejected (unsupported verb or entity, evidence of other surfaces, merge across entities), and
-the exact context sent. Capabilities are never changed. --model-fixtures replays recorded
-responses ([{ kind, request | key, response }]) instead of calling a provider.
+the exact context sent. It then interprets each ambiguous capability (P1): candidate meanings
+from the rule and the hypotheses are removed when a hard constraint rules them out (the
+handler's endpoint cannot perform the verb, an entity no route or endpoint mentions, another
+action's ID with a different handler), and the rest are re-scored and fused (code outranks
+models), in reports/semantic-interpretations.json. Capabilities are never changed.
+--model-fixtures replays recorded responses ([{ kind, request | key, response }]) instead
+of calling a provider.
 No repository code is executed. Only analyze with a configured model_provider sends anything
 to a model, and never file contents; nothing else is sent to a network service.
 `;
@@ -3892,12 +3898,24 @@ async function runAnalyze(
     surfaces,
     capabilities,
   });
+  // P1: candidate meanings (rule and hypotheses) filtered by hard constraints.
+  const interpretations = interpretCapabilities({
+    graph: mined.graph,
+    capabilities,
+    subjects: report.clusters.flatMap((cluster) =>
+      cluster.capabilities.map((item) => item.id),
+    ),
+    hypotheses: report.hypotheses,
+  });
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   const file = "reports/semantic-hypotheses.json";
+  const interpretationFile = "reports/semantic-interpretations.json";
   await writeArtifacts(output, [
     [file, `${JSON.stringify(report, null, 2)}\n`],
+    [interpretationFile, `${JSON.stringify(interpretations, null, 2)}\n`],
   ]);
-  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  if (values.json)
+    return `${JSON.stringify({ ...report, interpretations }, null, 2)}\n`;
   const lines = [
     `Semantic analysis (provider: ${report.provider}): ${report.clusters.length} ambiguous clusters of ${capabilities.length} capabilities.`,
   ];
@@ -3921,6 +3939,26 @@ async function runAnalyze(
       `Sent ${report.context.requests.length} requests, ${report.context.requests.reduce((sum, item) => sum + item.bytes, 0)} bytes; never file contents.`,
     );
   }
-  lines.push(`Report: ${path.join(output, file)}`, "");
+  const { summary } = interpretations;
+  lines.push(
+    `Interpretations: ${summary.subjects} capabilities, ${summary.changed} with a different best meaning, ${summary.ruleImpossible} whose rule meaning violates a hard constraint, ${summary.unresolved} unresolved.`,
+  );
+  for (const item of interpretations.items)
+    if (item.changed || item.best === null)
+      lines.push(
+        `  ${item.subject} → ${item.best ?? "(unresolved)"} (${item.assessment.confidence.band}); impossible: ${
+          item.candidates
+            .filter((candidate) => candidate.status === "impossible")
+            .map(
+              (candidate) =>
+                `${candidate.value} [${candidate.violations.map((violation) => violation.split(":")[0]).join(", ")}]`,
+            )
+            .join("; ") || "none"
+        }`,
+      );
+  lines.push(
+    `Reports: ${path.join(output, file)}, ${path.join(output, interpretationFile)}`,
+    "",
+  );
   return lines.join("\n");
 }

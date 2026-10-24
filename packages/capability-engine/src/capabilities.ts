@@ -98,8 +98,26 @@ function named(
   surface: ProductSurface,
   nodes: Map<string, GraphNode>,
 ): Meaning | undefined {
+  return capabilityMeaning(
+    value,
+    surface.routeIds.flatMap((id) => {
+      const route = nodes.get(id)?.data?.path;
+      return typeof route === "string" ? [route] : [];
+    }),
+  );
+}
+export type CapabilityMeaning = Meaning;
+/**
+ * The capability a label such as "Archive Plan" names, using the route paths
+ * it appears on for the domain (the accessible-name rule). Undefined when the
+ * label does not start with a capability verb.
+ */
+export function capabilityMeaning(
+  label: string,
+  routePaths: readonly string[],
+): CapabilityMeaning | undefined {
   const [verb, ...rest] = words(
-    value.replace(/(?:Button|Action|Modal|Dialog|Form|Panel)$/, ""),
+    label.replace(/(?:Button|Action|Modal|Dialog|Form|Panel)$/, ""),
   );
   if (
     !verb ||
@@ -108,12 +126,8 @@ function named(
   )
     return;
   const domains = unique(
-    surface.routeIds.flatMap((id) => {
-      const route = nodes.get(id)?.data?.path;
-      const segment =
-        typeof route === "string"
-          ? route.split("/").filter(Boolean).at(-1)
-          : undefined;
+    routePaths.flatMap((route) => {
+      const segment = route.split("/").filter(Boolean).at(-1);
       return segment && /^[a-z][a-z0-9_-]*$/.test(segment)
         ? [words(segment).join("_")]
         : [];

@@ -179,6 +179,32 @@ describe("analyze", () => {
     expect(output).toContain(
       'Hypotheses: 0 supported, 1 rejected (never applied).\n  - rename clients.archive → "Delete Client" [unsupported-verb]\nSent 1 requests,',
     );
+    expect(output).toContain(
+      "Interpretations: 2 capabilities, 0 with a different best meaning, 0 whose rule meaning violates a hard constraint, 0 unresolved.",
+    );
+    const interpretations = JSON.parse(
+      await readFile(
+        path.join(
+          cwd,
+          ".pathcompiler",
+          "reports",
+          "semantic-interpretations.json",
+        ),
+        "utf8",
+      ),
+    );
+    // The rejected hypothesis is an impossible candidate; the rule meaning stands.
+    expect(
+      interpretations.items.find(
+        (item: { subject: string }) => item.subject === "clients.archive",
+      ),
+    ).toMatchObject({
+      best: "clients.archive",
+      candidates: [
+        { value: "clients.archive", status: "consistent" },
+        { value: "clients.delete", status: "impossible" },
+      ],
+    });
     await expect(
       runCli(["scan", root, "--model-fixtures", "answers.json"], cwd),
     ).rejects.toThrow("--model-fixtures is only supported by analyze.");

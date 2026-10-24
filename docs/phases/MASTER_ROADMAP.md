@@ -615,13 +615,13 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Prerequisites:** P0, R1, C9 (model-produced candidate interpretations). **Packages:** `probabilistic-evidence`, `formal-abstraction`.
 - **Acceptance:** candidate interpretations are filtered by formal consistency
   and re-scored.
-- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅, R1 ✅, C9 ✅); **recommended next phase** (§7).
+- **Runtime change:** No. **Status:** ✅ complete (2026-10-24): `interpretCandidates` (probabilistic-evidence), `interpretCapabilities` (formal-abstraction), `analyze` writes `reports/semantic-interpretations.json`, ADR 0072. Hard constraints are deterministic facts (handler endpoint vs verb, product vocabulary, one ID per handler action); the formal model's own structure derives from the capability names, so it is not used to judge them.
 
 #### P2 — Weighted soft constraints (MaxSAT)
 - **Prerequisites:** P1, R2 (optimization-capable provider; R7 preferred).
 - **Acceptance:** hard constraints always hold, and the best-supported
   interpretation is selected.
-- **Runtime change:** No. **Status:** 🔒 blocked.
+- **Runtime change:** No. **Status:** 🟢 unblocked (P1 ✅, R2 ✅, R7 ✅); **recommended next phase** (§7).
 
 #### P3 — Browser failure diagnosis
 - **Prerequisites:** P0, C8, R2. **Acceptance:** seeded failures rank the true
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **P1** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅ | P2 (P1) · IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **P2** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,17 +839,22 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: P1 — Probabilistic semantic interpretation
+## 7. Next implementation phase: P2 — Weighted soft constraints (MaxSAT)
 
-C9 is complete (ADR 0071). Anthropic, OpenAI and local adapters sit behind the
-C5 boundary. `analyze` sends only ambiguous clusters' evidence and validates
-the answers as `SemanticHypothesis` records. Every C phase except C6 (which
-needs user repositories) is done.
+C9 and P1 are complete (ADR 0071, ADR 0072):
+- `analyze` sends only ambiguous clusters' evidence and validates the
+  answers as `SemanticHypothesis` records;
+- it then removes the candidate meanings that hard constraints rule out;
+- it re-scores and fuses the rest.
 
-P1 comes next. It takes C9's supported hypotheses as candidate
-interpretations, filters them by formal consistency (R1) and re-scores them
-with P0 evidence fusion. The planned order after P1:
-1. P2–P5 and P-RV;
+Every C phase except C6 (which needs user repositories) is done.
+
+P2 comes next. It turns P1's per-capability candidates into one joint
+optimization: hard constraints always hold, and the best-supported
+interpretation across all capabilities is selected. Examples of joint
+constraints are one meaning per action and no two actions with one ID.
+The planned order after P2:
+1. P3–P5 and P-RV;
 2. the I track.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)

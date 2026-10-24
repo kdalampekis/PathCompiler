@@ -1238,3 +1238,4 @@ export function buildFormalModel(
     ),
   };
 }
+export * from "./interpretation.js";

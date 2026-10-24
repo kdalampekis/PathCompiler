@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after C9)
+## Current state (updated 2026-10-24, after P1)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **P1** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories) |
-| Blocked | P2 (needs P1), IG (I0), I1 (IG), I2 (I1), I5–I8 (O0, O7 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
+| Unblocked | **P2** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories) |
+| Blocked | IG (I0), I1 (IG), I2 (I1), I5–I8 (O0, O7 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **P1 — Probabilistic semantic interpretation** (`MASTER_ROADMAP.md` §7). Parallel candidates: P3, P4, P-RV, I0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0, P1; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **P2 — Weighted soft constraints (MaxSAT)** (`MASTER_ROADMAP.md` §7). Parallel candidates: P3, P4, P-RV, I0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3984,3 +3984,72 @@ No runtime or browser code changed, so the e2e suite was not rerun.
   - hypotheses are not fused or applied yet; P1 consumes them.
 - Next recommended phase: P1 — Probabilistic semantic interpretation.
 
+---
+
+## Phase P1 — Probabilistic semantic interpretation
+
+Complete — verified locally on 2026-10-24.
+
+- **`interpretCandidates` (probabilistic-evidence):**
+  - candidates with the same value are pooled;
+  - any hard-constraint violation makes a candidate impossible, with weight
+    0, whatever its evidence;
+  - consistent candidates are re-scored by conditioning (prior ÷ the sum of
+    consistent priors, a relative weight, not a probability);
+  - P0 fusion over consistent evidence picks the best; contested or empty
+    gives `null`.
+- **`interpretCapabilities` (formal-abstraction):**
+  - **candidates:** the rule's capability ID (static evidence from the
+    naming node) and each C9 hypothesis title, parsed with the
+    accessible-name rule (`capabilityMeaning`, newly exported by
+    capability-engine without changing discovery);
+  - **hard constraints:** the handler's endpoint versus the verb (verb-named
+    sub-resources; only clear method contradictions, and POST rules nothing
+    out), unknown entities, another action's ID with a different handler,
+    C9 rejections and unparseable titles.
+- **CLI `analyze`** writes `reports/semantic-interpretations.json` and prints
+  changed, rule-impossible and unresolved subjects.
+- Recorded in ADR 0072.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 471 tests passed across 81 suites (interpretation engine, capability interpretation, CLI `analyze`) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- the engine: removal, re-scoring (0.72 / 0.21 / 0.07 becomes 0.774 / 0.226
+  / 0), hard constraints winning over browser evidence, pooling, contests,
+  empty results and prior validation;
+- capabilities:
+  - no change on the demo fixture;
+  - a mislabeled "Add Client" whose PATCH handler rules out create, so a
+    model's "Edit Client" wins and invented entities and rejected
+    hypotheses are impossible;
+  - unresolved without a model;
+  - POST ruling nothing out;
+  - a merge into another action's ID;
+- CLI `analyze`, which writes the interpretations.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **Hard constraints that were not facts:** discovery's verb-to-method
+  association table (everything other than create and delete is
+  PATCH/PUT) was first reused as a hard constraint. It would rule out
+  "Invite Client" over POST. It was replaced by a narrower table of clear
+  contradictions, with a regression test.
+- **Open (#37):** the API constraint never fires on the fixture, which has
+  no direct handler calls.
+
+### Scope notes
+
+- **Deviation:** "formal consistency" uses deterministic facts rather than
+  the R1 formal model. The model's actions and goals are derived from the
+  capability names, so checking names against it would be circular
+  (ADR 0072).
+- Next recommended phase: P2 — Weighted soft constraints (MaxSAT).

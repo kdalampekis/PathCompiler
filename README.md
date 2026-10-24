@@ -1334,6 +1334,21 @@ Adapters:
 
 See [ADR 0071](docs/decisions/0071-provider-adapters-and-semantic-interpretation.md).
 
+`analyze` then interprets each ambiguous capability probabilistically (P1).
+The candidate meanings are the rule's capability ID plus each hypothesis's
+title, parsed to an ID. A candidate is removed when a hard constraint, a
+deterministic fact, rules it out:
+- the handler's endpoint cannot perform the verb (e.g. PATCH cannot create;
+  `/archive` only archives; POST rules nothing out);
+- its entity appears in no route, endpoint or capability;
+- it is another action's ID with a different handler.
+
+The remaining candidates are re-scored (relative weights, not
+probabilities) and fused by evidence tier, so code outranks models. A
+contested result is left unresolved rather than guessed. The output goes to
+`reports/semantic-interpretations.json`. See
+[ADR 0072](docs/decisions/0072-probabilistic-semantic-interpretation.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1592,7 +1607,7 @@ Analysis packages:
 | `@pathcompiler/assistant-tools` | `resolveProductHelp`, `parseToolInput`, `toolResultText`, `jsonSchemaTool`, `anthropicTool`, `openAITool`, `langChainTool`, `INPUT_SCHEMA`, `STRICT_INPUT_SCHEMA`, `ToolInputError` |
 | `@pathcompiler/config` | `loadConfig`, `parseConfig`, `PathCompilerConfigSchema`, `featureFlags`, `reasoningEnabled`, `analyticsPolicy`, `defaultConfigYaml`, `ConfigError` |
 | `@pathcompiler/formal-model` | `FormalProductModelSchema`, `parseFormalModel`, `normalizeFormalModel`, `serializeFormalModel`, `formalModelHash`, `collectFormalEvidence`, `f` constructors, variable/expression/action/goal schemas and types |
-| `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
+| `@pathcompiler/formal-abstraction` | `buildFormalModel`, `FORMAL_ABSTRACTION_VERSION`, `interpretCapabilities` (P1), `FormalAbstraction`, `ModelCoverage`, `AbstractionUncertainty` types |
 | `@pathcompiler/solver-provider` | `SolverProvider` (assumptions, unsat cores), `SolverProblem`, `SolverTerm`, `SolverCheckResult`, `SolverProblemSchema`, `parseSolverProblem` |
 | `@pathcompiler/solver-z3` | `createZ3SolverProvider` (only package importing Z3) |
 | `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ProductReasoner.compareModels`, `ProductReasoner.verifyProperty`, `ProductPropertySchema`, `PropertyResult`, `propertiesFromInvariants`, `ModelComparison`, `ReachabilityChange`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
@@ -1604,7 +1619,7 @@ Analysis packages:
 | `@pathcompiler/model-provider` | `PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `fixtureKey`, `guardModelProvider`, `semanticModelFromProvider`, `redactSecrets`, `redactValue`, `describeModelRequest`, `ModelProviderError`, `createStructuredModelProvider`, `structuredTask`, `findAmbiguousClusters`, `interpretAmbiguities`, `SemanticHypothesis` |
 | `@pathcompiler/model-provider-anthropic` | `createAnthropicModelProvider`, `DEFAULT_ANTHROPIC_MODEL` (Anthropic SDK; ADR 0071) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
-| `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
+| `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `interpretCandidates` (P1), `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
 | `@pathcompiler/reasoning-service` | `createReasoningService`, `REASONING_OPERATIONS`, `ReasoningRequestError`, `createReasoningMcpServer`, `serveReasoningStdio`, `REASONING_MCP_TOOL_NAMES` |
 | `@pathcompiler/diagnostics` | error taxonomy (`ConfigurationError` … `GitProviderError`), `errorKind`, `createJsonLogger`, `timed`, `PERFORMANCE_TARGETS_MS`, `contentKey`, `createFileCache` |
 | `@pathcompiler/test-generator` | `generateTests`, `renderPositiveTest`, `renderNegativeTest`, `freshStateModel`, `TestSetupSchema`, `GENERATED_TEST_MARKER` |

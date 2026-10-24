@@ -6,6 +6,7 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 37 | P1 | Limitation | The API hard constraint uses only endpoints a handler calls directly. Every fixture action reaches its endpoint through component context, so on the fixture the constraint never fires; it is exercised only by synthetic tests. | Open; strengthen handler association (C7 association rules) or add a direct-handler action to the fixture. |
 | 36 | C9 | Limitation | Hypothesis validation checks titles lexically against the capability verb vocabulary. Synonyms outside it ("Add", "Remove", "Manage") are not treated as verbs, so "Remove Client" for an archive action would pass as supported. | Open; map verb synonyms to the vocabulary (as the resolver's verb groups do) before checking. |
 | 35 | C9 | Unverified | Real providers' acceptance of the generated JSON Schemas is untested: the Anthropic adapter relies on the SDK's schema `transform`, and OpenAI-compatible local servers differ in `json_schema` support. | Open; run `analyze` against each provider once with a key (see #34) and record failures. |
 | 34 | C9 | Deferred | No recorded real-provider evaluation: it needs the user's API key. The fixture provider covers reproducibility, and the demo fixture has no ambiguous capability, so a useful run needs a real repository (C6). | Open; with a key, run `pathcompiler analyze` on a real repository, record answers as `--model-fixtures`, and compare naming with and without them. |
