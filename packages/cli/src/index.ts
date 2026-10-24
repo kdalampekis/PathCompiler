@@ -17,7 +17,9 @@ import {
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
 import {
+  analyzeDropOffs,
   computePathEfficiency,
+  type DropOffReport,
   type PathEfficiencyReport,
   reconcileBehavior,
 } from "@pathcompiler/behavior-reconciliation";
@@ -221,6 +223,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler observe graph|workflows [--release <id>] [--json] [--out <directory>]
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler observe efficiency [directory] [--model <json-file>] [--json] [--out <directory>]
+       pathcompiler observe drop-offs [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
@@ -293,6 +296,10 @@ observe efficiency divides the median observed path cost (navigations plus targe
 per completion) by the cheapest formal path for each goal and observed role (Path Efficiency
 Ratio; 30+ completions), lists friction at 1.5x or more, and writes reports/path-efficiency.json.
 It is a friction signal, not proof that the shortest path is the best experience.
+observe drop-offs counts, per goal and observed role, sessions that activated one of the goal's
+controls but never reached it, and where they stopped. Points where 20%+ of attempts end (with
+30+ attempts) are friction, listed with the valid formal routes (R6 variants) that avoid them.
+Writes reports/drop-offs.json.
 reason reachable asks whether a goal of the Formal Product Model can be reached under
 fixed context values (role, flags; omitted ones are free). Without --model it extracts the
 model from the repository and its tests (static evidence). It answers reachable (with a
@@ -466,7 +473,7 @@ export async function runCli(
     ) &&
     !(
       positionals[0] === "observe" &&
-      (positionals[1] === "reconcile" || positionals[1] === "efficiency") &&
+      ["reconcile", "efficiency", "drop-offs"].includes(positionals[1] ?? "") &&
       values.context === undefined
     )
   )
@@ -2227,15 +2234,16 @@ async function runObserve(
 ): Promise<string> {
   const reconcile = positionals[1] === "reconcile";
   const efficiency = positionals[1] === "efficiency";
+  const dropOffs = positionals[1] === "drop-offs";
   if (
     !(
       ((positionals[1] === "graph" || positionals[1] === "workflows") &&
         positionals.length === 2) ||
-      ((reconcile || efficiency) && positionals.length <= 3)
+      ((reconcile || efficiency || dropOffs) && positionals.length <= 3)
     )
   )
     throw new Error(
-      "Expected: pathcompiler observe graph|workflows, or observe reconcile|efficiency [directory]. Use --help for options.",
+      "Expected: pathcompiler observe graph|workflows, or observe reconcile|efficiency|drop-offs [directory]. Use --help for options.",
     );
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   // Same project name `serve` uses for ingestion.
@@ -2246,6 +2254,36 @@ async function runObserve(
     throw new Error(
       `No stored events under ${directory}. Run pathcompiler serve --events and send events first.`,
     );
+  if (dropOffs) {
+    const { model } = await loadReasoningModel(positionals[2], values, cwd);
+    const solver = await createZ3SolverProvider();
+    let report: DropOffReport;
+    try {
+      report = await analyzeDropOffs(model, events, solver);
+    } finally {
+      await solver.close();
+    }
+    await writeArtifacts(output, [
+      ["reports/drop-offs.json", `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+    const lines = [
+      `Drop-offs (hypotheses; rates need ${report.minAttempts}+ attempts, friction at ${report.frictionShare * 100}%+ of attempts):`,
+    ];
+    for (const item of report.items) {
+      lines.push(
+        `  ${item.goal} (${item.role}): ${item.attempts} attempts, ${item.completions} completed${item.dropOffRate === null ? "" : `, drop-off rate ${item.dropOffRate}`}${item.points[0] ? `; most left after ${item.points[0].target} (${item.points[0].sessions})` : ""}`,
+      );
+      for (const friction of item.friction)
+        lines.push(
+          friction.alternatives.length > 0
+            ? `    friction at ${friction.target} (${friction.share}): valid routes avoiding it: ${friction.alternatives.map((route) => route.join(" → ")).join("; ")}`
+            : `    friction at ${friction.target} (${friction.share}): no valid route avoids it`,
+        );
+    }
+    lines.push(`Report: ${path.join(output, "reports/drop-offs.json")}`, "");
+    return lines.join("\n");
+  }
   if (efficiency) {
     const { model } = await loadReasoningModel(positionals[2], values, cwd);
     const solver = await createZ3SolverProvider();
@@ -2575,6 +2613,11 @@ function applyConfig(
   if (command === "observe") {
     if (!config.modes.observe)
       refuse(`observe ${sub ?? ""}`.trim(), "modes.observe to true");
+    if (sub === "drop-offs" && !reasoningEnabled(config, "enumeration"))
+      refuse(
+        "observe drop-offs",
+        "reasoning.enabled and reasoning.enumeration to true",
+      );
     if (sub === "efficiency" && !reasoningEnabled(config, "optimization"))
       refuse(
         "observe efficiency",

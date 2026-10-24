@@ -701,10 +701,10 @@ Minimum sample sizes come before any conclusion.
 - **Status:** ✅ complete (2026-10-23): `@pathcompiler/behavior-reconciliation`, `observe reconcile`, ADR 0052.
 
 #### O9 — Path efficiency · O10 — Drop-off and alternative paths
-- **Prerequisites:** O7 + R7 (O9); O7 + R6 (O10). **Status:** O9 ✅ complete (2026-10-24): `computePathEfficiency`, `observe efficiency`, ADR 0066. O10 🟢 unblocked; **recommended next phase** (§7).
+- **Prerequisites:** O7 + R7 (O9); O7 + R6 (O10). **Status:** O9 ✅ complete (2026-10-24): `computePathEfficiency`, `observe efficiency`, ADR 0066. O10 ✅ complete (2026-10-24): `analyzeDropOffs`, `observe drop-offs`, ADR 0067.
 
 #### O11 — Probabilistic transition model · O12 — Release behavior diff
-- **Prerequisites:** O6 (O11); O7 + R11 + release binding (O12). **Status:** 🟢 unblocked.
+- **Prerequisites:** O6 (O11); O7 + R11 + release binding (O12). **Status:** 🟢 unblocked; **O11 recommended next** (§7).
 
 #### O13 — Existing analytics adapters
 - ⏸ Deferred until the native event model is stable in real use.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **O10** (next), O11, O12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅ | P1 (C9) · P2 (P1) · P3 (P0 ✅, C8 ✅: unblocked) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (P0 ✅, C8 ✅: unblocked) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O11** (next), O12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅ | P1 (C9) · P2 (P1) · P3 (P0 ✅, C8 ✅: unblocked) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (P0 ✅, C8 ✅: unblocked) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,16 +839,15 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: O10 — Drop-off and alternative paths
+## 7. Next implementation phase: O11 — Probabilistic transition model
 
-O9 is complete. `observe efficiency` reports the Path Efficiency Ratio per
-goal and observed role (median observed interactions ÷ cheapest formal plan),
-with sample thresholds and friction listed as hypotheses (ADR 0066).
+O10 is complete. `observe drop-offs` finds where attempts at a goal end and
+lists the valid formal routes that avoid high-friction points (ADR 0067).
 
-O10 comes next. It finds where users drop off (high-friction transitions in
-the observed graph) and uses the planner to suggest valid alternative routes
-around them (R6 enumeration). The planned order after O10:
-1. O11, O12, C4;
+O11 comes next. It estimates empirical transition probabilities from the
+observed transition graph (O6), with sample thresholds and uncertainty. That
+unblocks P5 (probabilistic model checking). The planned order after O11:
+1. O12, C4;
 2. C9;
 3. P1–P5 and P-RV;
 4. the I track.

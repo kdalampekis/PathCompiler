@@ -11,6 +11,7 @@ import {
 } from "@pathcompiler/reasoner-core";
 import type { SolverProvider } from "@pathcompiler/solver-provider";
 
+export * from "./drop-offs.js";
 export * from "./efficiency.js";
 
 /**

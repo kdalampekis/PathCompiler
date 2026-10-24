@@ -6,6 +6,7 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 32 | O10 | Limitation | Drop-off attempts are keyed by semantic target, so a target shared by several capabilities (`client.form.submit` for Create and Edit Client) starts an attempt for each, inflating drop-offs of the one not completed. | Open; disambiguate by the entry target that opened the dialog, as discovery does. |
 | 31 | R10 | Limitation | Generated tests without a test-backed completion signal (Edit Client, Change Plan Structure negatives) only check that the dialog closed; they are flagged `weakAssertion`. | Open; resolves with #20 (terminals from role/text locators). |
 | 30 | R10 | Limitation | Enabling conditions derived from tests model "an X exists", not "an active X exists": after deactivating the only client the model still allows Create Plan, the browser does not. | Open; needs entity status state (e.g. from the deactivate effect). |
 | 29 | R10 | Bug, resolved | The model allowed Create Plan with no client (the button is disabled until one exists); generated positive tests for Create, Archive and Change Plan Structure timed out in the browser. Also, a generated negative test raced the context re-render. | **Resolved** in R10: enabling conditions from tests (`enabling-condition-from-tests`); setup waits for the page to settle and blocked-control checks tolerate vanishing controls. |

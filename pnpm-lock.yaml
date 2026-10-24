@@ -188,10 +188,28 @@ importers:
       "@pathcompiler/solver-provider":
         specifier: workspace:*
         version: link:../solver-provider
+      "@pathcompiler/trace-clustering":
+        specifier: workspace:*
+        version: link:../trace-clustering
     devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/formal-abstraction":
+        specifier: workspace:*
+        version: link:../formal-abstraction
       "@pathcompiler/solver-z3":
         specifier: workspace:*
         version: link:../solver-z3
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
 
   packages/candidate-evaluator:
     dependencies:

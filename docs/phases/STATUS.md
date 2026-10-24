@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after O9)
+## Current state (updated 2026-10-24, after O10)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O10** (next), C9, P3, I4, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **O11** (next), C9, P3, I4, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7, C8; O0–O9 (mode 3, Observe). All 2026-10-23; details per phase below. |
-| Next recommended phase | **O10 — Drop-off and alternative paths** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7, C8; O0–O10 (mode 3, Observe). All 2026-10-23; details per phase below. |
+| Next recommended phase | **O11 — Probabilistic transition model** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3672,5 +3672,50 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 
 - The guide-run view (`workflow.step_reached`) is not compared; free
   sessions measure the product (ADR 0066).
-- Next recommended phase: O10 — Drop-off and alternative paths.
+- O10 followed.
+
+---
+
+## Phase O10 — Drop-off and alternative paths
+
+Complete — verified locally on 2026-10-24.
+
+- **`analyzeDropOffs`** (`behavior-reconciliation`), per goal and observed
+  role:
+  - an attempt starts at the first activation of one of the goal's
+    capability targets, and ends at `goal.reached` or at the session's end
+    (the drop-off point is the last activated target);
+  - it counts attempts, completions, drop-offs, the rate (30+ attempts) and
+    points with their shares;
+  - friction points (≥ 20%) come with the R6 variants that avoid them.
+- **CLI:** `pathcompiler observe drop-offs [directory] [--model]`, gated by
+  `modes.observe` and `reasoning.enumeration`.
+- Recorded in ADR 0067.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 435 tests passed across 71 suites (2 drop-off tests, a CLI check) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- 35 editor attempts at Deactivate Client on the extracted fixture model
+  (20 completed, 15 left after the row button): rate 0.429, friction at
+  `clients.deactivate`, and the Edit Client route suggested;
+- a single attempt: no rate and no friction;
+- the CLI on ingested events.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- None. **Open (ISSUES_LOG #32):** shared targets start attempts for
+  several capabilities.
+
+### Scope notes
+
+- Next recommended phase: O11 — Probabilistic transition model.
 
