@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after R10)
+## Current state (updated 2026-10-24, after R12)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R12** (next), O9, O10, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **C8** (next), O9, O10, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **R12 — Developer reasoning surfaces** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **C8 — Generalized browser verification** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3504,5 +3504,59 @@ the race fix.
 
 - Context is set through UI controls from a reviewed setup file, not product
   APIs (ADR 0063).
-- Next recommended phase: R12 — Developer reasoning surfaces.
+- R12 followed.
+
+---
+
+## Phase R12 — Developer reasoning surfaces
+
+Complete — verified locally on 2026-10-24.
+
+- **New `@pathcompiler/reasoning-service`:** reachability, why-unreachable,
+  plan, alternatives, verify-property, minimal-enablement and dead-features,
+  with validated inputs, actionable request errors and no solver statistics
+  in results.
+- **`http-service`:** `POST /v1/reason/<operation>` accepts only a separate
+  developer token, required even without an API token. The developer token
+  is refused on all product endpoints, and weak or shared tokens are
+  rejected at startup.
+- **Developer MCP:** `createReasoningMcpServer` and `serveReasoningStdio`
+  provide the seven spec §74 tools. The product-help MCP is unchanged.
+- **CLI:** `serve` with `PATHCOMPILER_DEVELOPER_TOKEN` (over the working
+  directory or `--model`), and `pathcompiler mcp-reasoning [directory]
+  [--model]`. Both need `reasoning.enabled` when `pathcompiler.yaml` exists.
+- Recorded in ADR 0064.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 431 tests passed across 69 suites (4 HTTP reasoning tests, 3 service and MCP tests, 2 CLI tests) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- token separation both ways, the developer token without an API token,
+  weak and shared tokens, 400 and 405 mapping;
+- operations on the fixture (reachable, why-unreachable with the admin
+  guard, two Deactivate variants, no dead features);
+- request errors;
+- the MCP tool list and calls, including an error;
+- `serve` with a developer token over a model file;
+- `mcp-reasoning` over stdio and its configuration gate.
+
+The new endpoints are HTTP-only and are covered by integration tests that
+spawn the CLI; no browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- None. The CLI's shared `--model` option check had to allow `serve` and
+  `mcp-reasoning`.
+
+### Scope notes
+
+- `compare-releases` (§73) is not served: it needs two commits, and
+  `reason diff` and the GitHub check cover it.
+- Next recommended phase: C8 — Generalized browser verification.
 

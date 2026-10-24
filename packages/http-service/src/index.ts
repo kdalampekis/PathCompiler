@@ -29,6 +29,18 @@ export type HttpServiceOptions = {
   maxBodyBytes?: number;
   /** Event ingestion (`POST /v1/events/batch`); the endpoint is off without it. */
   events?: EventIngestionOptions;
+  /**
+   * Developer reasoning endpoints (`POST /v1/reason/<operation>`); off without
+   * it. They accept only the developer token, which is accepted nowhere else:
+   * end-user API and ingest tokens never reach reasoning.
+   */
+  reasoning?: DeveloperReasoningOptions;
+};
+
+export type DeveloperReasoningOptions = {
+  token: string;
+  /** Errors named `ReasoningRequestError` become 400 responses. */
+  service: { handle(operation: string, input: unknown): Promise<unknown> };
 };
 
 /** Where accepted events go; one call per accepted batch, already validated. */
@@ -129,6 +141,19 @@ export function createRequestHandler(
     ingestion?.ingestToken === undefined
       ? null
       : Buffer.from(ingestion.ingestToken, "utf8");
+  const reasoning = options.reasoning;
+  if (reasoning !== undefined && reasoning.token.length < 16)
+    throw new Error("Use a developer token of at least 16 characters.");
+  if (
+    reasoning !== undefined &&
+    (reasoning.token === options.token ||
+      reasoning.token === ingestion?.ingestToken)
+  )
+    throw new Error(
+      "The developer token must differ from the API and ingest tokens.",
+    );
+  const developerExpected =
+    reasoning === undefined ? null : Buffer.from(reasoning.token, "utf8");
   const limit = ingestion?.rateLimit ?? { events: 10_000, windowMs: 60_000 };
   const maxBatch = ingestion?.maxBatch ?? 500;
   const now = ingestion?.now ?? (() => Date.now());
@@ -141,15 +166,32 @@ export function createRequestHandler(
     supplied.length === wanted.length &&
     timingSafeEqual(supplied, wanted);
   function authorize(request: IncomingMessage) {
-    if (!expected) return;
     const header = request.headers.authorization ?? "";
     const supplied = Buffer.from(
       header.startsWith("Bearer ") ? header.slice(7) : "",
       "utf8",
     );
-    const eventsOnly =
-      new URL(request.url ?? "/", "http://localhost").pathname ===
-      "/v1/events/batch";
+    const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+    // Developer reasoning has its own token, required even when the API
+    // runs without authentication on loopback.
+    if (pathname.startsWith("/v1/reason/")) {
+      if (developerExpected && !matches(supplied, developerExpected))
+        throw new HttpError(
+          401,
+          "developer-token-required",
+          "Reasoning endpoints need the developer token: Authorization: Bearer <developer token>.",
+          { "www-authenticate": 'Bearer realm="pathcompiler-reasoning"' },
+        );
+      return;
+    }
+    if (developerExpected && matches(supplied, developerExpected))
+      throw new HttpError(
+        403,
+        "developer-token-not-accepted",
+        "The developer token is only for /v1/reason/* endpoints.",
+      );
+    if (!expected) return;
+    const eventsOnly = pathname === "/v1/events/batch";
     if (
       !matches(supplied, expected) &&
       !(eventsOnly && matches(supplied, ingestExpected))
@@ -211,6 +253,23 @@ export function createRequestHandler(
           "Event ingestion is not enabled on this service.",
         );
       return ingest(await body(request));
+    }
+    if (url.pathname.startsWith("/v1/reason/")) {
+      only("POST");
+      if (!reasoning)
+        throw new HttpError(
+          404,
+          "reasoning-disabled",
+          "Developer reasoning is not enabled on this service.",
+        );
+      const operation = url.pathname.slice("/v1/reason/".length);
+      try {
+        return await reasoning.service.handle(operation, await body(request));
+      } catch (error) {
+        if (error instanceof Error && error.name === "ReasoningRequestError")
+          throw new HttpError(400, "invalid-request", error.message);
+        throw error;
+      }
     }
     if (url.pathname === "/v1/help/resolve") {
       only("POST");

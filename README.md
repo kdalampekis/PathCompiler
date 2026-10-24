@@ -1161,6 +1161,26 @@ a candidate to review, never added to your suite automatically. On the
 fixture, the 15 generated tests run green as part of `pnpm test:e2e`. See
 [ADR 0063](docs/decisions/0063-automated-test-generation.md).
 
+## Developer reasoning (`/v1/reason/*`, `mcp-reasoning`)
+
+```bash
+PATHCOMPILER_API_TOKEN=… PATHCOMPILER_DEVELOPER_TOKEN=… pnpm pathcompiler serve
+pnpm pathcompiler mcp-reasoning fixtures/next-demo     # developer MCP on stdio
+```
+
+Coding agents and developers can ask product-semantic questions:
+- reachability, and why a goal is unreachable;
+- the shortest plan, and the alternative paths;
+- properties, minimal enablement and dead features.
+
+Ask through `POST /v1/reason/<operation>` or the separate reasoning MCP
+(`pathcompiler.check_reachability`, `explain_unreachable`, `find_plan`,
+`list_alternative_paths`, `verify_product_property`, `minimal_enablement`,
+`dead_features`). The reasoning endpoints accept only the developer token,
+which is refused on every product endpoint, so end-user tokens never reach
+reasoning. Results contain no solver statistics. See
+[ADR 0064](docs/decisions/0064-developer-reasoning-surfaces.md).
+
 ## Reasoning evaluation cases (`fixtures/reasoning/`)
 
 ```bash
@@ -1465,12 +1485,13 @@ Analysis packages:
 | `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
 | `@pathcompiler/model-provider` | `PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `fixtureKey`, `guardModelProvider`, `semanticModelFromProvider`, `redactSecrets`, `redactValue`, `describeModelRequest`, `ModelProviderError` |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
+| `@pathcompiler/reasoning-service` | `createReasoningService`, `REASONING_OPERATIONS`, `ReasoningRequestError`, `createReasoningMcpServer`, `serveReasoningStdio`, `REASONING_MCP_TOOL_NAMES` |
 | `@pathcompiler/test-generator` | `generateTests`, `renderPositiveTest`, `renderNegativeTest`, `freshStateModel`, `TestSetupSchema`, `GENERATED_TEST_MARKER` |
 | `@pathcompiler/trace-clustering` | `traceSignature`, `clusterTraces`, `TraceClustering`, `TraceVariant` |
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

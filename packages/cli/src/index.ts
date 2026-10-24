@@ -117,6 +117,10 @@ import {
   type ReachabilityResult,
   uxMetrics,
 } from "@pathcompiler/reasoner-core";
+import {
+  createReasoningService,
+  serveReasoningStdio,
+} from "@pathcompiler/reasoning-service";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import {
   analyzeSemanticChange,
@@ -208,6 +212,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler github-app manifest --name <name> --url <url> --webhook <https-url>
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
+       pathcompiler mcp-reasoning [directory] [--model <json-file>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
        pathcompiler observe graph|workflows [--release <id>] [--json] [--out <directory>]
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
@@ -342,6 +347,14 @@ JSON file mapping context variables to UI controls ({ schemaVersion: 1, start, c
 { <variable>: { control: "select", target, values } | { control: "checkbox", target } } });
 contexts it cannot establish are skipped. Completion assertions come from test-backed
 workflow candidates; tests without one are flagged as weak.
+Developer reasoning: with PATHCOMPILER_DEVELOPER_TOKEN set (16+ characters, different from the
+API and ingest tokens), serve adds POST /v1/reason/<operation> (reachability, why-unreachable,
+plan, alternatives, verify-property, minimal-enablement, dead-features) over the working
+directory's model or --model. Only the developer token is accepted there, and it is refused
+everywhere else. mcp-reasoning serves the same operations as a separate developer MCP server on
+stdio (pathcompiler.check_reachability, explain_unreachable, find_plan, list_alternative_paths,
+verify_product_property, minimal_enablement, dead_features). Results are product-semantic; solver
+statistics are removed. With pathcompiler.yaml both need reasoning.enabled.
 init writes pathcompiler.yaml with every default spelled out. When pathcompiler.yaml exists in
 the working directory, it gates capabilities: reason commands need reasoning.enabled plus their
 flag, observe needs modes.observe, evaluate needs modes.evaluate, reasoning.impact turns on
@@ -436,6 +449,13 @@ export async function runCli(
       values.model !== undefined) &&
     positionals[0] !== "reason" &&
     !(
+      (positionals[0] === "serve" || positionals[0] === "mcp-reasoning") &&
+      values.model !== undefined &&
+      values.context === undefined &&
+      values["max-depth"] === undefined &&
+      values["timeout-ms"] === undefined
+    ) &&
+    !(
       positionals[0] === "observe" &&
       positionals[1] === "reconcile" &&
       values.context === undefined
@@ -478,6 +498,19 @@ export async function runCli(
     throw new Error("--setup is only supported by tests generate.");
   if (positionals[0] === "tests" && positionals[1] === "generate")
     return runGenerateTests(positionals, values, cwd);
+  if (positionals[0] === "mcp-reasoning") {
+    if (positionals.length > 2)
+      throw new Error(
+        "Expected: pathcompiler mcp-reasoning [directory]. Use --help for options.",
+      );
+    await serveReasoningStdio(
+      await developerReasoningService(positionals[1], values, cwd),
+    );
+    process.stderr.write(
+      "PathCompiler developer reasoning MCP server ready on stdio.\n",
+    );
+    return "";
+  }
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (
     positionals[0] === "scan" &&
@@ -940,9 +973,26 @@ export async function runCli(
         "PATHCOMPILER_INGEST_TOKEN must be at least 16 characters when set.",
       );
     const eventsDirectory = path.join(output, "events");
+    // Developer reasoning: opt in with its own token; never the API token.
+    const developerToken = process.env.PATHCOMPILER_DEVELOPER_TOKEN;
+    if (developerToken !== undefined && developerToken.length < 16)
+      throw new Error(
+        "PATHCOMPILER_DEVELOPER_TOKEN must be at least 16 characters when set.",
+      );
+    if (developerToken && configured && !configured.config.reasoning.enabled)
+      throw new Error(
+        `Developer reasoning endpoints are disabled in ${configured.file}. Set reasoning.enabled to true, or unset PATHCOMPILER_DEVELOPER_TOKEN.`,
+      );
+    const reasoning = developerToken
+      ? {
+          token: developerToken,
+          service: await developerReasoningService(undefined, values, cwd),
+        }
+      : undefined;
     const server = createHttpService({
       client: await loadGeneratedClient(output),
       token,
+      ...(reasoning ? { reasoning } : {}),
       ...(values.events
         ? {
             events: {
@@ -965,7 +1015,7 @@ export async function runCli(
     });
     const address = server.address();
     const bound = address && typeof address === "object" ? address.port : port;
-    return `PathCompiler HTTP service listening on http://${host.includes(":") ? `[${host}]` : host}:${bound} (artifacts: ${output}).\n${values.events ? `Event ingestion: POST /v1/events/batch → ${eventsDirectory}/<project>/<day>.ndjson${ingestToken ? " (ingest token accepted)" : ""}.\n` : ""}`;
+    return `PathCompiler HTTP service listening on http://${host.includes(":") ? `[${host}]` : host}:${bound} (artifacts: ${output}).\n${values.events ? `Event ingestion: POST /v1/events/batch → ${eventsDirectory}/<project>/<day>.ndjson${ingestToken ? " (ingest token accepted)" : ""}.\n` : ""}${reasoning ? "Developer reasoning: POST /v1/reason/<operation> (developer token only).\n" : ""}`;
   }
   if (
     positionals[0] === "impact" &&
@@ -1278,6 +1328,34 @@ export async function runCli(
   ] as const;
   await writeArtifacts(output, artifacts);
   return `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.\nArtifacts: ${output}\nDiagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).\n`;
+}
+
+/** The developer reasoning service over the repository's (or a given) model. */
+async function developerReasoningService(
+  directory: string | undefined,
+  values: Values,
+  cwd: string,
+) {
+  const { model, capabilities } = await loadReasoningModel(
+    directory,
+    values,
+    cwd,
+  );
+  // The solver lives as long as the serving process.
+  const solver = await createZ3SolverProvider();
+  return createReasoningService({
+    reasoner: createProductReasoner(solver),
+    model,
+    ...(capabilities
+      ? {
+          capabilities: capabilities.capabilities.map((item) => ({
+            id: item.id,
+            uiEvidence: item.inferences.map((entry) => entry.nodeId),
+            apiEvidence: item.apiEvidence.map((entry) => entry.nodeId),
+          })),
+        }
+      : {}),
+  });
 }
 
 async function runGenerateTests(
@@ -2423,6 +2501,8 @@ function applyConfig(
         `reasoning.enabled and reasoning.${capability} to true`,
       );
   }
+  if (command === "mcp-reasoning" && !config.reasoning.enabled)
+    refuse("mcp-reasoning", "reasoning.enabled to true");
   if (
     command === "tests" &&
     sub === "generate" &&

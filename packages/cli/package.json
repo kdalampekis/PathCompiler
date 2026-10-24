@@ -38,6 +38,7 @@
     "@pathcompiler/model-provider": "workspace:*",
     "@pathcompiler/observed-graph": "workspace:*",
     "@pathcompiler/reasoner-core": "workspace:*",
+    "@pathcompiler/reasoning-service": "workspace:*",
     "@pathcompiler/sdk-js": "workspace:*",
     "@pathcompiler/semantic-change": "workspace:*",
     "@pathcompiler/solver-z3": "workspace:*",

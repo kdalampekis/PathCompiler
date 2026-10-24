@@ -302,6 +302,9 @@ importers:
       "@pathcompiler/reasoner-core":
         specifier: workspace:*
         version: link:../reasoner-core
+      "@pathcompiler/reasoning-service":
+        specifier: workspace:*
+        version: link:../reasoning-service
       "@pathcompiler/sdk-js":
         specifier: workspace:*
         version: link:../sdk-js
@@ -880,6 +883,46 @@ importers:
       "@pathcompiler/workflow-discovery":
         specifier: workspace:*
         version: link:../workflow-discovery
+
+  packages/reasoning-service:
+    dependencies:
+      "@modelcontextprotocol/sdk":
+        specifier: 1.32.1
+        version: 1.32.1(zod@4.6.7)
+      "@pathcompiler/formal-model":
+        specifier: workspace:*
+        version: link:../formal-model
+      "@pathcompiler/reasoner-core":
+        specifier: workspace:*
+        version: link:../reasoner-core
+      "@pathcompiler/trace-clustering":
+        specifier: workspace:*
+        version: link:../trace-clustering
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/formal-abstraction":
+        specifier: workspace:*
+        version: link:../formal-abstraction
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
 
   packages/resolver:
     dependencies:
