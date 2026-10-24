@@ -1,4 +1,4 @@
-import type { Analytics } from "@pathcompiler/analytics-sdk";
+import { type Analytics, instrumentGuide } from "@pathcompiler/analytics-sdk";
 import {
   createDomEnvironment,
   createGuideRuntime,
@@ -118,6 +118,11 @@ export function PathCompilerProvider(
       ...(context.locale === undefined ? {} : { locale: context.locale }),
     });
   }, [analytics, props.route, context]);
+  // Guide lifecycle telemetry (O3): started, steps, completed, abandoned.
+  useEffect(() => {
+    if (!analytics || !runtime) return;
+    return instrumentGuide(runtime, analytics);
+  }, [analytics, runtime]);
   const previousRoute = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!analytics || props.route === undefined) return;

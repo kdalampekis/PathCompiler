@@ -4,22 +4,41 @@ import {
   createAnalytics,
   InMemoryTransport,
 } from "@pathcompiler/analytics-sdk";
-import { PathCompiler, type RuntimeTransport } from "@pathcompiler/sdk-js";
+import {
+  PathCompiler,
+  type RuntimeTransport,
+  type RuntimeWorkflow,
+} from "@pathcompiler/sdk-js";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { PathCompilerProvider, useAnalytics } from "../src/index.js";
+import {
+  type GuideControls,
+  PathCompilerProvider,
+  useAnalytics,
+  useGuideRuntime,
+} from "../src/index.js";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const unused = async () => {
   throw new Error("unused");
+};
+const manifest: RuntimeWorkflow = {
+  id: "clients.create",
+  revision: `sha256:${"b".repeat(64)}`,
+  version: 4,
+  title: "Create Client",
+  entrypoints: [{ route: "/clients" }],
+  preconditions: [],
+  steps: [{ id: "open", target: "clients.create", action: { type: "click" } }],
+  terminal: { type: "explicit_next" },
 };
 const client = new PathCompiler({
   project: "demo",
   transport: {
     resolve: unused,
     getWorkflow: unused,
-    getRuntimeManifest: unused,
+    getRuntimeManifest: async () => manifest,
     getRelatedWorkflows: unused,
   } as RuntimeTransport,
 });
@@ -30,8 +49,10 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 let hooked: Analytics | null | undefined;
+let guide: GuideControls | undefined;
 function Probe() {
   hooked = useAnalytics();
+  guide = useGuideRuntime();
   return null;
 }
 function Page() {
@@ -152,6 +173,39 @@ describe("React analytics integration", () => {
       release: "1.0.0",
     });
     expect(JSON.stringify(events)).not.toContain("Ada Lovelace");
+  });
+
+  it("emits guide lifecycle events through the provider", async () => {
+    const transport = new InMemoryTransport();
+    const analytics = createAnalytics({
+      projectId: "demo",
+      sessionId: "s",
+      policy: { enabled: true },
+      transport,
+      batchSize: 100,
+    });
+    await render({ analytics, route: "/clients" });
+    await act(async () => {
+      await guide?.start("clients.create", { version: 4 });
+    });
+    await act(async () =>
+      (document.querySelector("button span") as HTMLElement).click(),
+    );
+    await act(async () => guide?.next());
+    await analytics.flush();
+    const lifecycle = transport.events.filter((event) =>
+      event.type.startsWith("workflow."),
+    );
+    expect(lifecycle.map((event) => event.type)).toEqual([
+      "workflow.started",
+      "workflow.step_reached",
+      "workflow.completed",
+    ]);
+    expect(lifecycle[0]).toMatchObject({
+      workflowId: "clients.create",
+      workflowVersion: 4,
+      trigger: "guide",
+    });
   });
 
   it("does nothing without analytics", async () => {

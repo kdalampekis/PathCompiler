@@ -330,6 +330,26 @@ describe("guide runtime", () => {
     allowed.dispose();
   });
 
+  it("completes an explicit-next terminal on next() instead of trapping the user", () => {
+    const { runtime, environment } = setup();
+    runtime.start({
+      ...createClient(),
+      steps: [
+        {
+          id: "open",
+          target: "clients.create",
+          action: { type: "click" },
+        },
+      ],
+      terminal: { type: "explicit_next" },
+    });
+    environment.show("clients.create");
+    environment.act("clients.create", "click");
+    expect(runtime.getState().status).toBe("awaiting-completion");
+    runtime.next();
+    expect(runtime.getState().status).toBe("completed");
+  });
+
   it("refuses a manifest that differs from the resolved revision or version", () => {
     const { runtime } = setup();
     expect(

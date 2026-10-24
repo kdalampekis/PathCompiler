@@ -5,7 +5,9 @@ import {
   type AnalyticsTransport,
   ConsoleTransport,
   createAnalytics,
+  type GuideStateLike,
   InMemoryTransport,
+  instrumentGuide,
 } from "../src/index.js";
 
 function fakeTimers() {
@@ -195,5 +197,108 @@ describe("analytics SDK", () => {
     analytics.goalReached("plans.created");
     await analytics.flush();
     expect(lines).toHaveLength(1);
+  });
+});
+
+describe("guide telemetry", () => {
+  function fakeGuide() {
+    let listener: ((state: GuideStateLike) => void) | null = null;
+    const base: GuideStateLike = {
+      status: "idle",
+      workflowId: null,
+      revision: null,
+      version: null,
+      completedStepIds: [],
+      step: null,
+    };
+    return {
+      guide: {
+        getState: () => base,
+        subscribe(next: (state: GuideStateLike) => void) {
+          listener = next;
+          return () => {
+            listener = null;
+          };
+        },
+      },
+      emit(patch: Partial<GuideStateLike>) {
+        listener?.({ ...base, ...patch });
+      },
+      get subscribed() {
+        return listener !== null;
+      },
+    };
+  }
+  const running = {
+    workflowId: "clients.create",
+    revision: `sha256:${"a".repeat(64)}`,
+    version: 2,
+  };
+
+  it("maps guide transitions to lifecycle events", async () => {
+    const { analytics, transport } = setup({ batchSize: 100 });
+    const fake = fakeGuide();
+    let clock = 1000;
+    const stop = instrumentGuide(fake.guide, analytics, { now: () => clock });
+    fake.emit({ ...running, status: "waiting-route" });
+    fake.emit({ ...running, status: "active", step: { id: "step.1" } });
+    fake.emit({ ...running, status: "target-missing", step: { id: "step.1" } });
+    fake.emit({
+      ...running,
+      status: "active",
+      step: { id: "step.2" },
+      completedStepIds: ["step.1"],
+    });
+    clock = 5200;
+    fake.emit({
+      ...running,
+      status: "completed",
+      completedStepIds: ["step.1", "step.2"],
+    });
+    // A second run that is stopped, and a guide that fails before starting.
+    fake.emit({ ...running, status: "active", step: { id: "step.1" } });
+    fake.emit({ ...running, status: "stopped", step: { id: "step.1" } });
+    fake.emit({ ...running, version: null, status: "failed" });
+    await analytics.flush();
+    expect(
+      transport.events.map((event) =>
+        event.type === "workflow.step_reached"
+          ? `step ${event.stepId}#${event.stepIndex}`
+          : event.type === "workflow.completed"
+            ? `completed ${event.durationMs}`
+            : event.type === "workflow.abandoned"
+              ? `abandoned ${event.reason} at ${event.lastStepId}`
+              : `${event.type}${"trigger" in event ? ` ${event.trigger}` : ""}`,
+      ),
+    ).toEqual([
+      "workflow.started guide",
+      "step step.1#0",
+      "step step.2#1",
+      "completed 4200",
+      "workflow.started guide",
+      "step step.1#0",
+      "abandoned stopped at step.1",
+    ]);
+    expect(transport.events[0]).toMatchObject({
+      workflowId: "clients.create",
+      workflowVersion: 2,
+    });
+    stop();
+    expect(fake.subscribed).toBe(false);
+  });
+
+  it("treats a restart of a running guide as abandoning the first run", async () => {
+    const { analytics, transport } = setup({ batchSize: 100 });
+    const fake = fakeGuide();
+    instrumentGuide(fake.guide, analytics);
+    fake.emit({ ...running, status: "active", step: { id: "step.1" } });
+    fake.emit({ ...running, status: "waiting-route" });
+    await analytics.flush();
+    expect(transport.events.map((event) => event.type)).toEqual([
+      "workflow.started",
+      "workflow.step_reached",
+      "workflow.abandoned",
+      "workflow.started",
+    ]);
   });
 });

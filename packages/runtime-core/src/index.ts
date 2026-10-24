@@ -62,6 +62,8 @@ export type GuideState = {
   status: GuideStatus;
   workflowId: string | null;
   revision: string | null;
+  /** Workflow version from the manifest (C1); `null` before a guide starts. */
+  version: number | null;
   totalSteps: number;
   completedStepIds: string[];
   step: GuideStep | null;
@@ -96,7 +98,10 @@ export interface GuideRuntime {
   pause(): void;
   resume(): void;
   stop(): void;
-  /** Advances explain/wait steps and steps expecting `explicit_next`; ignored otherwise. */
+  /**
+   * Advances explain/wait steps and steps expecting `explicit_next`, and
+   * completes a run whose terminal condition is `explicit_next`; ignored otherwise.
+   */
   next(): void;
   /** Records an application event for `event_emitted` conditions. */
   emit(event: string): void;
@@ -111,6 +116,7 @@ export const idleGuideState: GuideState = Object.freeze({
   status: "idle",
   workflowId: null,
   revision: null,
+  version: null,
   totalSteps: 0,
   completedStepIds: [],
   step: null,
@@ -246,6 +252,13 @@ export function createGuideRuntime(options: GuideRuntimeOptions): GuideRuntime {
       case "feature_flag":
         return context.featureFlags?.[item.flag] === item.enabled;
     }
+  }
+  function mentionsExplicitNext(item: WorkflowTerminalCondition): boolean {
+    if ("any" in item)
+      return item.any.some((part) => part.type === "explicit_next");
+    if ("all" in item)
+      return item.all.some((part) => part.type === "explicit_next");
+    return item.type === "explicit_next";
   }
   function terminal(item: WorkflowTerminalCondition): boolean {
     if ("any" in item) return item.any.some((part) => condition(part, "run"));
@@ -461,6 +474,7 @@ export function createGuideRuntime(options: GuideRuntimeOptions): GuideRuntime {
           status: "failed",
           workflowId: parsed.data.id,
           revision: parsed.data.revision,
+          version: parsed.data.version,
           failure: {
             code: "manifest-mismatch",
             message:
@@ -476,6 +490,7 @@ export function createGuideRuntime(options: GuideRuntimeOptions): GuideRuntime {
         status: "waiting-route",
         workflowId: workflow.id,
         revision: workflow.revision,
+        version: workflow.version,
         totalSteps: workflow.steps.length,
       });
       unsubscribe = environment.subscribe((signal) => evaluate(signal));
@@ -512,6 +527,18 @@ export function createGuideRuntime(options: GuideRuntimeOptions): GuideRuntime {
       finish("stopped");
     },
     next() {
+      // A terminal awaiting `explicit_next` completes on next(); otherwise the
+      // user would be stuck once every step is done.
+      if (
+        pausedFrom === null &&
+        state.status === "awaiting-completion" &&
+        workflow &&
+        mentionsExplicitNext(workflow.terminal)
+      ) {
+        manual = true;
+        evaluate();
+        return;
+      }
       const step = workflow?.steps[index];
       if (
         pausedFrom !== null ||

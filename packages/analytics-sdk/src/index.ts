@@ -272,3 +272,102 @@ export function createAnalytics(options: AnalyticsOptions): Analytics {
     stats: () => ({ queued: queue.length, ...counters }),
   };
 }
+
+/** The part of a guide runtime's state that telemetry reads (`@pathcompiler/runtime-core`). */
+export type GuideStateLike = {
+  status: string;
+  workflowId: string | null;
+  revision: string | null;
+  version: number | null;
+  completedStepIds: string[];
+  step: { id: string } | null;
+};
+export type GuideLike = {
+  getState(): GuideStateLike;
+  subscribe(listener: (state: GuideStateLike) => void): () => void;
+};
+const ABANDONED: Partial<Record<string, "stopped" | "timed-out" | "failed">> = {
+  stopped: "stopped",
+  "timed-out": "timed-out",
+  failed: "failed",
+};
+
+/**
+ * Emits workflow lifecycle events from guide state transitions (phase O3):
+ * started, step reached, completed, or abandoned with the reason. A guide that
+ * fails before starting (invalid manifest, unmet precondition, mismatch) emits
+ * nothing. Returns the unsubscribe function.
+ */
+export function instrumentGuide(
+  guide: GuideLike,
+  analytics: Analytics,
+  options: { now?: () => number } = {},
+): () => void {
+  const now = options.now ?? (() => Date.now());
+  let run: {
+    key: string;
+    workflow: Workflow;
+    startedAt: number;
+    lastStepId: string | undefined;
+  } | null = null;
+  const observe = (state: GuideStateLike) => {
+    const key =
+      state.workflowId && state.revision
+        ? `${state.workflowId}@${state.revision}`
+        : null;
+    const finished = ["completed", "stopped", "timed-out", "failed"].includes(
+      state.status,
+    );
+    // `start` again on a running guide returns it to `waiting-route`.
+    if (
+      run &&
+      key === run.key &&
+      state.status === "waiting-route" &&
+      run.lastStepId !== undefined
+    ) {
+      analytics.workflowAbandoned(run.workflow, "stopped", run.lastStepId);
+      run = null;
+    }
+    if (
+      key &&
+      state.version !== null &&
+      !finished &&
+      state.status !== "idle" &&
+      (run === null || run.key !== key)
+    ) {
+      run = {
+        key,
+        workflow: {
+          workflowId: state.workflowId as string,
+          workflowVersion: state.version,
+        },
+        startedAt: now(),
+        lastStepId: undefined,
+      };
+      analytics.workflowStarted(run.workflow, "guide");
+    }
+    if (!run || key !== run.key) return;
+    if (state.step && state.step.id !== run.lastStepId) {
+      run.lastStepId = state.step.id;
+      analytics.workflowStepReached(
+        run.workflow,
+        state.step.id,
+        state.completedStepIds.length,
+      );
+    }
+    if (state.status === "completed") {
+      analytics.workflowCompleted(
+        run.workflow,
+        Math.max(0, now() - run.startedAt),
+      );
+      run = null;
+    } else {
+      const reason = ABANDONED[state.status];
+      if (reason) {
+        analytics.workflowAbandoned(run.workflow, reason, run.lastStepId);
+        run = null;
+      }
+    }
+  };
+  return guide.subscribe(observe);
+}
