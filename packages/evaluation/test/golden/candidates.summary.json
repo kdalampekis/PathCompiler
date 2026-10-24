@@ -1,0 +1,54 @@
+[
+  {
+    "id": "clients.create",
+    "entrypoints": [
+      "/clients"
+    ],
+    "steps": [
+      "click clients.create",
+      "input client.form.name",
+      "input client.form.email",
+      "click client.form.submit"
+    ],
+    "terminal": {
+      "type": "element_text",
+      "target": "clients.feedback",
+      "text": "Client created",
+      "match": "exact"
+    }
+  },
+  {
+    "id": "plans.change_structure",
+    "entrypoints": [
+      "/plans"
+    ],
+    "steps": [
+      "click plans.change_structure",
+      "select plan.structure.selector",
+      "click plan.structure.submit"
+    ],
+    "terminal": {
+      "type": "element_count",
+      "target": "dialog.container",
+      "count": 0
+    }
+  },
+  {
+    "id": "plans.create",
+    "entrypoints": [
+      "/plans"
+    ],
+    "steps": [
+      "click plans.create",
+      "input plan.form.title",
+      "select plan.form.client",
+      "click plan.form.submit"
+    ],
+    "terminal": {
+      "type": "element_text",
+      "target": "plans.feedback",
+      "text": "Plan created",
+      "match": "exact"
+    }
+  }
+]

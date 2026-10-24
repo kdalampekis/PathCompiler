@@ -1,0 +1,53 @@
+{
+  "family": "workflow-discovery",
+  "strategy": "baseline",
+  "precision": 1,
+  "recall": 0.6,
+  "entrypointAccuracy": 1,
+  "meanMajorStepScore": 1,
+  "terminalAccuracy": 0.667,
+  "inventedStepCount": 0,
+  "unexpectedCandidates": [],
+  "cases": [
+    {
+      "id": "clients.create",
+      "found": true,
+      "entrypointCorrect": true,
+      "majorStepScore": 1,
+      "terminalCorrect": true,
+      "inventedSteps": []
+    },
+    {
+      "id": "clients.deactivate",
+      "found": false,
+      "entrypointCorrect": false,
+      "majorStepScore": 0,
+      "terminalCorrect": false,
+      "inventedSteps": []
+    },
+    {
+      "id": "clients.edit",
+      "found": false,
+      "entrypointCorrect": false,
+      "majorStepScore": 0,
+      "terminalCorrect": false,
+      "inventedSteps": []
+    },
+    {
+      "id": "plans.change_structure",
+      "found": true,
+      "entrypointCorrect": true,
+      "majorStepScore": 1,
+      "terminalCorrect": false,
+      "inventedSteps": []
+    },
+    {
+      "id": "plans.create",
+      "found": true,
+      "entrypointCorrect": true,
+      "majorStepScore": 1,
+      "terminalCorrect": true,
+      "inventedSteps": []
+    }
+  ]
+}

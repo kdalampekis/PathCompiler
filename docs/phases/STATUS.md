@@ -1,19 +1,19 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after C2)
+## Current state (updated 2026-10-23, after C3)
 
 | Item | State |
 | --- | --- |
 | Original phases (`CODEX_BUILD_SPEC.md` 0–30) | ✅ all complete against phase acceptance criteria. Baseline re-verified 2026-10-22: lint, typecheck, 258 unit tests, 27 Chromium tests. |
-| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init`, model provider, error taxonomy, logging, eval harness/golden tests, caching, alpha validation. Tracked as C1–C9. |
+| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init` and the eval harness/golden tests are aligned (C1–C3); model provider, error taxonomy, logging, caching and alpha validation remain. Tracked as C1–C9. |
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **C3** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R-WI** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP); I3 (mode 5, Evaluate); C1, C2; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **C3 — Evaluation harness and golden tests** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP); I3 (mode 5, Evaluate); C1, C2, C3; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **R-WI — Reasoning-assisted workflow discovery** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2858,4 +2858,76 @@ refused), `config show` (text and JSON), an invalid key reported by path,
 
 - Spec §44 fields that nothing reads yet (analysis include globs, sources,
   runtime modes, auto-propose) are left out until a phase uses them.
-- Next recommended phase: C3 — Evaluation harness and golden tests.
+- C3 followed.
+
+---
+
+## Phase C3 — Evaluation harness and golden tests
+
+Complete — verified locally on 2026-10-23.
+
+- **Ground truth** in `fixtures/next-demo/eval/` (spec §54):
+  - `capabilities.json`: 5 capabilities;
+  - `workflows/*.yaml`: 5 reviewed workflows with entrypoint, steps and
+    terminal;
+  - `impact-cases/*.json`: a target rename and a copy change;
+  - `queries.json`: the resolver set, moved from `packages/resolver/eval/`.
+- **New `@pathcompiler/evaluation`.** It provides `loadGroundTruth` (strict
+  schemas, errors with file and key) and one report per metric family:
+  capabilities, workflow discovery, resolver and impact. The discovery
+  report takes an alternative `DiscoveryFunction` for comparisons
+  (spec §117). Impact cases run on temporary Git copies of the fixture with
+  every candidate approved at the base.
+- **CLI:** `pathcompiler eval
+  capabilities|workflow-discovery|resolver|impact [directory]` prints the
+  metrics and misses, and writes `reports/eval/<family>.json` (`--json`).
+- **Golden files** (spec §55, readable JSON and text): the graph summary, the
+  candidate summary, the runtime manifest (revisions redacted), the four
+  reports and the CLI text. Biome ignores `test/golden`.
+- Recorded in ADR 0054.
+
+### Baseline metrics on the fixture
+
+| Family | Result |
+| --- | --- |
+| Capabilities | Precision 1, recall 1 |
+| Workflow discovery | Precision 1, recall 0.6. Entrypoints 1, major steps 1, terminals 0.667, 0 invented steps |
+| Resolver | Top-1 0.85, ambiguity 1, unsupported 1, controls pass |
+| Impact | Affected recall 1, false-positive rate 0.25, severity accuracy 1 |
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 371 tests passed across 55 suites (5 evaluation tests, 2 CLI eval tests), with the fixture committed |
+| `git diff --check` | Passed |
+
+Reports are deterministic: the tests compute them twice and compare them with
+the goldens. A mutated discovery strategy (a dropped step, swapped fields and
+an invented step) scores lower than the baseline. No runtime or browser code
+changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- Biome reformatted the generated golden JSON, so the snapshots no longer
+  matched what the tests write. `test/golden` is now excluded from Biome.
+- The graph summary test read `nodes` from a `ProductGraph` instance; it now
+  uses `toJSON()`.
+- **Open (ISSUES_LOG #19):** six CLI tests and the custom-assistant example
+  failed with `dirty-repository` while the new fixture ground-truth files
+  were uncommitted. They pass once the files are committed.
+- **Open (ISSUES_LOG #17, #18):** found by the harness. Discovery recall is
+  0.6: Edit and Deactivate Client are not emitted, and Change Plan
+  Structure's terminal is wrong. Impact also reports a `low` file-level false
+  positive for Create Plan.
+
+### Scope notes
+
+- The truth records the product as reviewed, not current output, so the gaps
+  stay visible. Cases were not tuned to pass.
+- `eval` is not gated by `pathcompiler.yaml`: it measures PathCompiler and
+  changes no product behavior.
+- Next recommended phase: R-WI — Reasoning-assisted workflow discovery.
+

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "copy-change",
+  "description": "Only the Create Client button label changes.",
+  "edits": [
+    {
+      "file": "components/clients.tsx",
+      "from": "            Create Client\n",
+      "to": "            Add Client\n"
+    }
+  ],
+  "expected": {
+    "clients.create": "low",
+    "plans.create": "none",
+    "plans.change_structure": "none"
+  }
+}

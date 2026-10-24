@@ -1,0 +1,8 @@
+id: plans.create
+entrypoint: /plans
+steps:
+  - { target: plans.create, action: click }
+  - { target: plan.form.title, action: input }
+  - { target: plan.form.client, action: select }
+  - { target: plan.form.submit, action: click }
+terminal: { type: element_text, target: plans.feedback, text: Plan created }

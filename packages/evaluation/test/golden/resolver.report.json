@@ -1,0 +1,24 @@
+{
+  "family": "resolver",
+  "top1Accuracy": 0.85,
+  "ambiguityAccuracy": 1,
+  "unsupportedAccuracy": 1,
+  "controlsPassed": true,
+  "misses": [
+    {
+      "query": "How can I onboard a new customer?",
+      "expected": "clients.create",
+      "actual": "unsupported"
+    },
+    {
+      "query": "restructure a plan",
+      "expected": "plans.change_structure",
+      "actual": "ambiguous"
+    },
+    {
+      "query": "Can I rearrange how my plan is organized?",
+      "expected": "plans.change_structure",
+      "actual": "ambiguous"
+    }
+  ]
+}

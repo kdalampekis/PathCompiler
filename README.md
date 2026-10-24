@@ -689,7 +689,7 @@ caller supplies that context. The current route breaks ties but never excludes.
 `confidence` is the share of action/entity/qualifier signals found, not a
 probability. No embedding adapter is included.
 
-`packages/resolver/eval/fixture-paraphrases.json` holds 20 paraphrases and 5
+`fixtures/next-demo/eval/queries.json` holds 20 paraphrases and 5
 controls written before the matcher. The test compiles the approved fixture
 workflows and requires the recorded 80% target: currently 17/20 (85%), with no
 wrong-workflow answers. See [ADR 0015](docs/decisions/0015-lexical-product-help-resolver.md).
@@ -1033,6 +1033,32 @@ names an environment variable. `improvement_policy.autonomous_mutation` is
 `false`. `graph inspect` and `capabilities list` summarize existing artifacts.
 See [ADR 0053](docs/decisions/0053-configuration-and-flags.md).
 
+## Evaluation harness (`pathcompiler eval`)
+
+```bash
+pnpm pathcompiler eval capabilities fixtures/next-demo
+pnpm pathcompiler eval workflow-discovery fixtures/next-demo
+pnpm pathcompiler eval resolver fixtures/next-demo
+pnpm pathcompiler eval impact fixtures/next-demo
+```
+
+Each command scores PathCompiler against the reviewed ground truth in
+`<directory>/eval/`, which holds `capabilities.json`, `workflows/*.yaml`,
+`impact-cases/*.json` and `queries.json`. It prints the misses and writes
+`reports/eval/<family>.json`. The metrics are:
+- capability precision and recall;
+- workflow discovery: recall, entrypoints, major-step order (input fields
+  order-free), terminals and invented steps;
+- resolver top-1, ambiguity and unsupported accuracy;
+- impact: affected-workflow recall, false positives and severity.
+
+Impact cases edit a temporary Git copy of the fixture. Results are
+deterministic. `evaluateWorkflowDiscovery` in `@pathcompiler/evaluation`
+takes an alternative discovery function for comparisons. Readable golden
+files under `packages/*/test/golden/` cover the graph summary, candidates,
+the runtime manifest and the reports.
+See [ADR 0054](docs/decisions/0054-evaluation-harness-and-golden-tests.md).
+
 ## Formal Product Model (reasoning track)
 
 ```ts
@@ -1286,8 +1312,9 @@ Analysis packages:
 | `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `instrumentGuide`, `FetchTransport`, `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
 | `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
 | `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
+| `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryFunction`, `baselineDiscovery`), `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

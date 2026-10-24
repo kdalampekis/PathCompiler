@@ -1,0 +1,8 @@
+id: plans.change_structure
+entrypoint: /plans
+steps:
+  - { target: plans.change_structure, action: click }
+  - { target: plan.structure.selector, action: select }
+  - { target: plan.structure.submit, action: click }
+terminal:
+  { type: element_text, target: plans.feedback, text: Plan structure changed }

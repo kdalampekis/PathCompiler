@@ -1,0 +1,7 @@
+id: clients.edit
+entrypoint: /clients
+steps:
+  - { target: clients.edit, action: click }
+  - { target: client.form.name, action: input }
+  - { target: client.form.submit, action: click }
+terminal: { type: element_text, target: clients.feedback, text: Client updated }

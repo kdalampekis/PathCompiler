@@ -1,0 +1,9 @@
+# Reviewed ground truth, written from the product, not from discovery output.
+id: clients.create
+entrypoint: /clients
+steps:
+  - { target: clients.create, action: click }
+  - { target: client.form.name, action: input }
+  - { target: client.form.email, action: input }
+  - { target: client.form.submit, action: click }
+terminal: { type: element_text, target: clients.feedback, text: Client created }

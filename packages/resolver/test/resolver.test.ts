@@ -88,7 +88,10 @@ describe("product help resolver", () => {
   it("meets the reviewed paraphrase target on compiled fixture workflows", async () => {
     const dataset = JSON.parse(
       await readFile(
-        new URL("../eval/fixture-paraphrases.json", import.meta.url),
+        new URL(
+          "../../../fixtures/next-demo/eval/queries.json",
+          import.meta.url,
+        ),
         "utf8",
       ),
     );

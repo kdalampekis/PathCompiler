@@ -1,0 +1,11 @@
+Capabilities: precision 1, recall 1.
+Workflow discovery: precision 1, recall 0.6, entrypoints 1, major steps 1, terminals 0.667, invented steps 0.
+  clients.create: steps 1, terminal correct
+  clients.deactivate: not discovered
+  clients.edit: not discovered
+  plans.change_structure: steps 1, terminal wrong
+  plans.create: steps 1, terminal correct
+Resolver: top-1 0.85, ambiguity 1, unsupported 1, controls passed.
+  "How can I onboard a new customer?": expected clients.create, got unsupported
+  "restructure a plan": expected plans.change_structure, got ambiguous
+  "Can I rearrange how my plan is organized?": expected plans.change_structure, got ambiguous

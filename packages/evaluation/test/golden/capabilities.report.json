@@ -1,0 +1,14 @@
+{
+  "family": "capabilities",
+  "precision": 1,
+  "recall": 1,
+  "matched": [
+    "clients.create",
+    "clients.deactivate",
+    "clients.edit",
+    "plans.change_structure",
+    "plans.create"
+  ],
+  "falsePositives": [],
+  "falseNegatives": []
+}

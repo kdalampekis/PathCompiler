@@ -1,0 +1,48 @@
+{
+  "family": "impact",
+  "affectedRecall": 1,
+  "falsePositiveRate": 0.25,
+  "severityAccuracy": 1,
+  "cases": [
+    {
+      "id": "copy-change",
+      "results": [
+        {
+          "workflowId": "clients.create",
+          "expected": "low",
+          "actual": "low"
+        },
+        {
+          "workflowId": "plans.change_structure",
+          "expected": "none",
+          "actual": "none"
+        },
+        {
+          "workflowId": "plans.create",
+          "expected": "none",
+          "actual": "none"
+        }
+      ]
+    },
+    {
+      "id": "rename-structure-target",
+      "results": [
+        {
+          "workflowId": "clients.create",
+          "expected": "none",
+          "actual": "none"
+        },
+        {
+          "workflowId": "plans.change_structure",
+          "expected": "high",
+          "actual": "high"
+        },
+        {
+          "workflowId": "plans.create",
+          "expected": "none",
+          "actual": "low"
+        }
+      ]
+    }
+  ]
+}

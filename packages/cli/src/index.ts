@@ -36,6 +36,14 @@ import {
   type PathCompilerConfig,
   reasoningEnabled,
 } from "@pathcompiler/config";
+import {
+  analyzeFixture,
+  evaluateCapabilityExtraction,
+  evaluateImpact,
+  evaluateResolverAccuracy,
+  evaluateWorkflowDiscovery,
+  loadGroundTruth,
+} from "@pathcompiler/evaluation";
 import { buildFormalModel } from "@pathcompiler/formal-abstraction";
 import {
   type FormalProductModel,
@@ -170,6 +178,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler eval capabilities|workflow-discovery|resolver|impact [directory] [--json] [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -242,6 +251,11 @@ model coverage and uncertainties it reports. reason plan returns the shortest pl
 approved workflow exists, writing reports/reasoning/plans/<goal>.json. reason why-not explains an
 unreachable goal with a minimal set of product constraints (context, preconditions, initial
 state) and their source evidence, writing reports/reasoning/why-not/<goal>.json.
+eval scores PathCompiler itself against the reviewed ground truth in <directory>/eval
+(capabilities.json, workflows/*.yaml, impact-cases/*.json, queries.json): capability
+precision/recall, workflow discovery (recall, entrypoints, major steps, terminals, invented
+steps), resolver accuracy, or impact recall/false positives/severity on edited Git copies of
+the Git-tracked directory. It writes reports/eval/<family>.json; results are deterministic.
 evaluate independently evaluates a candidate commit (a human PR or harness output) against its
 base: intended vs. observed semantic change (--criteria: expectedChanges, protectedProperties,
 recommendationId, mutation), invariant and protected-property checks on both commits, approved
@@ -375,6 +389,7 @@ export async function runCli(
       "--release is only supported by observe graph and observe workflows.",
     );
   if (positionals[0] === "observe") return runObserve(positionals, values, cwd);
+  if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (
     (values.criteria !== undefined || values.tests !== undefined) &&
@@ -2683,4 +2698,80 @@ async function writeExclusive(target: string, content: string): Promise<void> {
   } finally {
     await unlink(temporary);
   }
+}
+
+const EVAL_FAMILIES = [
+  "capabilities",
+  "workflow-discovery",
+  "resolver",
+  "impact",
+] as const;
+async function runEval(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const family = EVAL_FAMILIES.find((item) => item === positionals[1]);
+  if (!family || positionals.length > 3)
+    throw new Error(
+      `Expected: pathcompiler eval ${EVAL_FAMILIES.join("|")} [directory]. Use --help for options.`,
+    );
+  if (values.exclude !== undefined)
+    throw new Error("--exclude is not supported by eval.");
+  const directory = path.resolve(cwd, positionals[2] ?? ".");
+  const truth = await loadGroundTruth(path.join(directory, "eval"));
+  const report =
+    family === "impact"
+      ? await evaluateImpact(directory, truth)
+      : await (async () => {
+          const analysis = await analyzeFixture(directory);
+          return family === "capabilities"
+            ? evaluateCapabilityExtraction(analysis, truth)
+            : family === "workflow-discovery"
+              ? evaluateWorkflowDiscovery(analysis, truth)
+              : evaluateResolverAccuracy(analysis, truth);
+        })();
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = `reports/eval/${family}.json`;
+  const text = `${JSON.stringify(report, null, 2)}\n`;
+  await writeArtifacts(output, [[file, text]]);
+  if (values.json) return text;
+  const lines: string[] = [];
+  if (report.family === "capabilities")
+    lines.push(
+      `Capabilities: precision ${report.precision}, recall ${report.recall}.`,
+      ...report.falsePositives.map((id) => `  unexpected ${id}`),
+      ...report.falseNegatives.map((id) => `  missed ${id}`),
+    );
+  if (report.family === "workflow-discovery")
+    lines.push(
+      `Workflow discovery: precision ${report.precision}, recall ${report.recall}, entrypoints ${report.entrypointAccuracy}, major steps ${report.meanMajorStepScore}, terminals ${report.terminalAccuracy}, invented steps ${report.inventedStepCount}.`,
+      ...report.cases.map((item) =>
+        item.found
+          ? `  ${item.id}: steps ${item.majorStepScore}, terminal ${item.terminalCorrect ? "correct" : "wrong"}${item.entrypointCorrect ? "" : ", entrypoint wrong"}`
+          : `  ${item.id}: not discovered`,
+      ),
+      ...report.unexpectedCandidates.map((id) => `  unexpected ${id}`),
+    );
+  if (report.family === "resolver")
+    lines.push(
+      `Resolver: top-1 ${report.top1Accuracy}, ambiguity ${report.ambiguityAccuracy}, unsupported ${report.unsupportedAccuracy}, controls ${report.controlsPassed ? "passed" : "failed"}.`,
+      ...report.misses.map(
+        (item) =>
+          `  "${item.query}": expected ${item.expected}, got ${item.actual}`,
+      ),
+    );
+  if (report.family === "impact")
+    lines.push(
+      `Impact: affected recall ${report.affectedRecall}, false-positive rate ${report.falsePositiveRate}, severity accuracy ${report.severityAccuracy}.`,
+      ...report.cases.flatMap((item) =>
+        item.results
+          .filter((result) => result.expected !== result.actual)
+          .map(
+            (result) =>
+              `  ${item.id} ${result.workflowId}: expected ${result.expected}, got ${result.actual}`,
+          ),
+      ),
+    );
+  return `${lines.join("\n")}\nReport: ${path.join(output, file)}\n`;
 }

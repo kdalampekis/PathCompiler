@@ -106,11 +106,11 @@ acceptance criteria. They become the **C track** (§4.1).
 | §75 RuntimeContext | ✅ Aligned in C1. Was: partial. | `ResolveContextSchema` is strict, so `locale`, `tenant` and `productRelease` are **rejected**. |
 | §70 Versioning | ✅ Integer `workflowVersion` added in C1. Was: partial. | Schema version, content-hash revision and compiler version are present. There is no integer workflow revision (ADR 0014 chose a hash) and no repository commit in runtime artifacts. |
 | §68 Guide failure modes | ✅ `manifest-mismatch` added in C1. Was: partial. | Target missing, wrong route, unmet permission precondition, timeout and stop are covered. There is no workflow manifest mismatch detection. |
-| §44 `pathcompiler.yaml`, `pathcompiler init`; §43 `graph inspect`, `capabilities list` | Missing | No config loader or `init` command; CLI uses flags only. |
+| §44 `pathcompiler.yaml`, `pathcompiler init`; §43 `graph inspect`, `capabilities list` | ✅ Added in C2 (ADR 0053). Was: missing. | `@pathcompiler/config`, CLI gating, `init`, `config show`, `graph inspect`, `capabilities list`. |
 | §46–47 `packages/model-provider` (Noop/Fixture), `scan --explain-model-context` | Missing | Only the `SemanticModel` interface (with a test fake) exists in `capability-engine`. |
 | §51 Error taxonomy | Partial | Typed errors are `PathCompilerError`, `ReviewError`, `ProposalError`, `ToolInputError` and `HttpError`, not the named taxonomy. |
 | §52 Structured logging; §53 scan counts table | Missing / partial | No logger. `scan` prints nodes, edges and files only. |
-| §54 Evaluation harness; §55 Golden tests | Partial | There are capability expectations (`--expect`) and a resolver paraphrase set. There are no workflow, impact-case or query ground-truth sets, no `pathcompiler eval` and no snapshot tests. |
+| §54 Evaluation harness; §55 Golden tests | ✅ Added in C3 (ADR 0054). Was: partial. | Fixture ground truth in `fixtures/next-demo/eval/`, `@pathcompiler/evaluation`, `pathcompiler eval`, readable goldens. |
 | §84 Caching; §83 performance targets | Missing | No parse cache and no recorded timings. |
 | §91 Product-ready alpha (two unrelated Next.js repos) | Not started | Only the fixture has been analyzed. |
 | §74 Review editor (state-machine view, edit/merge) | Deferred by spec ("later") | The dashboard offers approve/reject/accept/ignore only. |
@@ -312,7 +312,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Tests/evals:** this phase *is* the eval infrastructure. Snapshot reviews.
 - **Runtime change:** No.
 - **Unblocks:** R-WI comparison, P0 calibration, model evaluation (§86).
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `@pathcompiler/evaluation`, `fixtures/next-demo/eval/`, `pathcompiler eval`, goldens, ADR 0054.
 
 #### C4 — Diagnostics hardening
 - **Objective:** Error taxonomy (§51), structured logs (§52), scan counts table
@@ -407,7 +407,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Runtime change:** No (analysis-time only, flag default off).
 - **Unblocks:** P1; better alias recall for the resolver; real-repository
   usefulness (C6).
-- **Status:** 🔒 blocked on C5, C2, C3.
+- **Status:** 🔒 blocked on C5.
 
 ### 4.2 R track: formal reasoning
 
@@ -509,7 +509,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Runtime change:** No (flag defaults off).
 - **Unblocks:** a decision on the default strategy (separate ADR); I3 candidate
   rebuild options.
-- **Status:** 🔒 blocked on C2, C3.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7). C3's `evaluateWorkflowDiscovery` already takes a `DiscoveryFunction`.
 
 #### R5 — MUS / MCS
 - **Objective:** Minimal unsatisfiable subsets and minimal correction sets as
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **C3** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅ | C9 (C5, C3) · R6 (C7) · R-WI (C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O9 (R7) · O10 (R6) · I0 (P0) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R-WI** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅ | C9 (C5) · R6 (C7) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O9 (R7) · O10 (R6) · I0 (P0) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,23 +839,27 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: C3 — Evaluation harness and golden tests
+## 7. Next implementation phase: R-WI — Reasoning-assisted workflow discovery
 
-C2 is complete, so configuration and flags exist. C3 builds the fixture
-ground truth and evaluation harness (CODEX spec §54–§55):
-- reviewed `capabilities.json`, `workflows/*.yaml`, `impact-cases/*.json`
-  and `queries.json`;
-- golden outputs;
-- a `pathcompiler eval` command.
+C3 is complete, so the last R-WI prerequisite holds. R-WI adds a second
+discovery strategy behind a `DiscoveryStrategy` interface, off by default:
+Product Graph → formal abstraction → planning → feasible trace → workflow
+candidate. It compares that strategy with test-backed discovery through
+`pathcompiler eval workflow-discovery --compare`. The C3 baseline is the
+yardstick:
+- precision 1, recall 0.6: Edit and Deactivate Client have no traces;
+- terminal accuracy 0.667: Change Plan Structure ends on the dialog closing,
+  not on its feedback text;
+- no invented steps.
 
-It is the last prerequisite for R-WI (reasoning-assisted discovery compared
-against the baseline) and one of C9's, and it makes quality regressions
-measurable. Parallel candidates: O11, O12, C8, P0, C5.
+The plan extracted for Change Plan Structure skips the selector
+(ISSUES_LOG #4), so R-WI has to report it honestly rather than tune around it.
+Parallel candidates: O11, O12, C8, P0, C5.
 
-C2 (2026-10-23) added `pathcompiler.yaml`. Without the file behavior is
-unchanged; with it, reasoning, observation and evaluation are gated, keys stay
-out of the file, and `init`, `config show`, `graph inspect` and
-`capabilities list` are available (ADR 0053).
+C3 (2026-10-23) added the reviewed ground truth in `fixtures/next-demo/eval/`,
+`@pathcompiler/evaluation`, `pathcompiler eval
+capabilities|workflow-discovery|resolver|impact` and readable golden files
+(ADR 0054).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "1.1.0",
+  "kind": "runtime-manifest",
+  "workflows": [
+    {
+      "id": "clients.create",
+      "revision": "<revision>",
+      "version": 1,
+      "title": "Create Client",
+      "entrypoints": [
+        {
+          "route": "/clients"
+        }
+      ],
+      "preconditions": [],
+      "steps": [
+        {
+          "id": "step.1",
+          "target": "clients.create",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Create Client"
+          },
+          "next": "step.2"
+        },
+        {
+          "id": "step.2",
+          "target": "client.form.name",
+          "action": {
+            "type": "input"
+          },
+          "instruction": {
+            "text": "Enter Name"
+          },
+          "next": "step.3"
+        },
+        {
+          "id": "step.3",
+          "target": "client.form.email",
+          "action": {
+            "type": "input"
+          },
+          "instruction": {
+            "text": "Enter Email"
+          },
+          "next": "step.4"
+        },
+        {
+          "id": "step.4",
+          "target": "client.form.submit",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click client.form.submit"
+          },
+          "expected": {
+            "type": "element_text",
+            "target": "clients.feedback",
+            "text": "Client created",
+            "match": "exact"
+          }
+        }
+      ],
+      "terminal": {
+        "type": "element_text",
+        "target": "clients.feedback",
+        "text": "Client created",
+        "match": "exact"
+      }
+    },
+    {
+      "id": "plans.change_structure",
+      "revision": "<revision>",
+      "version": 1,
+      "title": "Change Plan Structure",
+      "entrypoints": [
+        {
+          "route": "/plans"
+        }
+      ],
+      "preconditions": [],
+      "steps": [
+        {
+          "id": "step.1",
+          "target": "plans.change_structure",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Change Plan Structure"
+          },
+          "next": "step.2"
+        },
+        {
+          "id": "step.2",
+          "target": "plan.structure.selector",
+          "action": {
+            "type": "select"
+          },
+          "instruction": {
+            "text": "Select Structure"
+          },
+          "next": "step.3"
+        },
+        {
+          "id": "step.3",
+          "target": "plan.structure.submit",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Save Structure"
+          },
+          "expected": {
+            "type": "element_count",
+            "target": "dialog.container",
+            "count": 0
+          }
+        }
+      ],
+      "terminal": {
+        "type": "element_count",
+        "target": "dialog.container",
+        "count": 0
+      }
+    },
+    {
+      "id": "plans.create",
+      "revision": "<revision>",
+      "version": 1,
+      "title": "Create Plan",
+      "entrypoints": [
+        {
+          "route": "/plans"
+        }
+      ],
+      "preconditions": [],
+      "steps": [
+        {
+          "id": "step.1",
+          "target": "plans.create",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Create Plan"
+          },
+          "next": "step.2"
+        },
+        {
+          "id": "step.2",
+          "target": "plan.form.title",
+          "action": {
+            "type": "input"
+          },
+          "instruction": {
+            "text": "Enter Title"
+          },
+          "next": "step.3"
+        },
+        {
+          "id": "step.3",
+          "target": "plan.form.client",
+          "action": {
+            "type": "select"
+          },
+          "instruction": {
+            "text": "Select Client"
+          },
+          "next": "step.4"
+        },
+        {
+          "id": "step.4",
+          "target": "plan.form.submit",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Save Plan"
+          },
+          "expected": {
+            "type": "element_text",
+            "target": "plans.feedback",
+            "text": "Plan created",
+            "match": "exact"
+          }
+        }
+      ],
+      "terminal": {
+        "type": "element_text",
+        "target": "plans.feedback",
+        "text": "Plan created",
+        "match": "exact"
+      }
+    }
+  ]
+}

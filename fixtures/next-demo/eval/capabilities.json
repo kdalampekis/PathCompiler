@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "capabilityIds": [
+    "clients.create",
+    "clients.deactivate",
+    "clients.edit",
+    "plans.change_structure",
+    "plans.create"
+  ]
+}

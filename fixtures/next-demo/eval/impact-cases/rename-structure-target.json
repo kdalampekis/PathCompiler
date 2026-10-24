@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "rename-structure-target",
+  "description": "The plan structure button gets a new semantic target; tests follow.",
+  "edits": [
+    {
+      "file": "components/plans.tsx",
+      "from": "\"plans.change_structure\"",
+      "to": "\"plans.restructure\"",
+      "all": true
+    },
+    {
+      "file": "tests/workflows.spec.ts",
+      "from": "\"plans.change_structure\"",
+      "to": "\"plans.restructure\"",
+      "all": true
+    }
+  ],
+  "expected": {
+    "plans.change_structure": "high",
+    "plans.create": "none",
+    "clients.create": "none"
+  }
+}
