@@ -58,6 +58,7 @@ import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
   buildObservedGraph,
+  computeWorkflowAnalytics,
   readEventDirectory,
 } from "@pathcompiler/observed-graph";
 import {
@@ -152,7 +153,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
-       pathcompiler observe graph [--release <id>] [--json] [--out <directory>]
+       pathcompiler observe graph|workflows [--release <id>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -210,6 +211,10 @@ appended as NDJSON under events/<project>/<day>.ndjson; PATHCOMPILER_INGEST_TOKE
 sets a token that may only post events. observe graph aggregates the stored events into
 reports/observed-graph.json: transition counts, sessions, frequencies, median times and
 role/release segments (what happened; never compared with the formal model here).
+observe workflows reconstructs guide runs per workflow version: starts, completions,
+abandonments, unfinished runs, completion rate (only with 30+ runs), median/p95 duration,
+actions per run, a step funnel and privacy-suppressed role/release segments, written to
+reports/workflow-analytics.json.
 reason reachable asks whether a goal of the Formal Product Model can be reached under
 fixed context values (role, flags; omitted ones are free). Without --model it extracts the
 model from the repository and its tests (static evidence). It answers reachable (with a
@@ -326,7 +331,9 @@ export async function runCli(
   if (values.events && positionals[0] !== "serve")
     throw new Error("--events is only supported by serve.");
   if (values.release !== undefined && positionals[0] !== "observe")
-    throw new Error("--release is only supported by observe graph.");
+    throw new Error(
+      "--release is only supported by observe graph and observe workflows.",
+    );
   if (positionals[0] === "observe") return runObserve(positionals, values, cwd);
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (
@@ -1570,9 +1577,12 @@ async function runObserve(
   values: Values,
   cwd: string,
 ): Promise<string> {
-  if (positionals[1] !== "graph" || positionals.length !== 2)
+  if (
+    (positionals[1] !== "graph" && positionals[1] !== "workflows") ||
+    positionals.length !== 2
+  )
     throw new Error(
-      "Expected: pathcompiler observe graph. Use --help for options.",
+      "Expected: pathcompiler observe graph|workflows. Use --help for options.",
     );
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   // Same project name `serve` uses for ingestion.
@@ -1583,6 +1593,29 @@ async function runObserve(
     throw new Error(
       `No stored events under ${directory}. Run pathcompiler serve --events and send events first.`,
     );
+  if (positionals[1] === "workflows") {
+    const report = computeWorkflowAnalytics(events, {
+      ...(values.release === undefined ? {} : { release: values.release }),
+    });
+    const file = "reports/workflow-analytics.json";
+    await writeArtifacts(output, [
+      [file, `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+    const percent = (value: number | null) =>
+      value === null ? "n/a" : `${Math.round(value * 100)}%`;
+    return `${[
+      `Workflow analytics from ${events.length} events${values.release ? ` (release ${values.release})` : ""}:`,
+      ...report.workflows.map(
+        (item) =>
+          `  ${item.workflowId} v${item.workflowVersion}: ${item.starts} starts, ${item.completions} completed, ${item.abandonments} abandoned, ${item.unfinished} unfinished; completion ${percent(item.completionRate)}; median ${item.medianDurationMs ?? "n/a"} ms, p95 ${item.p95DurationMs ?? "n/a"} ms${item.sufficient ? "" : ` (fewer than ${report.minRuns} runs: no rates)`}`,
+      ),
+      ...(report.workflows.length === 0
+        ? ["  No guide runs recorded (workflow.started events)."]
+        : []),
+      `Report: ${path.join(output, file)}`,
+    ].join("\n")}\n`;
+  }
   const graph = buildObservedGraph(events, {
     projectId: project,
     ...(values.release === undefined ? {} : { release: values.release }),

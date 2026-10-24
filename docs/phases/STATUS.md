@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after O6)
+## Current state (updated 2026-10-23, after O7)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O7** (next), O8, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **O8** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry**, **O4 — Domain events**, **O5 — Event ingestion**, **O6 — Observed Transition Graph** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
-| Next recommended phase | **O7 — Workflow analytics** (`MASTER_ROADMAP.md` §7); O8 can run in parallel. Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry**, **O4 — Domain events**, **O5 — Event ingestion**, **O6 — Observed Transition Graph**, **O7 — Workflow analytics** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
+| Next recommended phase | **O8 — Possible-vs-Observed Reconciliation** (`MASTER_ROADMAP.md` §7). Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2697,3 +2697,48 @@ Tests check:
 - A repeated state is measured from its first entry; an uninstrumented page
   appears as a direct transition (an instrumentation gap, not impossibility).
 - Next recommended phase: O7 — Workflow analytics (O8 in parallel).
+
+---
+
+## Phase O7 — Workflow analytics
+
+Complete — verified locally on 2026-10-23.
+
+- Added `computeWorkflowAnalytics` to `@pathcompiler/observed-graph`. It
+  reconstructs guide runs per session and workflow version. Restarts and
+  session ends close open runs as **unfinished**, never as abandoned.
+- **Per version:** starts by trigger, completions, abandonments by reason,
+  unfinished runs, completion rate, median and p95 duration (nearest rank),
+  the median number of actions per completed run, a step funnel, and role and
+  release segments.
+- **Thresholds:** rates are `null` below `minRuns` (default 30), and segments
+  under `minSegmentSize` starts (default 5) are merged into `(suppressed)`.
+- `pathcompiler observe workflows [--release]` writes
+  `reports/workflow-analytics.json`.
+- Recorded in ADR 0051.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 351 tests passed across 50 suites (3 new analytics tests; CLI round trip extended) |
+| `git diff --check` | Passed |
+
+Tests check the exact counts on five sessions (3 completed, 1 abandoned,
+1 unfinished), the completion rate, median and p95 duration (including a run
+without a reported duration), actions per run, the step funnel, segment
+suppression, withheld rates under the default threshold, release filtering,
+and restart handling.
+
+### Errors found during the phase
+
+- One lint error in a test helper (an assignment inside an expression). Fixed.
+- A CLI edit script did not apply because Biome had reformatted the target
+  text. It was rerun against the current text; no product impact.
+
+### Scope notes
+
+- Plan-tier and feature-flag segments need allowlisted context keys.
+- Next recommended phase: O8 — Possible-vs-Observed Reconciliation.

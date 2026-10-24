@@ -287,3 +287,4 @@ export async function readEventDirectory(
     );
   return events;
 }
+export * from "./analytics.js";

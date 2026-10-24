@@ -402,6 +402,9 @@ describe("pathcompiler CLI", () => {
         "goal:clients.created>session:end",
         "session:start>goal:clients.created",
       ]);
+      expect(await run(["observe", "workflows"])).toContain(
+        "No guide runs recorded (workflow.started events).",
+      );
     } finally {
       child.kill();
     }
