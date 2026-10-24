@@ -11,6 +11,8 @@ import {
 } from "@pathcompiler/reasoner-core";
 import type { SolverProvider } from "@pathcompiler/solver-provider";
 
+export * from "./efficiency.js";
+
 /**
  * Possible-vs-observed reconciliation (reasoning spec §142–§144). The formal
  * model says what can happen; events say what did. Discrepancies are reported

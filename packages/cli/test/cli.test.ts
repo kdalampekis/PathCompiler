@@ -414,6 +414,10 @@ describe("pathcompiler CLI", () => {
       expect(reconciled).toContain(
         "Discrepancies are evidence to investigate, not verdicts.",
       );
+      const efficiency = await run(["observe", "efficiency", fixture]);
+      expect(efficiency).toContain(
+        "  clients.created ((none)): 1 completions; too few to compute a ratio",
+      );
     } finally {
       child.kill();
     }

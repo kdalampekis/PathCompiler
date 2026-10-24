@@ -16,7 +16,11 @@ import {
   scanNextRepository,
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
-import { reconcileBehavior } from "@pathcompiler/behavior-reconciliation";
+import {
+  computePathEfficiency,
+  type PathEfficiencyReport,
+  reconcileBehavior,
+} from "@pathcompiler/behavior-reconciliation";
 import {
   type CandidateEvaluation,
   evaluateCandidate,
@@ -216,6 +220,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
        pathcompiler observe graph|workflows [--release <id>] [--json] [--out <directory>]
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
+       pathcompiler observe efficiency [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
@@ -284,6 +289,10 @@ reports/workflow-analytics.json. observe reconcile compares the formal model (ex
 the repository, or --model) with the stored events per observed role: possible+observed,
 possible+unobserved, and observed-but-formally-unexpected (high priority, with the model's
 reasons and candidate causes; never labelled a bug). Writes reports/reconciliation.json.
+observe efficiency divides the median observed path cost (navigations plus target activations
+per completion) by the cheapest formal path for each goal and observed role (Path Efficiency
+Ratio; 30+ completions), lists friction at 1.5x or more, and writes reports/path-efficiency.json.
+It is a friction signal, not proof that the shortest path is the best experience.
 reason reachable asks whether a goal of the Formal Product Model can be reached under
 fixed context values (role, flags; omitted ones are free). Without --model it extracts the
 model from the repository and its tests (static evidence). It answers reachable (with a
@@ -457,7 +466,7 @@ export async function runCli(
     ) &&
     !(
       positionals[0] === "observe" &&
-      positionals[1] === "reconcile" &&
+      (positionals[1] === "reconcile" || positionals[1] === "efficiency") &&
       values.context === undefined
     )
   )
@@ -2217,15 +2226,16 @@ async function runObserve(
   cwd: string,
 ): Promise<string> {
   const reconcile = positionals[1] === "reconcile";
+  const efficiency = positionals[1] === "efficiency";
   if (
     !(
       ((positionals[1] === "graph" || positionals[1] === "workflows") &&
         positionals.length === 2) ||
-      (reconcile && positionals.length <= 3)
+      ((reconcile || efficiency) && positionals.length <= 3)
     )
   )
     throw new Error(
-      "Expected: pathcompiler observe graph|workflows, or observe reconcile [directory]. Use --help for options.",
+      "Expected: pathcompiler observe graph|workflows, or observe reconcile|efficiency [directory]. Use --help for options.",
     );
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   // Same project name `serve` uses for ingestion.
@@ -2236,6 +2246,36 @@ async function runObserve(
     throw new Error(
       `No stored events under ${directory}. Run pathcompiler serve --events and send events first.`,
     );
+  if (efficiency) {
+    const { model } = await loadReasoningModel(positionals[2], values, cwd);
+    const solver = await createZ3SolverProvider();
+    let report: PathEfficiencyReport;
+    try {
+      report = await computePathEfficiency(model, events, solver);
+    } finally {
+      await solver.close();
+    }
+    await writeArtifacts(output, [
+      ["reports/path-efficiency.json", `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+    const lines = [
+      `Path efficiency (hypotheses; ${report.unit}, ratios need ${report.minCompletions}+ completions):`,
+      ...report.items.map((item) =>
+        item.ratio !== null
+          ? `  ${item.goal} (${item.role}): median ${item.observedCost?.median} vs minimum ${item.minimumFormalCost} → ${item.ratio}× over ${item.completions} completions`
+          : `  ${item.goal} (${item.role}): ${item.completions} completions; ${item.minimumFormalCost === null ? "no formal path for this role (see observe reconcile)" : "too few to compute a ratio"}`,
+      ),
+      ...(report.friction.length > 0
+        ? [
+            `Friction (ratio ≥ 1.5): ${report.friction.map((item) => `${item.goal} (${item.role}) ${item.ratio}×`).join(", ")}. A friction signal, not proof the shortest path is the best experience.`,
+          ]
+        : []),
+      `Report: ${path.join(output, "reports/path-efficiency.json")}`,
+      "",
+    ];
+    return lines.join("\n");
+  }
   if (reconcile) {
     const { model, extraction } = await loadReasoningModel(
       positionals[2],
@@ -2535,6 +2575,11 @@ function applyConfig(
   if (command === "observe") {
     if (!config.modes.observe)
       refuse(`observe ${sub ?? ""}`.trim(), "modes.observe to true");
+    if (sub === "efficiency" && !reasoningEnabled(config, "optimization"))
+      refuse(
+        "observe efficiency",
+        "reasoning.enabled and reasoning.optimization to true",
+      );
     if (sub === "reconcile" && !reasoningEnabled(config, "reachability"))
       refuse(
         "observe reconcile",
