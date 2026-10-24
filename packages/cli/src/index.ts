@@ -78,6 +78,10 @@ import {
 import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
+  describeModelRequest,
+  redactValue,
+} from "@pathcompiler/model-provider";
+import {
   buildObservedGraph,
   computeWorkflowAnalytics,
   readEventDirectory,
@@ -149,7 +153,7 @@ import { z } from "zod";
 
 export const HELP = `PathCompiler — local Next.js source analysis
 
-Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> ...]
+Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler init [directory]
        pathcompiler config show [--json]
        pathcompiler graph inspect [--json] [--out <directory>]
@@ -278,6 +282,11 @@ unreachable per context, with root causes traced to changed files, in
 reports/semantic-change.json. impact and proposals generate accept --reasoning to add
 those findings as impact reasons (reachability-removed is high severity).
 Reasoning output is for developers only.
+scan --explain-model-context is a dry run of the model boundary: it builds the capability
+request a model provider would receive (product surfaces and graph evidence; never file
+contents, hidden files such as .env, binaries or excluded paths), redacts obvious secrets,
+and writes the exact payload with its size, evidence counts, referenced paths and redaction
+counts to reports/model-context.json. Nothing is sent; no provider is called.
 init writes pathcompiler.yaml with every default spelled out. When pathcompiler.yaml exists in
 the working directory, it gates capabilities: reason commands need reasoning.enabled plus their
 flag, observe needs modes.observe, evaluate needs modes.evaluate, reasoning.impact turns on
@@ -319,6 +328,7 @@ const CLI_OPTIONS = {
   events: { type: "boolean" },
   release: { type: "string" },
   compare: { type: "boolean" },
+  "explain-model-context": { type: "boolean" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -398,9 +408,24 @@ export async function runCli(
       "--release is only supported by observe graph and observe workflows.",
     );
   if (positionals[0] === "observe") return runObserve(positionals, values, cwd);
+  if (values["explain-model-context"] && positionals[0] !== "scan")
+    throw new Error("--explain-model-context is only supported by scan.");
   if (values.compare && positionals[0] !== "eval")
     throw new Error("--compare is only supported by eval workflow-discovery.");
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
+  if (
+    positionals[0] === "scan" &&
+    positionals.length === 2 &&
+    positionals[1] &&
+    values["explain-model-context"]
+  )
+    return explainModelContext(
+      path.resolve(cwd, positionals[1]),
+      values,
+      cwd,
+      configured?.config.model_provider.provider ?? "none",
+    );
+
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (
     (values.criteria !== undefined || values.tests !== undefined) &&
@@ -2811,4 +2836,59 @@ async function runEval(
       ),
     );
   return `${lines.join("\n")}\nReport: ${path.join(output, file)}\n`;
+}
+
+async function explainModelContext(
+  directory: string,
+  values: Values,
+  cwd: string,
+  provider: string,
+): Promise<string> {
+  const project = await readSourceProject(directory, {
+    exclude: values.exclude ?? [],
+  });
+  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const { report } = discoverProductSurfaces(mined.graph);
+  const request = { surfaces: report.surfaces, evidence: report.evidence };
+  const { value: payload, redactions } = redactValue(request);
+  const entry = describeModelRequest(
+    "inferCapabilities",
+    provider,
+    payload,
+    redactions,
+  );
+  const context = {
+    schemaVersion: 1,
+    kind: "model-context",
+    provider,
+    sent: false,
+    requests: [{ ...entry, payload }],
+    neverSent: [
+      "file contents (privacy.source_upload is always false)",
+      "hidden files and directories, including .env",
+      "binary files",
+      "paths excluded with --exclude or Git ignore rules",
+    ],
+    excluded: values.exclude ?? [],
+  };
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = "reports/model-context.json";
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(context, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(context, null, 2)}\n`;
+  const redacted = Object.values(redactions).reduce((a, b) => a + b, 0);
+  return [
+    `Model context dry run (provider: ${provider}; nothing sent).`,
+    `inferCapabilities: ${entry.bytes} bytes, ${report.surfaces.length} surfaces, evidence ${Object.entries(
+      entry.evidenceNodes,
+    )
+      .map(([type, count]) => `${type} ${count}`)
+      .join(", ")}.`,
+    `Paths referenced (${entry.files.length}): ${entry.files.join(", ")}.`,
+    `Secrets redacted: ${redacted}.`,
+    "Never sent: file contents, hidden files (.env), binaries, excluded paths.",
+    `Exact payload: ${path.join(output, file)}`,
+    "",
+  ].join("\n");
 }

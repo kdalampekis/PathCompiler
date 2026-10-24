@@ -293,6 +293,9 @@ importers:
       "@pathcompiler/mcp-server":
         specifier: workspace:*
         version: link:../mcp-server
+      "@pathcompiler/model-provider":
+        specifier: workspace:*
+        version: link:../model-provider
       "@pathcompiler/observed-graph":
         specifier: workspace:*
         version: link:../observed-graph
@@ -668,6 +671,31 @@ importers:
       "@pathcompiler/workflow-validator":
         specifier: workspace:*
         version: link:../workflow-validator
+
+  packages/model-provider:
+    dependencies:
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/evidence":
+        specifier: workspace:*
+        version: link:../evidence
+      "@pathcompiler/workflow-ir":
+        specifier: workspace:*
+        version: link:../workflow-ir
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
 
   packages/observability-core:
     dependencies:

@@ -1,19 +1,19 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after P0)
+## Current state (updated 2026-10-23, after C5)
 
 | Item | State |
 | --- | --- |
 | Original phases (`CODEX_BUILD_SPEC.md` 0–30) | ✅ all complete against phase acceptance criteria. Baseline re-verified 2026-10-22: lint, typecheck, 258 unit tests, 27 Chromium tests. |
-| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init` and the eval harness/golden tests are aligned (C1–C3); model provider, error taxonomy, logging, caching and alpha validation remain. Tracked as C1–C9. |
+| Original cross-cutting contracts (§§43–96) | ⚠ partial: Runtime Result v1, RuntimeContext, versioning, config/`init`, the eval harness/golden tests and the model provider boundary are aligned (C1–C3, C5); error taxonomy, logging, caching and alpha validation remain. Tracked as C1–C9. |
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **C5** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **C7** (next), C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI; P0; I3 (mode 5, Evaluate); C1, C2, C3; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **C5 — Model provider boundary** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **C7 — Reasoning and harness fixture enrichment** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3069,5 +3069,65 @@ The tests cover:
   first consumer is P1 or I0.
 - No calibration table is built from the fixture: five capabilities are too
   few samples (ADR 0056).
-- Next recommended phase: C5 — Model provider boundary.
+- C5 followed.
+
+---
+
+## Phase C5 — Model provider boundary
+
+Complete — verified locally on 2026-10-23.
+
+- **New `@pathcompiler/model-provider`** (no vendor SDK):
+  - `PathCompilerModelProvider`, with infer capabilities, synthesize
+    workflow, explain impact, generate aliases and summarize evidence, and
+    strict request and response schemas;
+  - `NoopModelProvider` (the default) and `FixtureModelProvider` (replay by
+    canonical request key; fails rather than guesses);
+  - `guardModelProvider`, which redacts and validates requests, records a
+    `ModelContextEntry` and validates responses against their schema and
+    citable evidence;
+  - `semanticModelFromProvider`, `redactSecrets` and `redactValue`.
+- **CLI:** `pathcompiler scan <directory> --explain-model-context [--json]`
+  writes the exact redacted `inferCapabilities` payload and its description
+  to `reports/model-context.json`. Nothing is sent.
+- Recorded in ADR 0057.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 393 tests passed across 59 suites (7 model-provider tests, 2 CLI dry-run tests) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- no-op determinism;
+- fixture replay and a missing fixture;
+- redaction before the provider sees a request, and the recorded context;
+- forged citations, unknown reason codes and invalid shapes rejected as
+  `invalid-response`;
+- `SemanticModel` routing;
+- the secret patterns, with ordinary text left alone;
+- a contract that no package depends on a vendor SDK;
+- the CLI dry run on the fixture (payload size matches, no source text), a
+  planted `.env` that is never read, and a secret in a UI label that is
+  redacted.
+
+### Errors found during the phase
+
+- A GitHub token in an assignment was counted twice: the assignment pattern
+  matched the `[REDACTED]` placeholder. The pattern now skips redacted
+  values.
+- `scan --explain-model-context --json` was refused by the CLI's general
+  `--json` check, which ran before the scan branch. The dry run is now routed
+  first.
+- Test stubs spread a class instance, which drops its prototype methods; the
+  typecheck caught it. They now use an explicit stub helper.
+
+### Scope notes
+
+- No vendor adapter (C9). Nothing calls a model unless a caller passes a
+  provider.
+- Next recommended phase: C7 — Reasoning and harness fixture enrichment.
 

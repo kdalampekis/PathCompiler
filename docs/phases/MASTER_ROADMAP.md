@@ -341,7 +341,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Tests/evals:** provider contract tests; secret-stripping tests.
 - **Runtime change:** No.
 - **Unblocks:** C9, optional semantic assistance in R1, I1 wording.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `@pathcompiler/model-provider` (`PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `guardModelProvider`, redaction), `scan --explain-model-context`, ADR 0057.
 
 #### C6 — Alpha validation on two unrelated Next.js repositories
 - **Objective:** Run discovery → approval → compile → impact on two real
@@ -366,7 +366,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
   commit diffs.
 - **Runtime change:** Fixture only.
 - **Unblocks:** R5, R6 and R8–R10 evaluations; I demos.
-- **Status:** 🟢 unblocked.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### C8 — Generalized browser verification
 - **Objective:** Generalize the Phase 10 runner from `clients.create` to
@@ -407,7 +407,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Runtime change:** No (analysis-time only, flag default off).
 - **Unblocks:** P1; better alias recall for the resolver; real-repository
   usefulness (C6).
-- **Status:** 🔒 blocked on C5.
+- **Status:** 🟢 unblocked (C5 ✅).
 
 ### 4.2 R track: formal reasoning
 
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **C5** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repos), C7, C8, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅ | C9 (C5) · R6 (C7) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P5 (O11) · O9 (R7) · O10 (R6) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **C7** (next), O11, O12, R5, R7, R9, R10, R12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅ | R6 (C7) · P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · O9 (R7) · O10 (R6) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,23 +839,23 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: C5 — Model provider boundary
+## 7. Next implementation phase: C7 — Reasoning and harness fixture enrichment
 
-P0 is complete. `@pathcompiler/probabilistic-evidence` fuses supporting and
-contradicting evidence with documented tier rules, never by averaging.
-Conflicts such as stale documentation are first-class, and a probability is
-reported only from a calibration table (ADR 0056).
+C5 is complete. `@pathcompiler/model-provider` defines the vendor-free
+boundary: no-op and fixture providers, request redaction, a context log and
+response validation. `scan --explain-model-context` shows the exact payload a
+provider would receive (ADR 0057). C9 is now unblocked.
 
-C5 comes next. It adds the model-provider interface, a no-op and a fixture
-provider, privacy preprocessing and `scan --explain-model-context`, and
-unblocks C9 and with it P1. The planned order after C5:
-1. C7;
-2. R5, R6, R7, R9, R10, R12;
-3. C8, O11, O12, C4;
-4. C9;
-5. P1–P5 and P-RV;
-6. O9 and O10;
-7. the I track (I0 is now unblocked).
+C7 comes next. It enriches the fixture with more roles, a second flag, an
+alternative path and seedable bugs, and adds `fixtures/reasoning/` and
+`fixtures/harness/` cases. It unblocks R6 and gives R5, R9 and R10 real
+evaluation cases (ISSUES_LOG #6). The planned order after C7:
+1. R5, R6, R7, R9, R10, R12;
+2. C8, O11, O12, C4;
+3. C9;
+4. P1–P5 and P-RV;
+5. O9 and O10;
+6. the I track.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

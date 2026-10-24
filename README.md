@@ -1068,6 +1068,25 @@ accuracy and edit distance. On the fixture, reasoning reaches recall 1
 against 0.6, but its terminals are weaker, so the baseline remains the default.
 See [ADR 0055](docs/decisions/0055-reasoning-assisted-workflow-discovery.md).
 
+## Model provider boundary (`@pathcompiler/model-provider`)
+
+```bash
+pnpm pathcompiler scan fixtures/next-demo --explain-model-context   # dry run; nothing is sent
+```
+
+Models are optional. Every call goes through `guardModelProvider`:
+- the request is validated and obvious secrets are redacted;
+- the context sent is recorded: size, evidence counts, paths and redaction
+  counts;
+- the response is validated against its schema and may cite only evidence
+  from its request.
+
+Requests are evidence packets, never file contents, hidden files (`.env`),
+binaries or excluded paths. The default `NoopModelProvider` infers nothing,
+and `FixtureModelProvider` replays recorded responses for tests. Packages
+depend on no vendor SDK. See
+[ADR 0057](docs/decisions/0057-model-provider-boundary.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1335,11 +1354,12 @@ Analysis packages:
 | `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `instrumentGuide`, `FetchTransport`, `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
 | `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
 | `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
+| `@pathcompiler/model-provider` | `PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `fixtureKey`, `guardModelProvider`, `semanticModelFromProvider`, `redactSecrets`, `redactValue`, `describeModelRequest`, `ModelProviderError` |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
