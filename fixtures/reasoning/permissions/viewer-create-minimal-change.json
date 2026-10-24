@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "permissions.viewer-create-minimal-change",
+  "category": "permissions",
+  "fixture": "next-demo",
+  "description": "The minimal changes that would let a viewer create a client: change the role, or drop the submit handler's role guard. Diagnostic only.",
+  "query": {
+    "kind": "enablement",
+    "goal": "clients.created",
+    "context": {
+      "role": "unlisted"
+    },
+    "expectedCorrections": [
+      ["context:role"],
+      ["guard:clients.create.submit(role)"]
+    ]
+  }
+}

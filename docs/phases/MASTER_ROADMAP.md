@@ -520,7 +520,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   and minimal.
 - **Runtime change:** No.
 - **Unblocks:** permission audit and minimal-enablement modules.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-24): `findMinimalEnablement` (core-guided minimum correction sets; R4 core as MUS), `reason enable`, enablement reasoning cases, ADR 0059.
 
 #### R6 — Plan Enumeration and semantic trace clustering
 - **Objective:** Bounded enumeration with blocking constraints, and
@@ -531,7 +531,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   low duplicate rate.
 - **Runtime change:** No.
 - **Unblocks:** R7, O10, workflow breadth.
-- **Status:** 🟢 unblocked (C7 ✅).
+- **Status:** 🟢 unblocked (C7 ✅); **recommended next phase** (§7).
 
 #### R7 — Optimization (OMT / MaxSAT)
 - **Objective:** Rank plans by explicit costs and derive UX metrics (§30).
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **R5** (next), R6, O11, O12, R7, R9, R10, R12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅ | P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · O9 (R7) · O10 (R6) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R6** (next), O11, O12, R7, R9, R10, R12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅ | P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · O9 (R7) · O10 (R6) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,22 +839,19 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: R5 — MUS / MCS
+## 7. Next implementation phase: R6 — Plan enumeration and trace clustering
 
-C7 is complete. The fixture now has three roles (admin, editor, viewer), a
-second flag (`planArchive`), an admin-only Archive Plan and an alternative
-Deactivate Client path. `fixtures/reasoning/` holds 15 reviewed cases in
-seven categories, and `pathcompiler eval reasoning` runs them, all passing
-(ADR 0058). The enrichment also fixed API association, one-click actions,
-in-dialog entries and a resolver verb group.
+R5 is complete. `findMinimalEnablement` returns every minimum set of policy
+changes (a context value, or a role, flag or permission guard) that would make
+an unreachable goal reachable, each with a witness, and never changes
+anything. `reason enable` exposes it (ADR 0059), and the reasoning cases now
+include two enablement questions (17/17 pass).
 
-R5 comes next. It adds minimal correction sets: the smallest change to
-context, guards or initial state that makes an unreachable goal reachable,
-such as "what minimal change lets a viewer create a client". These are
-diagnostics that never change permissions automatically, and the new
-permission and flag cases are their evaluation material. The planned order
-after R5:
-1. R6, R7, R9, R10, R12;
+R6 comes next. It enumerates alternative plans for a goal with blocking
+constraints, and clusters traces into business variants. The fixture's
+Deactivate Client now has two paths (the row button, and inside Edit Client),
+which is the acceptance material. The planned order after R6:
+1. R7, R9, R10, R12;
 2. C8, O11, O12, C4;
 3. C9;
 4. P1–P5 and P-RV;

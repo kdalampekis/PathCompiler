@@ -21,6 +21,8 @@ import { compareText } from "@pathcompiler/source-model";
 import type { EvidenceRef } from "@pathcompiler/workflow-ir";
 import { z } from "zod";
 
+export * from "./enablement.js";
+
 export type FormalValue = boolean | number | string;
 export type FormalStateSnapshot = Record<string, FormalValue>;
 export type ReachabilityQuery = {

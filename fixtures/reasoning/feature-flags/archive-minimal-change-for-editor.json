@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "feature-flags.archive-minimal-change-for-editor",
+  "category": "feature-flags",
+  "fixture": "next-demo",
+  "description": "An editor with the archive flag off needs two changes: one for the role and one for the flag, each either a context change or dropping that guard.",
+  "query": {
+    "kind": "enablement",
+    "goal": "plans.archived",
+    "context": {
+      "role": "editor",
+      "plan_archive_enabled": false
+    },
+    "expectedCorrections": [
+      ["context:plan_archive_enabled", "context:role"],
+      ["context:role", "guard:plans.archive.archive(plan_archive_enabled)"],
+      ["context:plan_archive_enabled", "guard:plans.archive.archive(role)"],
+      [
+        "guard:plans.archive.archive(plan_archive_enabled)",
+        "guard:plans.archive.archive(role)"
+      ]
+    ]
+  }
+}

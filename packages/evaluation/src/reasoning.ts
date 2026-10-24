@@ -18,6 +18,8 @@ import type { FormalProductModel } from "@pathcompiler/formal-model";
 import {
   createProductReasoner,
   evaluatePlan,
+  findMinimalEnablement,
+  formalExprVariables,
   ProductPropertySchema,
 } from "@pathcompiler/reasoner-core";
 import type { SolverProvider } from "@pathcompiler/solver-provider";
@@ -90,6 +92,13 @@ export const ReasoningCaseSchema = z.strictObject({
       lastAction: z.string().min(1).optional(),
     }),
     z.strictObject({
+      kind: z.literal("enablement"),
+      goal,
+      context,
+      /** Every minimal correction set, as `context:<variable>` or `guard:<action>(<variables>)`. */
+      expectedCorrections: z.array(z.array(z.string().min(1)).min(1)),
+    }),
+    z.strictObject({
       kind: z.literal("diff"),
       /** Base is the unedited fixture; after is the edited copy. */
       goals: z.array(goal).min(1),
@@ -147,7 +156,7 @@ export type ReasoningEvaluationReport = {
   family: "reasoning";
   total: number;
   passed: number;
-  /** Reachability, explanation and property verdicts that match the truth. */
+  /** Reachability, explanation, property and enablement answers that match the truth. */
   verdictAccuracy: number;
   unknownRate: number;
   /** Plans that replay to the goal with no invalid action and visit the expected targets. */
@@ -312,6 +321,35 @@ export async function evaluateReasoningCases(
         `${answer.status}${last ? ` ending with ${last}` : ""} (expected ${query.expected})`,
         answer.status === "unknown",
       );
+    } else if (query.kind === "enablement") {
+      const answer = await findMinimalEnablement(reasoner, extracted, {
+        goal: query.goal,
+        context: query.context,
+      });
+      const sets = answer.corrections.map((correction) =>
+        correction.changes
+          .map((change) =>
+            change.kind === "context"
+              ? `context:${change.variable}`
+              : `guard:${change.actionId}(${[...new Set(formalExprVariables(change.condition))].sort(compare).join(",")})`,
+          )
+          .sort(compare)
+          .join(" + "),
+      );
+      const wanted = query.expectedCorrections.map((set) =>
+        [...set].sort(compare).join(" + "),
+      );
+      const same =
+        answer.minimum &&
+        sets.length === wanted.length &&
+        [...sets]
+          .sort(compare)
+          .every((set, index) => set === [...wanted].sort(compare)[index]);
+      result(
+        same,
+        `${answer.status}: ${sets.join("; ") || "no corrections"}${answer.minimum ? "" : " (not minimum)"}`,
+        answer.status === "unknown",
+      );
     } else {
       const before = await model(item, false);
       const comparison = await reasoner.compareModels(before, extracted, {
@@ -355,7 +393,12 @@ export async function evaluateReasoningCases(
     if (entry.passed) bucket.passed += 1;
     byCategory[entry.category] = bucket;
   }
-  const verdicts = of(["reachability", "explanation", "property"]);
+  const verdicts = of([
+    "reachability",
+    "explanation",
+    "property",
+    "enablement",
+  ]);
   return {
     family: "reasoning",
     total: results.length,

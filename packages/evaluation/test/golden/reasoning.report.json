@@ -1,7 +1,7 @@
 {
   "family": "reasoning",
-  "total": 15,
-  "passed": 15,
+  "total": 17,
+  "passed": 17,
   "verdictAccuracy": 1,
   "unknownRate": 0,
   "planAccuracy": 1,
@@ -20,12 +20,12 @@
       "passed": 3
     },
     "feature-flags": {
-      "total": 2,
-      "passed": 2
+      "total": 3,
+      "passed": 3
     },
     "permissions": {
-      "total": 2,
-      "passed": 2
+      "total": 3,
+      "passed": 3
     },
     "reachable": {
       "total": 2,
@@ -94,6 +94,14 @@
       "detail": "holds (expected holds)"
     },
     {
+      "id": "feature-flags.archive-minimal-change-for-editor",
+      "category": "feature-flags",
+      "kind": "enablement",
+      "passed": true,
+      "unknown": false,
+      "detail": "enableable: context:plan_archive_enabled + context:role; context:plan_archive_enabled + guard:plans.archive.archive(role); context:role + guard:plans.archive.archive(plan_archive_enabled); guard:plans.archive.archive(plan_archive_enabled) + guard:plans.archive.archive(role)"
+    },
+    {
       "id": "feature-flags.archive-needs-flag",
       "category": "feature-flags",
       "kind": "reachability",
@@ -124,6 +132,14 @@
       "passed": true,
       "unknown": false,
       "detail": "cites plans.archive.archive requires role = admin"
+    },
+    {
+      "id": "permissions.viewer-create-minimal-change",
+      "category": "permissions",
+      "kind": "enablement",
+      "passed": true,
+      "unknown": false,
+      "detail": "enableable: context:role; guard:clients.create.submit(role)"
     },
     {
       "id": "reachable.admin-archives-plan",

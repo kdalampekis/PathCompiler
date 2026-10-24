@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after C7)
+## Current state (updated 2026-10-24, after R5)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R5** (next), R6, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R6** (next), C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **R5 — MUS / MCS** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **R6 — Plan enumeration and trace clustering** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3207,5 +3207,63 @@ Complete — verified locally on 2026-10-24.
 
 - The demo approves three of the five candidates, as before (its story is
   unchanged).
-- Next recommended phase: R5 — MUS / MCS.
+- R5 followed.
+
+---
+
+## Phase R5 — MUS / MCS (minimal enablement)
+
+Complete — verified locally on 2026-10-24.
+
+- **MUS.** R4's deletion-minimized core is the MUS (minimal, not
+  necessarily minimum; documented).
+- **MCS.** `findMinimalEnablement` in `reasoner-core` runs a core-guided
+  breadth-first search over policy constraints: fixed context values, and
+  action guards on roles, flags and permissions. It applies each candidate
+  set to a copy of the model and returns every minimum-size correction set
+  with a witness, evidence and a product-decision suggestion. Statuses are
+  `already-reachable`, `enableable`, `not-enableable` or `unknown`, and the
+  result is always `diagnosticOnly`.
+- **CLI:** `pathcompiler reason enable <goal> [directory] --context …`
+  (gated by `reasoning.unsat_explanations`).
+- **Reasoning cases** gain an `enablement` kind and two cases; 17/17 pass.
+- Recorded in ADR 0059.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 402 tests passed across 61 suites (4 enablement tests, a CLI `reason enable` test, 2 new reasoning cases) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- the roadmap acceptance question (a viewer creating a client): two minimum
+  sets, change the role or drop the submit guard, with `requireEditor`
+  evidence and the model unchanged;
+- a flag-only block for admins;
+- a two-change case (an editor with the flag off);
+- an already-reachable goal and a structurally blocked one;
+- the CLI text and report.
+
+No runtime code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- The first draft of the two-change case's ground truth was wrong: it
+  listed a size-1 set. It was re-derived from the product (the role and the
+  flag are independent guards, so four minimum pairs) before it was run, and
+  the run confirmed it.
+- Two guards on the same action produced identical labels in case results.
+  Labels now include the guarded variables, deduplicated.
+- The small hand-written blocked model failed schema validation (evidence
+  must be non-empty). The blocked case now removes the only goal setter from
+  the extracted model instead.
+
+### Scope notes
+
+- No solver-internal MaxSAT: that belongs to R7 (optimization), and the
+  model-level search is provider-neutral.
+- Next recommended phase: R6 — Plan enumeration and trace clustering.
 

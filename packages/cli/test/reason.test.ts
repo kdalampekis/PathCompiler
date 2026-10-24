@@ -215,6 +215,52 @@ describe("pathcompiler reason reachable", () => {
     });
   });
 
+  it("lists the minimal changes that would enable a goal, changing nothing", async () => {
+    const out = await directory();
+    const output = await runCli([
+      "reason",
+      "enable",
+      "clients.created",
+      fixture,
+      "--context",
+      "role=unlisted",
+      "--out",
+      out,
+    ]);
+    expect(output).toContain(
+      "clients.created under role=unlisted: 2 minimal change set(s) of size 1:",
+    );
+    expect(output).toMatch(
+      /- Context fixes role = unlisted: Run with a different role: the witness uses role = (admin|editor)\./,
+    );
+    expect(output).toContain(
+      "- clients.create.submit requires role = admin or role = editor: Let clients.create.submit run without requiring role = admin or role = editor",
+    );
+    expect(output).toContain("Diagnostic only: nothing was changed.");
+    const report = JSON.parse(
+      await readFile(
+        path.join(out, "reports/reasoning/enablement/clients.created.json"),
+        "utf8",
+      ),
+    );
+    expect(report).toMatchObject({
+      type: "enablement_result",
+      result: { status: "enableable", minimum: true, diagnosticOnly: true },
+    });
+    expect(
+      await runCli([
+        "reason",
+        "enable",
+        "clients.created",
+        fixture,
+        "--context",
+        "role=editor",
+        "--out",
+        out,
+      ]),
+    ).toContain("clients.created under role=editor: ALREADY REACHABLE");
+  }, 120_000);
+
   it("reports a permission change semantically and feeds it into proposals", async () => {
     const cwd = await directory();
     const env = {

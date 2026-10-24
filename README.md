@@ -1075,6 +1075,21 @@ accuracy and edit distance. On the fixture, reasoning reaches recall 1
 against 0.6, but its terminals are weaker, so the baseline remains the default.
 See [ADR 0055](docs/decisions/0055-reasoning-assisted-workflow-discovery.md).
 
+## Minimal enablement (`reason enable`)
+
+```bash
+pnpm pathcompiler reason enable clients.created fixtures/next-demo --context role=unlisted
+```
+
+`reason enable` lists every smallest set of policy changes that would make an
+unreachable goal reachable: a context value (run as another role, turn a flag
+on), or a role, flag or permission guard to drop. Each set comes with a
+witness and source evidence. On the fixture, a viewer can be enabled to
+create a client in two ways: change the role, or drop the submit handler's
+role guard. It is diagnostic only and changes nothing. Library:
+`findMinimalEnablement` in `@pathcompiler/reasoner-core`. See
+[ADR 0059](docs/decisions/0059-minimal-correction-sets.md).
+
 ## Reasoning evaluation cases (`fixtures/reasoning/`)
 
 ```bash
@@ -1382,7 +1397,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/enable/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

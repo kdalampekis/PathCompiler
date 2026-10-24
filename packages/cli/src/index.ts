@@ -93,11 +93,14 @@ import {
   type ExplanationResult,
   evaluatePlan,
   type FormalValue,
+  findMinimalEnablement,
+  type MinimalEnablementResult,
   type PlanEvaluation,
   type PlanResult,
   type ProductProperty,
   type PropertyResult,
   propertiesFromInvariants,
+  type ReachabilityQuery,
   type ReachabilityResult,
 } from "@pathcompiler/reasoner-core";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
@@ -192,7 +195,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
-       pathcompiler reason reachable|plan|why-not <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler reason reachable|plan|why-not|enable <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
 
 Writes .pathcompiler/graph/source-graph.json and .pathcompiler/reports/scan-summary.json
 under the current working directory, or under the directory supplied to --out.
@@ -260,7 +263,10 @@ model coverage and uncertainties it reports. reason plan returns the shortest pl
 (canonical among equals) and compares it with workflows/<capability>.yaml when that
 approved workflow exists, writing reports/reasoning/plans/<goal>.json. reason why-not explains an
 unreachable goal with a minimal set of product constraints (context, preconditions, initial
-state) and their source evidence, writing reports/reasoning/why-not/<goal>.json.
+state) and their source evidence, writing reports/reasoning/why-not/<goal>.json. reason enable
+lists the minimal sets of policy changes (a context value, or a role, flag or permission guard)
+that would make an unreachable goal reachable, each with a witness, writing
+reports/reasoning/enablement/<goal>.json. It is diagnostic only and never changes anything.
 eval scores PathCompiler itself against the reviewed ground truth in <directory>/eval
 (capabilities.json, workflows/*.yaml, impact-cases/*.json, queries.json): capability
 precision/recall, workflow discovery (recall, entrypoints, major steps, terminals, invented
@@ -1218,6 +1224,73 @@ export async function runCli(
   return `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.\nArtifacts: ${output}\nDiagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).\n`;
 }
 
+async function runEnable(
+  goal: string,
+  model: FormalProductModel,
+  query: ReachabilityQuery,
+  extraction: Awaited<ReturnType<typeof loadReasoningModel>>["extraction"],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const solver = await createZ3SolverProvider();
+  let result: MinimalEnablementResult;
+  try {
+    result = await findMinimalEnablement(
+      createProductReasoner(solver),
+      model,
+      query,
+      {
+        ...(query.maxDepth === undefined ? {} : { maxDepth: query.maxDepth }),
+        ...(query.timeoutMs === undefined
+          ? {}
+          : { timeoutMs: query.timeoutMs }),
+      },
+    );
+  } finally {
+    await solver.close();
+  }
+  const report = {
+    schemaVersion: 1,
+    type: "enablement_result",
+    result,
+    ...(extraction
+      ? {
+          modelCoverage: extraction.coverage,
+          uncertainties: extraction.uncertainties,
+        }
+      : {}),
+  };
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = `reports/reasoning/enablement/${goal}.json`;
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  const given =
+    Object.entries(result.context)
+      .map(([name, value]) => `${name}=${value}`)
+      .join(", ") || "any context";
+  const lines = [
+    result.status === "already-reachable"
+      ? `${goal} under ${given}: ALREADY REACHABLE; nothing to enable.`
+      : result.status === "not-enableable"
+        ? `${goal} under ${given}: NOT ENABLEABLE by context, role, flag or permission changes; the block is structural (see reason why-not).`
+        : result.status === "unknown"
+          ? `${goal} under ${given}: UNKNOWN${result.limit ? ` (${result.limit})` : ""}.`
+          : `${goal} under ${given}: ${result.corrections.length} minimal change set(s) of size ${result.corrections[0]?.changes.length}${result.minimum ? "" : " (minimality not guaranteed)"}:`,
+  ];
+  for (const [index, correction] of result.corrections.entries()) {
+    lines.push(`  ${index + 1}.`);
+    for (const change of correction.changes)
+      lines.push(`     - ${change.description}: ${change.suggestion}`);
+  }
+  lines.push(
+    "Diagnostic only: nothing was changed. Permission and flag changes are a product decision.",
+    `Report: ${path.join(output, file)}`,
+  );
+  return `${lines.join("\n")}\n`;
+}
+
 async function runReason(
   positionals: string[],
   values: Values,
@@ -1225,12 +1298,15 @@ async function runReason(
 ): Promise<string> {
   const mode = positionals[1];
   if (
-    (mode !== "reachable" && mode !== "plan" && mode !== "why-not") ||
+    (mode !== "reachable" &&
+      mode !== "plan" &&
+      mode !== "why-not" &&
+      mode !== "enable") ||
     positionals.length < 3 ||
     positionals.length > 4
   )
     throw new Error(
-      "Expected: pathcompiler reason reachable|plan|why-not <goal> [directory]. Use --help for options.",
+      "Expected: pathcompiler reason reachable|plan|why-not|enable <goal> [directory]. Use --help for options.",
     );
   const goal = positionals[2] as string;
   const integer = (flag: string, value: string | undefined) => {
@@ -1253,6 +1329,8 @@ async function runReason(
     ...(maxDepth === undefined ? {} : { maxDepth }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   };
+  if (mode === "enable")
+    return runEnable(goal, model, query, extraction, values, cwd);
   const solver = await createZ3SolverProvider();
   let result: ReachabilityResult | PlanResult | ExplanationResult;
   try {
@@ -1945,7 +2023,7 @@ function applyConfig(
         ? "reachability"
         : sub === "plan"
           ? "planning"
-          : sub === "why-not"
+          : sub === "why-not" || sub === "enable"
             ? "unsat_explanations"
             : sub === "verify"
               ? "property_checking"
