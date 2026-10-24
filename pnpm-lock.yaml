@@ -317,6 +317,9 @@ importers:
       "@pathcompiler/test-miner-playwright":
         specifier: workspace:*
         version: link:../test-miner-playwright
+      "@pathcompiler/trace-clustering":
+        specifier: workspace:*
+        version: link:../trace-clustering
       "@pathcompiler/workflow-compiler":
         specifier: workspace:*
         version: link:../workflow-compiler
@@ -390,6 +393,9 @@ importers:
       "@pathcompiler/test-miner-playwright":
         specifier: workspace:*
         version: link:../test-miner-playwright
+      "@pathcompiler/trace-clustering":
+        specifier: workspace:*
+        version: link:../trace-clustering
       "@pathcompiler/workflow-compiler":
         specifier: workspace:*
         version: link:../workflow-compiler
@@ -1044,6 +1050,30 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+
+  packages/trace-clustering:
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/formal-abstraction":
+        specifier: workspace:*
+        version: link:../formal-abstraction
+      "@pathcompiler/reasoner-core":
+        specifier: workspace:*
+        version: link:../reasoner-core
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
 
   packages/ui:
     dependencies:

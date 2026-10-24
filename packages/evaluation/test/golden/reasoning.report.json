@@ -1,15 +1,15 @@
 {
   "family": "reasoning",
-  "total": 17,
-  "passed": 17,
+  "total": 18,
+  "passed": 18,
   "verdictAccuracy": 1,
   "unknownRate": 0,
   "planAccuracy": 1,
   "diffAccuracy": 1,
   "byCategory": {
     "alternative-plans": {
-      "total": 2,
-      "passed": 2
+      "total": 3,
+      "passed": 3
     },
     "commit-diffs": {
       "total": 2,
@@ -44,6 +44,14 @@
       "passed": true,
       "unknown": false,
       "detail": "plan navigate.nav_clients → clients.deactivate.open_clients_deactivate → clients.deactivate.confirm"
+    },
+    {
+      "id": "alternative-plans.deactivate-variants",
+      "category": "alternative-plans",
+      "kind": "alternatives",
+      "passed": true,
+      "unknown": false,
+      "detail": "2 variants from 10 plans: clients.deactivate → client.deactivate.confirm; clients.edit → client.form.deactivate → client.deactivate.confirm"
     },
     {
       "id": "alternative-plans.deactivate-without-row-button",

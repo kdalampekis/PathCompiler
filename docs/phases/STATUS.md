@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after R5)
+## Current state (updated 2026-10-24, after R6)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R6** (next), C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R7** (next), O10, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **R6 — Plan enumeration and trace clustering** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **R7 — Optimization** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3265,5 +3265,65 @@ No runtime code changed, so the e2e suite was not rerun.
 
 - No solver-internal MaxSAT: that belongs to R7 (optimization), and the
   model-level search is provider-neutral.
-- Next recommended phase: R6 — Plan enumeration and trace clustering.
+- R6 followed.
+
+---
+
+## Phase R6 — Plan enumeration and trace clustering
+
+Complete — verified locally on 2026-10-24.
+
+- **`ProductReasoner.enumeratePlans`.** It returns every plan from the
+  shortest length up to `slack` more steps (default 1), stopping at `limit`
+  (default 50). Plans come in deterministic order through canonical
+  minimization and blocking clauses, and each reaches the goal only at its
+  last step. The canonical binary search is now shared with `findPlan`.
+- **New `@pathcompiler/trace-clustering`.** `traceSignature` and
+  `clusterTraces` group plans by goal, entry capability, route family and
+  major actions. Navigation links, form-field order and detours are ignored;
+  hand-overs between capabilities are kept.
+- **CLI:** `pathcompiler reason alternatives <goal> [directory] [--slack]
+  [--limit]`, gated by `reasoning.enumeration`.
+- **Reasoning cases** gain an `alternatives` kind (18/18 pass).
+- Recorded in ADR 0060.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 407 tests passed across 62 suites (4 clustering and enumeration tests, a CLI alternatives test, 1 new reasoning case) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- signature invariance under navigation links, field order and abandoned
+  dialogs;
+- hand-overs and separate route families;
+- the duplicate rate;
+- the fixture's two Deactivate variants with their shortest
+  representatives;
+- determinism, length order, first-reach and uniqueness;
+- the limit, impossible results and argument validation;
+- the CLI output and option checks.
+
+### Errors found during the phase
+
+- The first enumeration returned plans that reached the goal and then kept
+  acting, and split the same route by the link used (10 "variants" for 2
+  real ones). A first-reach constraint and route families from navigation
+  state fixed both.
+- The first detour rule kept dialogs abandoned by navigating away, and
+  treated variables unknown to the trace as changed. It now looks at the
+  navigation after a segment, and defaults unknown booleans to false.
+- The determinism test first compared solver stats, which include timing.
+  It now compares everything else.
+- A doc-edit script failed against Biome-wrapped code and wrote nothing. It
+  was rerun against the current text.
+
+### Scope notes
+
+- At slack 2 a third, genuine but pointless variant appears (fill in the
+  name, then deactivate instead). The default slack stays 1.
+- Next recommended phase: R7 — Optimization.
 

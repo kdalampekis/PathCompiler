@@ -261,6 +261,44 @@ describe("pathcompiler reason reachable", () => {
     ).toContain("clients.created under role=editor: ALREADY REACHABLE");
   }, 120_000);
 
+  it("lists alternative ways to reach a goal, grouped into variants", async () => {
+    const out = await directory();
+    const output = await runCli([
+      "reason",
+      "alternatives",
+      "clients.deactivated",
+      fixture,
+      "--context",
+      "role=editor",
+      "--out",
+      out,
+    ]);
+    expect(output).toMatch(
+      /^clients\.deactivated under role=editor: 2 variant\(s\) from \d+ plans of 3–4 steps; \d+% of plans repeat a variant\./,
+    );
+    expect(output).toContain(
+      "  1. clients.deactivate → client.deactivate.confirm (",
+    );
+    expect(output).toContain(
+      "  2. clients.edit → client.form.deactivate → client.deactivate.confirm (",
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(
+          out,
+          "reports/reasoning/alternatives/clients.deactivated.json",
+        ),
+        "utf8",
+      ),
+    );
+    expect(report.variants.variants).toHaveLength(2);
+    await expect(
+      runCli(["reason", "plan", "clients.created", fixture, "--slack", "2"]),
+    ).rejects.toThrow(
+      "--slack and --limit are only supported by reason alternatives.",
+    );
+  }, 300_000);
+
   it("reports a permission change semantically and feeds it into proposals", async () => {
     const cwd = await directory();
     const env = {

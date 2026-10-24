@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "alternative-plans.deactivate-variants",
+  "category": "alternative-plans",
+  "fixture": "next-demo",
+  "description": "Enumerating every plan up to one step longer than the shortest yields exactly two business variants: the row button, and Deactivate inside the Edit Client dialog.",
+  "query": {
+    "kind": "alternatives",
+    "goal": "clients.deactivated",
+    "context": {
+      "role": "editor"
+    },
+    "expectedVariants": [
+      ["clients.deactivate", "client.deactivate.confirm"],
+      ["clients.edit", "client.form.deactivate", "client.deactivate.confirm"]
+    ]
+  }
+}

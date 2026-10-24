@@ -43,6 +43,7 @@
     "@pathcompiler/solver-z3": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*",
+    "@pathcompiler/trace-clustering": "workspace:*",
     "@pathcompiler/workflow-compiler": "workspace:*",
     "@pathcompiler/workflow-discovery": "workspace:*",
     "@pathcompiler/workflow-ir": "workspace:*",

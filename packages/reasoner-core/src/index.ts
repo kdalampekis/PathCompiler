@@ -108,6 +108,16 @@ export type PlanResult =
       proof: { method: "k-induction"; depth: number };
     })
   | (ResultBase & { status: "unknown"; reason: UnknownReason; detail: string });
+export type PlanEnumerationResult =
+  | (ResultBase & {
+      status: "found";
+      /** Ordered by length, then action sequence. */
+      plans: Plan[];
+      shortest: number;
+      maxLength: number;
+      complete: boolean;
+    })
+  | Exclude<PlanResult, { status: "found" }>;
 /** A named model constraint an explanation can cite (reasoning spec §24–§25). */
 export type ConstraintProvenance = {
   /** Stable within a model: `context:<variable>`, `precondition:<action>#<n>`, `initial#<n>`. */
@@ -152,6 +162,16 @@ export interface ProductReasoner {
     model: FormalProductModel,
     query: ReachabilityQuery,
   ): Promise<PlanResult>;
+  /**
+   * Every plan from the shortest length up to `slack` more steps, each
+   * canonical, found with blocking constraints (reasoning spec §27). Stops
+   * at `limit` plans (`complete: false`). Cluster them with
+   * `@pathcompiler/trace-clustering` to get business variants.
+   */
+  enumeratePlans(
+    model: FormalProductModel,
+    query: ReachabilityQuery & { slack?: number; limit?: number },
+  ): Promise<PlanEnumerationResult>;
   /** Reachability plus, when unreachable, the constraints responsible and their source evidence. */
   explainUnreachable(
     model: FormalProductModel,
@@ -515,7 +535,8 @@ const variable = (name: string): SolverTerm => ({ op: "var", name });
 /** Bounded model checking for witnesses, k-induction for unreachability proofs. */
 export function createProductReasoner(solver: SolverProvider): ProductReasoner {
   return {
-    checkReachability: (model, query) => search(solver, model, query, "reach"),
+    checkReachability: (model, query) =>
+      search(solver, model, query, "reach") as Promise<ReachabilityResult>,
     // Explain mode always attaches an explanation to unreachable results.
     explainUnreachable: (model, query) =>
       search(solver, model, query, "explain") as Promise<ExplanationResult>,
@@ -523,54 +544,111 @@ export function createProductReasoner(solver: SolverProvider): ProductReasoner {
       compare(solver, before, after, options ?? {}),
     verifyProperty: (model, property, options) =>
       verify(solver, model, property, options ?? {}),
-    async findPlan(input, query) {
-      const result = await search(solver, input, query, "plan");
+    findPlan: (input, query) => findPlan(solver, input, query),
+    async enumeratePlans(input, query) {
+      const { slack = 1, limit = 50, ...reach } = query;
+      if (!Number.isInteger(slack) || slack < 0 || slack > 10)
+        throw new ReasoningQueryError("slack must be an integer from 0 to 10.");
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+        throw new ReasoningQueryError(
+          "limit must be an integer from 1 to 1000.",
+        );
+      const first = await findPlan(solver, input, reach);
+      if (first.status !== "found") return first;
+      const shortest = first.plan.length;
+      const result = await search(
+        solver,
+        input,
+        { ...reach, maxDepth: shortest + slack },
+        "enumerate",
+        { minDepth: shortest, limit },
+      );
       if (result.status === "unknown") return result;
-      if (result.status === "unreachable")
-        return { ...result, status: "impossible" };
-      const { trace, ...common } = result;
+      if (result.status !== "enumerated")
+        throw new Error("Internal reasoning error: enumeration did not run.");
+      const { traces, complete, ...common } = result;
       const model = parseFormalModel(input);
-      const actions = new Map(model.actions.map((item) => [item.id, item]));
-      const steps = trace.actions.map((step) => ({
-        ...step,
-        cost: actions.get(step.actionId)?.cost ?? 1,
-      }));
-      const slice = sliceFormalModel(model, [
-        ...formalExprVariables(
-          (model.goals.find((item) => item.id === trace.goal) as FormalGoal)
-            .condition,
-        ),
-        ...Object.keys(result.context),
-      ]);
-      const uniform =
-        new Set(slice.actions.map((item) => item.cost ?? 1)).size <= 1;
       return {
         ...common,
         status: "found",
-        plan: {
-          goal: trace.goal,
-          context: trace.context,
-          initialState: trace.initialState,
-          steps,
-          length: steps.length,
-          cost: steps.reduce((total, step) => total + step.cost, 0),
-        },
-        optimality: {
-          length: "optimal",
-          cost: uniform ? "optimal" : "not-guaranteed",
-        },
+        plans: traces.map((trace) => toPlan(model, trace)),
+        shortest,
+        maxLength: shortest + slack,
+        complete,
       };
     },
   };
 }
 
+function toPlan(model: FormalProductModel, trace: ReasoningTrace): Plan {
+  const actions = new Map(model.actions.map((item) => [item.id, item]));
+  const steps = trace.actions.map((step) => ({
+    ...step,
+    cost: actions.get(step.actionId)?.cost ?? 1,
+  }));
+  return {
+    goal: trace.goal,
+    context: trace.context,
+    initialState: trace.initialState,
+    steps,
+    length: steps.length,
+    cost: steps.reduce((total, step) => total + step.cost, 0),
+  };
+}
+
+async function findPlan(
+  solver: SolverProvider,
+  input: FormalProductModel,
+  query: ReachabilityQuery,
+): Promise<PlanResult> {
+  const result = (await search(
+    solver,
+    input,
+    query,
+    "plan",
+  )) as ReachabilityResult;
+  if (result.status === "unknown") return result;
+  if (result.status === "unreachable")
+    return { ...result, status: "impossible" };
+  const { trace, ...common } = result;
+  const model = parseFormalModel(input);
+  const slice = sliceFormalModel(model, [
+    ...formalExprVariables(
+      (model.goals.find((item) => item.id === trace.goal) as FormalGoal)
+        .condition,
+    ),
+    ...Object.keys(result.context),
+  ]);
+  const uniform =
+    new Set(slice.actions.map((item) => item.cost ?? 1)).size <= 1;
+  return {
+    ...common,
+    status: "found",
+    plan: toPlan(model, trace),
+    optimality: {
+      length: "optimal",
+      cost: uniform ? "optimal" : "not-guaranteed",
+    },
+  };
+}
+
+type Enumeration = ResultBase & {
+  status: "enumerated";
+  traces: ReasoningTrace[];
+  /** False when `limit` stopped enumeration before the length bound. */
+  complete: boolean;
+};
 async function search(
   solver: SolverProvider,
   input: FormalProductModel,
   query: ReachabilityQuery,
-  mode: "reach" | "plan" | "explain",
-): Promise<ReachabilityResult | ExplanationResult> {
-  const canonical = mode === "plan";
+  mode: "reach" | "plan" | "explain" | "enumerate",
+  enumeration: { minDepth: number; limit: number } = {
+    minDepth: 0,
+    limit: 0,
+  },
+): Promise<ReachabilityResult | ExplanationResult | Enumeration> {
+  const canonical = mode === "plan" || mode === "enumerate";
   const labeled = mode === "explain";
   const started = Date.now();
   // Normalized order makes action indices, and so canonical plans, independent of authoring order.
@@ -1054,41 +1132,102 @@ async function search(
     };
   };
 
+  // Binary-search the smallest action index per step (the lexicographically
+  // smallest sequence). The current model always realizes `high`, so
+  // `values` stays consistent.
+  const smallest = async (
+    start: Record<string, SolverValue>,
+    depth: number,
+    extra: SolverTerm[],
+  ): Promise<
+    { values: Record<string, SolverValue> } | { stopped: ReachabilityResult }
+  > => {
+    const witness = declare(depth);
+    let values = start;
+    const fixed: SolverTerm[] = [];
+    for (let index = 0; index < depth; index += 1) {
+      const choice = variable(`a${index}`);
+      let low = 0;
+      let high = values[`a${index}`] as number;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        const probe = await run({
+          variables: witness.declarations,
+          assertions: [
+            ...witness.constraints,
+            initialTerm,
+            expr(goal.condition, depth),
+            ...extra,
+            ...fixed,
+            { op: "le", left: choice, right: int(middle) },
+          ],
+        });
+        if ("goal" in probe) return { stopped: probe };
+        if (probe.status === "sat") {
+          values = probe.model;
+          high = values[`a${index}`] as number;
+        } else low = middle + 1;
+      }
+      fixed.push(eq(choice, int(low)));
+    }
+    return { values };
+  };
+
+  if (mode === "enumerate") {
+    // Every plan of each length in order, smallest first; a blocking clause
+    // excludes each found action sequence before the next solve. Plans reach
+    // the goal only at their last step, so no plan is an earlier one plus
+    // trailing actions.
+    const traces: ReasoningTrace[] = [];
+    for (let depth = enumeration.minDepth; depth <= maxDepth; depth += 1) {
+      bound = depth;
+      const witness = declare(depth);
+      const blocks: SolverTerm[] = Array.from({ length: depth }, (_, index) =>
+        not(expr(goal.condition, index)),
+      );
+      for (;;) {
+        if (traces.length >= enumeration.limit)
+          return { ...base(), status: "enumerated", traces, complete: false };
+        const found = await run({
+          variables: witness.declarations,
+          assertions: [
+            ...witness.constraints,
+            initialTerm,
+            expr(goal.condition, depth),
+            ...blocks,
+          ],
+        });
+        if ("goal" in found) return found;
+        if (found.status === "unsat") break;
+        const minimized = await smallest(found.model, depth, blocks);
+        if ("stopped" in minimized) return minimized.stopped;
+        const { values } = minimized;
+        traces.push(decode(values, depth));
+        blocks.push(
+          not(
+            and(
+              Array.from({ length: depth }, (_, index) =>
+                eq(variable(`a${index}`), int(values[`a${index}`] as number)),
+              ),
+            ),
+          ),
+        );
+        if (depth === 0) break;
+      }
+    }
+    return { ...base(), status: "enumerated", traces, complete: true };
+  }
+
   for (let depth = 0; depth <= maxDepth; depth += 1) {
     bound = depth;
-    const witness = declare(depth);
     const found = await run(baseProblem(depth));
     if ("goal" in found) return found;
     if (found.status === "sat") {
       let values = found.model;
       if (canonical) {
-        // Binary-search the smallest action index per step. The current
-        // model always realizes `high`, so `values` stays consistent.
-        const fixed: SolverTerm[] = [];
-        for (let index = 0; index < depth; index += 1) {
-          const choice = variable(`a${index}`);
-          let low = 0;
-          let high = values[`a${index}`] as number;
-          while (low < high) {
-            const middle = Math.floor((low + high) / 2);
-            const probe = await run({
-              variables: witness.declarations,
-              assertions: [
-                ...witness.constraints,
-                initialTerm,
-                expr(goal.condition, depth),
-                ...fixed,
-                { op: "le", left: choice, right: int(middle) },
-              ],
-            });
-            if ("goal" in probe) return probe;
-            if (probe.status === "sat") {
-              values = probe.model;
-              high = values[`a${index}`] as number;
-            } else low = middle + 1;
-          }
-          fixed.push(eq(choice, int(low)));
-        }
+        const minimized = await smallest(values, depth, []);
+        if ("stopped" in minimized) return minimized.stopped;
+        values = minimized.values;
       }
       return {
         ...base(),
@@ -1694,7 +1833,12 @@ async function verify(
   }
   const query = { goal: TARGET, context: property.context ?? {}, ...options };
   // Canonical search: counterexamples are shortest and stable across solver versions.
-  const result = await search(solver, augmented, query, "plan");
+  const result = (await search(
+    solver,
+    augmented,
+    query,
+    "plan",
+  )) as ReachabilityResult;
   const { goal: _goal, model: _model, ...common } = result;
   const ref: ProductPropertyRef = {
     id: property.id,

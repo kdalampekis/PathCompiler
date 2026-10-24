@@ -25,6 +25,7 @@ import {
 import type { SolverProvider } from "@pathcompiler/solver-provider";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
+import { clusterTraces } from "@pathcompiler/trace-clustering";
 import { z } from "zod";
 
 /**
@@ -90,6 +91,14 @@ export const ReasoningCaseSchema = z.strictObject({
       expected: z.enum(["holds", "violated"]),
       /** For violations: the action the counterexample must end with. */
       lastAction: z.string().min(1).optional(),
+    }),
+    z.strictObject({
+      kind: z.literal("alternatives"),
+      goal,
+      context: context.optional(),
+      slack: z.number().int().min(0).max(10).optional(),
+      /** Major actions of every expected business variant, in order. */
+      expectedVariants: z.array(z.array(z.string().min(1)).min(1)).min(1),
     }),
     z.strictObject({
       kind: z.literal("enablement"),
@@ -159,7 +168,7 @@ export type ReasoningEvaluationReport = {
   /** Reachability, explanation, property and enablement answers that match the truth. */
   verdictAccuracy: number;
   unknownRate: number;
-  /** Plans that replay to the goal with no invalid action and visit the expected targets. */
+  /** Plans that replay correctly and visit the expected targets, and enumerations that yield the expected variants. */
   planAccuracy: number;
   diffAccuracy: number;
   byCategory: Record<string, { total: number; passed: number }>;
@@ -321,6 +330,28 @@ export async function evaluateReasoningCases(
         `${answer.status}${last ? ` ending with ${last}` : ""} (expected ${query.expected})`,
         answer.status === "unknown",
       );
+    } else if (query.kind === "alternatives") {
+      const answer = await reasoner.enumeratePlans(extracted, {
+        goal: query.goal,
+        ...(query.context ? { context: query.context } : {}),
+        ...(query.slack === undefined ? {} : { slack: query.slack }),
+      });
+      if (answer.status !== "found") {
+        result(
+          false,
+          `no plans: ${answer.status}`,
+          answer.status === "unknown",
+        );
+        continue;
+      }
+      const variants = clusterTraces(answer.plans).variants.map((variant) =>
+        variant.signature.majorActions.join(" → "),
+      );
+      const wanted = query.expectedVariants.map((list) => list.join(" → "));
+      result(
+        answer.complete && JSON.stringify(variants) === JSON.stringify(wanted),
+        `${variants.length} variants from ${answer.plans.length} plans: ${variants.join("; ")}`,
+      );
     } else if (query.kind === "enablement") {
       const answer = await findMinimalEnablement(reasoner, extracted, {
         goal: query.goal,
@@ -399,6 +430,7 @@ export async function evaluateReasoningCases(
     "property",
     "enablement",
   ]);
+  const plans = of(["plan", "alternatives"]);
   return {
     family: "reasoning",
     total: results.length,
@@ -415,8 +447,8 @@ export async function evaluateReasoningCases(
             results.length,
           ),
     planAccuracy: ratio(
-      of(["plan"]).filter((entry) => entry.passed).length,
-      of(["plan"]).length,
+      plans.filter((entry) => entry.passed).length,
+      plans.length,
     ),
     diffAccuracy: ratio(
       of(["diff"]).filter((entry) => entry.passed).length,

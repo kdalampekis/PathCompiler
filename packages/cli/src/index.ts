@@ -95,6 +95,7 @@ import {
   type FormalValue,
   findMinimalEnablement,
   type MinimalEnablementResult,
+  type PlanEnumerationResult,
   type PlanEvaluation,
   type PlanResult,
   type ProductProperty,
@@ -113,6 +114,7 @@ import {
 import { createZ3SolverProvider } from "@pathcompiler/solver-z3";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
+import { clusterTraces } from "@pathcompiler/trace-clustering";
 import {
   COMPILER_VERSION,
   compileWorkflows,
@@ -195,6 +197,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler reason alternatives <goal> [directory] [--context <name=value> ...] [--slack <0-10>] [--limit <1-1000>] [--json] [--out <directory>]
        pathcompiler reason reachable|plan|why-not|enable <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
 
 Writes .pathcompiler/graph/source-graph.json and .pathcompiler/reports/scan-summary.json
@@ -267,6 +270,10 @@ state) and their source evidence, writing reports/reasoning/why-not/<goal>.json.
 lists the minimal sets of policy changes (a context value, or a role, flag or permission guard)
 that would make an unreachable goal reachable, each with a witness, writing
 reports/reasoning/enablement/<goal>.json. It is diagnostic only and never changes anything.
+reason alternatives enumerates every plan from the shortest length up to --slack (default 1)
+more steps, each reaching the goal only at its last step, and groups them into business variants
+(goal, entry capability, route family, major actions; navigation links, field order and detours
+do not count), writing reports/reasoning/alternatives/<goal>.json.
 eval scores PathCompiler itself against the reviewed ground truth in <directory>/eval
 (capabilities.json, workflows/*.yaml, impact-cases/*.json, queries.json): capability
 precision/recall, workflow discovery (recall, entrypoints, major steps, terminals, invented
@@ -341,6 +348,7 @@ const CLI_OPTIONS = {
   release: { type: "string" },
   compare: { type: "boolean" },
   "explain-model-context": { type: "boolean" },
+  slack: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -422,6 +430,8 @@ export async function runCli(
   if (positionals[0] === "observe") return runObserve(positionals, values, cwd);
   if (values["explain-model-context"] && positionals[0] !== "scan")
     throw new Error("--explain-model-context is only supported by scan.");
+  if (values.slack !== undefined && positionals[0] !== "reason")
+    throw new Error("--slack is only supported by reason alternatives.");
   if (values.compare && positionals[0] !== "eval")
     throw new Error("--compare is only supported by eval workflow-discovery.");
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
@@ -1224,6 +1234,54 @@ export async function runCli(
   return `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.\nArtifacts: ${output}\nDiagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).\n`;
 }
 
+async function runAlternatives(
+  goal: string,
+  model: FormalProductModel,
+  query: ReachabilityQuery & { slack?: number; limit?: number },
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const solver = await createZ3SolverProvider();
+  let result: PlanEnumerationResult;
+  try {
+    result = await createProductReasoner(solver).enumeratePlans(model, query);
+  } finally {
+    await solver.close();
+  }
+  const clustering =
+    result.status === "found" ? clusterTraces(result.plans) : undefined;
+  const report = {
+    schemaVersion: 1,
+    type: "alternatives_result",
+    result,
+    ...(clustering ? { variants: clustering } : {}),
+  };
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = `reports/reasoning/alternatives/${goal}.json`;
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  const given =
+    Object.entries(query.context ?? {})
+      .map(([name, value]) => `${name}=${value}`)
+      .join(", ") || "any context";
+  if (result.status !== "found" || !clustering)
+    return `${goal} under ${given}: ${result.status === "impossible" ? "IMPOSSIBLE (no plan)" : `UNKNOWN (${result.status === "unknown" ? result.reason : ""})`}.\nReport: ${path.join(output, file)}\n`;
+  const lines = [
+    `${goal} under ${given}: ${clustering.variants.length} variant(s) from ${result.plans.length} plans of ${result.shortest}–${result.maxLength} steps${result.complete ? "" : " (limit reached; more plans exist)"}; ${Math.round(clustering.duplicateRate * 100)}% of plans repeat a variant.`,
+  ];
+  for (const [index, variant] of clustering.variants.entries()) {
+    const plan = result.plans[variant.representative];
+    lines.push(
+      `  ${index + 1}. ${variant.signature.majorActions.join(" → ")} (${variant.members.length} plan${variant.members.length === 1 ? "" : "s"}; entry ${variant.signature.entryCapability ?? "none"})`,
+      `     shortest: ${plan?.steps.map((step) => step.actionId).join(" → ")}`,
+    );
+  }
+  lines.push(`Report: ${path.join(output, file)}`);
+  return `${lines.join("\n")}\n`;
+}
+
 async function runEnable(
   goal: string,
   model: FormalProductModel,
@@ -1301,12 +1359,20 @@ async function runReason(
     (mode !== "reachable" &&
       mode !== "plan" &&
       mode !== "why-not" &&
-      mode !== "enable") ||
+      mode !== "enable" &&
+      mode !== "alternatives") ||
     positionals.length < 3 ||
     positionals.length > 4
   )
     throw new Error(
-      "Expected: pathcompiler reason reachable|plan|why-not|enable <goal> [directory]. Use --help for options.",
+      "Expected: pathcompiler reason reachable|plan|why-not|enable|alternatives <goal> [directory]. Use --help for options.",
+    );
+  if (
+    mode !== "alternatives" &&
+    (values.slack !== undefined || values.limit !== undefined)
+  )
+    throw new Error(
+      "--slack and --limit are only supported by reason alternatives.",
     );
   const goal = positionals[2] as string;
   const integer = (flag: string, value: string | undefined) => {
@@ -1331,6 +1397,21 @@ async function runReason(
   };
   if (mode === "enable")
     return runEnable(goal, model, query, extraction, values, cwd);
+  if (mode === "alternatives") {
+    const slack = integer("slack", values.slack);
+    const limit = integer("limit", values.limit);
+    return runAlternatives(
+      goal,
+      model,
+      {
+        ...query,
+        ...(slack === undefined ? {} : { slack }),
+        ...(limit === undefined ? {} : { limit }),
+      },
+      values,
+      cwd,
+    );
+  }
   const solver = await createZ3SolverProvider();
   let result: ReachabilityResult | PlanResult | ExplanationResult;
   try {
@@ -2025,11 +2106,13 @@ function applyConfig(
           ? "planning"
           : sub === "why-not" || sub === "enable"
             ? "unsat_explanations"
-            : sub === "verify"
-              ? "property_checking"
-              : sub === "diff"
-                ? "semantic_diff"
-                : undefined;
+            : sub === "alternatives"
+              ? "enumeration"
+              : sub === "verify"
+                ? "property_checking"
+                : sub === "diff"
+                  ? "semantic_diff"
+                  : undefined;
     if (capability && !reasoningEnabled(config, capability))
       refuse(
         `reason ${sub}`,
