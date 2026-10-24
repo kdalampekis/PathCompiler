@@ -418,6 +418,9 @@ describe("pathcompiler CLI", () => {
       expect(efficiency).toContain(
         "  clients.created ((none)): 1 completions; too few to compute a ratio",
       );
+      expect(await run(["observe", "transitions"])).toContain(
+        "  P(reach clients.created from session start) = 1 (insufficient data on some path)",
+      );
       expect(await run(["observe", "drop-offs", fixture])).toMatch(
         /^Drop-offs \(hypotheses; rates need 30\+ attempts/,
       );

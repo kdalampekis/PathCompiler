@@ -95,6 +95,7 @@ import {
 } from "@pathcompiler/model-provider";
 import {
   buildObservedGraph,
+  buildTransitionModel,
   computeWorkflowAnalytics,
   readEventDirectory,
 } from "@pathcompiler/observed-graph";
@@ -220,7 +221,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler mcp [--out <directory>]
        pathcompiler mcp-reasoning [directory] [--model <json-file>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
-       pathcompiler observe graph|workflows [--release <id>] [--json] [--out <directory>]
+       pathcompiler observe graph|workflows|transitions [--release <id>] [--json] [--out <directory>]
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler observe efficiency [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler observe drop-offs [directory] [--model <json-file>] [--json] [--out <directory>]
@@ -296,6 +297,10 @@ observe efficiency divides the median observed path cost (navigations plus targe
 per completion) by the cheapest formal path for each goal and observed role (Path Efficiency
 Ratio; 30+ completions), lists friction at 1.5x or more, and writes reports/path-efficiency.json.
 It is a friction signal, not proof that the shortest path is the best experience.
+observe transitions estimates a Markov chain from the observed graph: per-state transition
+probabilities with 95% Wilson intervals (30+ outgoing transitions to count as sufficient) and the
+probability of eventually reaching each goal from session start, written to
+reports/transition-model.json. Estimates describe observed users, not what the product allows.
 observe drop-offs counts, per goal and observed role, sessions that activated one of the goal's
 controls but never reached it, and where they stopped. Points where 20%+ of attempts end (with
 30+ attempts) are friction, listed with the valid formal routes (R6 variants) that avoid them.
@@ -2237,13 +2242,13 @@ async function runObserve(
   const dropOffs = positionals[1] === "drop-offs";
   if (
     !(
-      ((positionals[1] === "graph" || positionals[1] === "workflows") &&
+      (["graph", "workflows", "transitions"].includes(positionals[1] ?? "") &&
         positionals.length === 2) ||
       ((reconcile || efficiency || dropOffs) && positionals.length <= 3)
     )
   )
     throw new Error(
-      "Expected: pathcompiler observe graph|workflows, or observe reconcile|efficiency|drop-offs [directory]. Use --help for options.",
+      "Expected: pathcompiler observe graph|workflows|transitions, or observe reconcile|efficiency|drop-offs [directory]. Use --help for options.",
     );
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   // Same project name `serve` uses for ingestion.
@@ -2388,6 +2393,25 @@ async function runObserve(
     projectId: project,
     ...(values.release === undefined ? {} : { release: values.release }),
   });
+  if (positionals[1] === "transitions") {
+    const model = buildTransitionModel(graph);
+    const target = "reports/transition-model.json";
+    await writeArtifacts(output, [
+      [target, `${JSON.stringify(model, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(model, null, 2)}\n`;
+    const thin = model.states.filter(
+      (state) => !state.absorbing && !state.sufficient,
+    ).length;
+    return `${[
+      `Transition model (estimates) from ${model.sessions} sessions${values.release ? ` (release ${values.release})` : ""}: ${model.states.length} states; ${thin} below ${model.minTransitions} outgoing transitions.`,
+      ...model.goals.map(
+        (goal) =>
+          `  P(reach ${goal.goal} from session start) = ${goal.probability}${goal.sufficient ? "" : " (insufficient data on some path)"}`,
+      ),
+      `Report: ${path.join(output, target)}`,
+    ].join("\n")}\n`;
+  }
   const file = "reports/observed-graph.json";
   await writeArtifacts(output, [[file, `${JSON.stringify(graph, null, 2)}\n`]]);
   if (values.json) return `${JSON.stringify(graph, null, 2)}\n`;

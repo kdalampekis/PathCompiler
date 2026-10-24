@@ -704,7 +704,7 @@ Minimum sample sizes come before any conclusion.
 - **Prerequisites:** O7 + R7 (O9); O7 + R6 (O10). **Status:** O9 ✅ complete (2026-10-24): `computePathEfficiency`, `observe efficiency`, ADR 0066. O10 ✅ complete (2026-10-24): `analyzeDropOffs`, `observe drop-offs`, ADR 0067.
 
 #### O11 — Probabilistic transition model · O12 — Release behavior diff
-- **Prerequisites:** O6 (O11); O7 + R11 + release binding (O12). **Status:** 🟢 unblocked; **O11 recommended next** (§7).
+- **Prerequisites:** O6 (O11); O7 + R11 + release binding (O12). **Status:** O11 ✅ complete (2026-10-24): `buildTransitionModel` (DTMC, Wilson intervals, goal reach estimates), `observe transitions`, ADR 0068. O12 🟢 unblocked; **recommended next phase** (§7).
 
 #### O13 — Existing analytics adapters
 - ⏸ Deferred until the native event model is stable in real use.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **O11** (next), O12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅ | P1 (C9) · P2 (P1) · P3 (P0 ✅, C8 ✅: unblocked) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (P0 ✅, C8 ✅: unblocked) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O12** (next), P5, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅ | P1 (C9) · P2 (P1) · P3 (P0 ✅, C8 ✅: unblocked) · IG (I0) · I1 (IG) · I2 (I1) · I4 (P0 ✅, C8 ✅: unblocked) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,15 +839,21 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: O11 — Probabilistic transition model
+## 7. Next implementation phase: O12 — Release behavior diff
 
-O10 is complete. `observe drop-offs` finds where attempts at a goal end and
-lists the valid formal routes that avoid high-friction points (ADR 0067).
+O11 is complete. `observe transitions` estimates a Markov chain from
+observed behavior, with Wilson intervals, sample thresholds and goal reach
+probabilities (ADR 0068). P5 is unblocked.
 
-O11 comes next. It estimates empirical transition probabilities from the
-observed transition graph (O6), with sample thresholds and uncertainty. That
-unblocks P5 (probabilistic model checking). The planned order after O11:
-1. O12, C4;
+O12 comes next. It compares formal and observed behavior across releases:
+- R11's formal semantic diff between the release commits;
+- observed goal reach, completion and path changes between release-filtered
+  chains (O7 and O11);
+- each change classified as expected (both changed), unexplained (observed
+  only) or not yet observed (formal only).
+
+The planned order after O12:
+1. C4;
 2. C9;
 3. P1–P5 and P-RV;
 4. the I track.
