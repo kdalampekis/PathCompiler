@@ -341,7 +341,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Tests/evals:** provider contract tests; secret-stripping tests.
 - **Runtime change:** No.
 - **Unblocks:** C9, optional semantic assistance in R1, I1 wording.
-- **Status:** 🟢 unblocked.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### C6 — Alpha validation on two unrelated Next.js repositories
 - **Objective:** Run discovery → approval → compile → impact on two real
@@ -609,7 +609,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
   labelled rule strength.
 - **Runtime change:** No.
 - **Unblocks:** P1, P3, P4, I0.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `@pathcompiler/probabilistic-evidence` (`fuseEvidence`, `ConfidenceAssessment`, `EvidenceConflict`, `calibrate`, `graphEvidenceItems`), ADR 0056.
 
 #### P1 — Probabilistic semantic interpretation
 - **Prerequisites:** P0, R1, C9 (model-produced candidate interpretations). **Packages:** `probabilistic-evidence`, `formal-abstraction`.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **P0** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅ | C9 (C5) · R6 (C7) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O9 (R7) · O10 (R6) · I0 (P0) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **C5** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repos), C7, C8, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅ | C9 (C5) · R6 (C7) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P5 (O11) · O9 (R7) · O10 (R6) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,27 +839,23 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: P0 — Probabilistic Evidence Model
+## 7. Next implementation phase: C5 — Model provider boundary
 
-R-WI is complete, so the reasoning MVP has a measured payoff. On the fixture,
-reasoning-assisted discovery reaches recall 1 against 0.6 and applicability 1
-against 0, with no invented steps. Its terminals are weaker (0.4 against
-0.667), so the baseline stays the default (ADR 0055).
+P0 is complete. `@pathcompiler/probabilistic-evidence` fuses supporting and
+contradicting evidence with documented tier rules, never by averaging.
+Conflicts such as stale documentation are first-class, and a probability is
+reported only from a calibration table (ADR 0056).
 
-P0 comes next because it unblocks the most work: I0 (and with it IG and the
-recommendation chain), P1–P4 and P-RV. It adds `probabilistic-evidence`, with
-supporting and contradicting claims per evidence class, a
-`ConfidenceAssessment` that keeps rule strength apart from calibrated
-probability, explicit conflicts and documented fusion rules (no averaging).
-The planned order after P0:
-1. C5;
-2. C7;
-3. R5, R6, R7, R9, R10, R12;
-4. C8, O11, O12, C4;
-5. C9;
-6. P1–P5 and P-RV;
-7. O9 and O10;
-8. the I track.
+C5 comes next. It adds the model-provider interface, a no-op and a fixture
+provider, privacy preprocessing and `scan --explain-model-context`, and
+unblocks C9 and with it P1. The planned order after C5:
+1. C7;
+2. R5, R6, R7, R9, R10, R12;
+3. C8, O11, O12, C4;
+4. C9;
+5. P1–P5 and P-RV;
+6. O9 and O10;
+7. the I track (I0 is now unblocked).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

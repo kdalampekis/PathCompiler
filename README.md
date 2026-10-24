@@ -1068,6 +1068,20 @@ accuracy and edit distance. On the fixture, reasoning reaches recall 1
 against 0.6, but its terminals are weaker, so the baseline remains the default.
 See [ADR 0055](docs/decisions/0055-reasoning-assisted-workflow-discovery.md).
 
+## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
+
+`fuseEvidence(claim, items)` combines supporting and contradicting evidence
+(browser, observed, test, formal, static, PR, commit, docs, historical prose,
+model hypotheses):
+- the most reliable tier for the claim type decides, and each class counts
+  once, so evidence is never averaged;
+- disagreement becomes an explicit conflict, for example old docs saying
+  "Archive Client" become a likely stale artifact;
+- the score is rule strength; a probability is reported only from a
+  calibration table with enough labeled samples.
+
+See [ADR 0056](docs/decisions/0056-probabilistic-evidence-model.md).
+
 ## Formal Product Model (reasoning track)
 
 ```ts
@@ -1321,6 +1335,7 @@ Analysis packages:
 | `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `instrumentGuide`, `FetchTransport`, `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
 | `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
 | `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
+| `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |

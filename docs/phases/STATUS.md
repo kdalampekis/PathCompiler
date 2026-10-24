@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after R-WI)
+## Current state (updated 2026-10-23, after P0)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **P0** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **C5** (next), O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI; I3 (mode 5, Evaluate); C1, C2, C3; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **P0 — Probabilistic Evidence Model** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI; P0; I3 (mode 5, Evaluate); C1, C2, C3; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **C5 — Model provider boundary** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3012,5 +3012,62 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 - The strategy lives in a new package, not in `workflow-discovery` as the
   roadmap suggested, to keep baseline discovery solver-free and avoid a
   package cycle (ADR 0055).
-- Next recommended phase: P0 — Probabilistic Evidence Model.
+- P0 followed.
+
+---
+
+## Phase P0 — Probabilistic Evidence Model
+
+Complete — verified locally on 2026-10-23.
+
+- **New `@pathcompiler/probabilistic-evidence`:**
+  - `EvidenceClaim` (existence, behavior, naming or permission; binary or
+    categorical) and `EvidenceItem` (class, stance or value, `current`,
+    reference);
+  - `fuseEvidence`, which returns a `ConfidenceAssessment` with status,
+    canonical value, band, a rule-strength score, a separate probability,
+    the deciding tier, conflicts and rationale;
+  - `calibrate` and `graphEvidenceItems`.
+- **Reliability.** Ten evidence classes, each with a tier per claim type.
+  Fusion takes the strongest tier and counts each class once; it never
+  averages. Conflicts are first-class objects: likely stale artifact,
+  unsupported hypothesis, unexplained contradiction (caps the band at
+  medium), or unresolved.
+- **Probability.** It is reported only from a calibration table with enough
+  labeled samples for the band, and is otherwise `null` with the reason.
+- Recorded in ADR 0056.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 384 tests passed across 57 suites (7 evidence-fusion tests) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- the spec's deactivate-vs-archive example on the fixture's graph evidence,
+  plus a PR and old docs: canonical `clients.deactivate`, high, with a
+  stale-artifact conflict;
+- no averaging: twenty model items do not outvote a test, and twenty docs
+  items do not outvote a contradicting test;
+- one class counted once;
+- contested, unexplained and non-current contradictions;
+- claim-type-dependent reliability;
+- calibration thresholds;
+- order independence and input validation.
+
+### Errors found during the phase
+
+- A contested categorical claim first listed every item as supporting. The
+  split now follows stance for binary claims and value for categorical ones.
+
+### Scope notes
+
+- No CLI surface, and `probabilistic.evidence_fusion` is not read yet. The
+  first consumer is P1 or I0.
+- No calibration table is built from the fixture: five capabilities are too
+  few samples (ADR 0056).
+- Next recommended phase: C5 — Model provider boundary.
 
