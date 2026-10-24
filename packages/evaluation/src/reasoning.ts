@@ -16,7 +16,9 @@ import { discoverCapabilities } from "@pathcompiler/capability-engine";
 import { buildFormalModel } from "@pathcompiler/formal-abstraction";
 import type { FormalProductModel } from "@pathcompiler/formal-model";
 import {
+  type CapabilityEvidence,
   createProductReasoner,
+  detectDeadFeatures,
   evaluatePlan,
   findMinimalEnablement,
   formalExprVariables,
@@ -61,6 +63,7 @@ export const ReasoningCaseSchema = z.strictObject({
         file: z.string().min(1),
         from: z.string().min(1),
         to: z.string(),
+        all: z.boolean().optional(),
       }),
     )
     .optional(),
@@ -91,6 +94,11 @@ export const ReasoningCaseSchema = z.strictObject({
       expected: z.enum(["holds", "violated"]),
       /** For violations: the action the counterexample must end with. */
       lastAction: z.string().min(1).optional(),
+    }),
+    z.strictObject({
+      kind: z.literal("dead-features"),
+      /** Every expected finding as `<kind>:<capability or action>`, sorted. */
+      expectedFindings: z.array(z.string().min(1)),
     }),
     z.strictObject({
       kind: z.literal("alternatives"),
@@ -176,11 +184,15 @@ export type ReasoningEvaluationReport = {
 };
 
 const exec = promisify(execFile);
+type Extracted = {
+  model: FormalProductModel;
+  capabilities: CapabilityEvidence[];
+};
 async function extractModel(
   fixture: string,
   edits: ReasoningCase["edits"],
   caseId: string,
-): Promise<FormalProductModel> {
+): Promise<Extracted> {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "pathcompiler-reasoning-"),
   );
@@ -207,7 +219,12 @@ async function extractModel(
         throw new Error(
           `Reasoning case ${caseId}: ${edit.file} does not contain the edit's "from" text.`,
         );
-      await writeFile(target, content.replace(edit.from, edit.to));
+      await writeFile(
+        target,
+        edit.all
+          ? content.replaceAll(edit.from, edit.to)
+          : content.replace(edit.from, edit.to),
+      );
     }
     // A fixed snapshot commit: case results do not depend on the checkout.
     const project = await readSourceProject(directory, {
@@ -218,11 +235,18 @@ async function extractModel(
       analyzeNextProject(project).graph,
     );
     const capabilities = discoverCapabilities(mined.graph);
-    return buildFormalModel(
-      capabilities.graph,
-      capabilities.report,
-      mined.report,
-    ).model;
+    return {
+      model: buildFormalModel(
+        capabilities.graph,
+        capabilities.report,
+        mined.report,
+      ).model,
+      capabilities: capabilities.report.capabilities.map((item) => ({
+        id: item.id,
+        uiEvidence: item.inferences.map((entry) => entry.nodeId),
+        apiEvidence: item.apiEvidence.map((entry) => entry.nodeId),
+      })),
+    };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -238,19 +262,19 @@ export async function evaluateReasoningCases(
   solver: SolverProvider,
 ): Promise<ReasoningEvaluationReport> {
   const reasoner = createProductReasoner(solver);
-  const models = new Map<string, Promise<FormalProductModel>>();
+  const models = new Map<string, Promise<Extracted>>();
   const model = (item: ReasoningCase, edited: boolean) => {
     const fixture = path.resolve(root, "..", item.fixture);
     const edits = edited ? (item.edits ?? []) : [];
     const key = `${fixture}\u0000${JSON.stringify(edits)}`;
     if (!models.has(key))
       models.set(key, extractModel(fixture, edits, item.id));
-    return models.get(key) as Promise<FormalProductModel>;
+    return models.get(key) as Promise<Extracted>;
   };
   const results: ReasoningCaseResult[] = [];
   for (const item of cases) {
     const query = item.query;
-    const extracted = await model(item, true);
+    const { model: extracted, capabilities } = await model(item, true);
     const result = (passed: boolean, detail: string, unknown = false) =>
       results.push({
         id: item.id,
@@ -330,6 +354,25 @@ export async function evaluateReasoningCases(
         `${answer.status}${last ? ` ending with ${last}` : ""} (expected ${query.expected})`,
         answer.status === "unknown",
       );
+    } else if (query.kind === "dead-features") {
+      const report = await detectDeadFeatures(reasoner, extracted, {
+        capabilities,
+      });
+      const found = report.findings
+        .map((finding) =>
+          finding.kind === "dead-action"
+            ? `dead-action:${finding.actionId}`
+            : finding.kind === "unknown"
+              ? `unknown:${finding.subject}`
+              : `${finding.kind}:${finding.capabilityId}`,
+        )
+        .sort(compare);
+      result(
+        JSON.stringify(found) ===
+          JSON.stringify([...query.expectedFindings].sort(compare)),
+        found.length === 0 ? "no findings" : found.join("; "),
+        found.some((item) => item.startsWith("unknown:")),
+      );
     } else if (query.kind === "alternatives") {
       const answer = await reasoner.enumeratePlans(extracted, {
         goal: query.goal,
@@ -382,7 +425,7 @@ export async function evaluateReasoningCases(
         answer.status === "unknown",
       );
     } else {
-      const before = await model(item, false);
+      const { model: before } = await model(item, false);
       const comparison = await reasoner.compareModels(before, extracted, {
         goals: query.goals,
         otherValue: "unlisted",
@@ -429,6 +472,7 @@ export async function evaluateReasoningCases(
     "explanation",
     "property",
     "enablement",
+    "dead-features",
   ]);
   const plans = of(["plan", "alternatives"]);
   return {

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "unreachable.no-dead-features",
+  "category": "unreachable",
+  "fixture": "next-demo",
+  "description": "On the unmodified fixture every capability is reachable and every capability action can fire.",
+  "query": {
+    "kind": "dead-features",
+    "expectedFindings": []
+  }
+}

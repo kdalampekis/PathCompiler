@@ -24,6 +24,7 @@ import {
   testRunFromPlaywrightJson,
 } from "@pathcompiler/candidate-evaluator";
 import {
+  type CapabilityDiscoveryReport,
   CapabilityExpectationsSchema,
   discoverCapabilities,
   discoverProductSurfaces,
@@ -97,6 +98,8 @@ import {
   costsFromCategories,
   createProductReasoner,
   DEFAULT_COST_WEIGHTS,
+  type DeadFeatureReport,
+  detectDeadFeatures,
   type ExplanationResult,
   evaluatePlan,
   type FormalValue,
@@ -207,6 +210,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler reason dead-features [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler reason optimize <goal> [directory] [--context <name=value> ...] [--weight <category=n> ...] [--json] [--out <directory>]
        pathcompiler reason alternatives <goal> [directory] [--context <name=value> ...] [--slack <0-10>] [--limit <1-1000>] [--json] [--out <directory>]
        pathcompiler reason reachable|plan|why-not|enable <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -288,7 +292,10 @@ do not count), writing reports/reasoning/alternatives/<goal>.json. reason optimi
 cheapest plan under per-category costs (--weight navigation|entry|field|submit|confirmation|back|
 cancel|other=n; default 1 each), proven optimal when every plan that could be cheaper was
 enumerated, ranks the variants by cost and reports UX metrics as hypotheses, writing
-reports/reasoning/optimize/<goal>.json.
+reports/reasoning/optimize/<goal>.json. reason dead-features checks every capability goal and
+capability action for reachability and flags unreachable capabilities, actions that can never be
+performed, and capabilities whose UI and API exist with no formal transitions (potential model or
+product gaps), each with possible causes, writing reports/reasoning/dead-features.json.
 eval scores PathCompiler itself against the reviewed ground truth in <directory>/eval
 (capabilities.json, workflows/*.yaml, impact-cases/*.json, queries.json): capability
 precision/recall, workflow discovery (recall, entrypoints, major steps, terminals, invented
@@ -476,6 +483,8 @@ export async function runCli(
     return runEvaluate(positionals, values, cwd);
   if (positionals[0] === "reason" && positionals[1] === "diff")
     return runSemanticDiff(positionals, values, cwd);
+  if (positionals[0] === "reason" && positionals[1] === "dead-features")
+    return runDeadFeatures(positionals, values, cwd);
   if (positionals[0] === "reason" && positionals[1] === "verify")
     return runVerify(positionals, values, cwd);
   if (positionals[0] === "reason") return runReason(positionals, values, cwd);
@@ -1252,6 +1261,63 @@ export async function runCli(
   return `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.\nArtifacts: ${output}\nDiagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).\n`;
 }
 
+async function runDeadFeatures(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length > 3)
+    throw new Error(
+      "Expected: pathcompiler reason dead-features [directory]. Use --help for options.",
+    );
+  const { model, capabilities } = await loadReasoningModel(
+    positionals[2],
+    values,
+    cwd,
+  );
+  const solver = await createZ3SolverProvider();
+  let report: DeadFeatureReport;
+  try {
+    report = await detectDeadFeatures(createProductReasoner(solver), model, {
+      ...(capabilities
+        ? {
+            capabilities: capabilities.capabilities.map((item) => ({
+              id: item.id,
+              uiEvidence: item.inferences.map((entry) => entry.nodeId),
+              apiEvidence: item.apiEvidence.map((entry) => entry.nodeId),
+            })),
+          }
+        : {}),
+    });
+  } finally {
+    await solver.close();
+  }
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = "reports/reasoning/dead-features.json";
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  const lines = [
+    `Checked ${report.checked.goals} capability goals, ${report.checked.actions} actions${capabilities ? ` and ${report.checked.capabilities} discovered capabilities` : ""}: ${report.findings.length === 0 ? "no dead features or missing transitions." : `${report.findings.length} candidate finding(s) to review:`}`,
+  ];
+  for (const finding of report.findings)
+    lines.push(
+      finding.kind === "unreachable-capability"
+        ? `  UNREACHABLE CAPABILITY ${finding.capabilityId}: no context reaches ${finding.goal} (${finding.constraints.map((item) => item.description).join("; ")}). Possible causes: ${finding.possibleCauses.join(", ")}.`
+        : finding.kind === "dead-action"
+          ? `  DEAD ACTION ${finding.actionId}${finding.semanticTarget ? ` [${finding.semanticTarget}]` : ""}: can never be performed. Possible causes: ${finding.possibleCauses.join(", ")}.`
+          : finding.kind === "missing-transition"
+            ? `  POTENTIAL MODEL OR PRODUCT GAP ${finding.capabilityId}: UI (${finding.uiEvidence.join(", ")}) and API (${finding.apiEvidence.join(", ")}) exist, but no formal trace connects them. Possible causes: ${finding.possibleCauses.join(", ")}.`
+            : `  UNKNOWN ${finding.subject}: ${finding.reason}.`,
+    );
+  lines.push(
+    "Findings are candidates for review, not verdicts.",
+    `Report: ${path.join(output, file)}`,
+  );
+  return `${lines.join("\n")}\n`;
+}
+
 const COST_CATEGORIES = [
   "navigation",
   "entry",
@@ -1705,6 +1771,7 @@ async function loadReasoningModel(
 ): Promise<{
   model: FormalProductModel;
   extraction: ReturnType<typeof buildFormalModel> | undefined;
+  capabilities?: CapabilityDiscoveryReport;
 }> {
   if (values.model !== undefined) {
     if (directory !== undefined || values.exclude !== undefined)
@@ -1735,7 +1802,11 @@ async function loadReasoningModel(
     capabilities.report,
     mined.report,
   );
-  return { model: extraction.model, extraction };
+  return {
+    model: extraction.model,
+    extraction,
+    capabilities: capabilities.report,
+  };
 }
 
 /** `name=value` entries, typed by the model's variable declarations. */
@@ -2234,7 +2305,7 @@ function applyConfig(
   const [command, sub] = positionals;
   if (command === "reason") {
     const capability =
-      sub === "reachable"
+      sub === "reachable" || sub === "dead-features"
         ? "reachability"
         : sub === "plan"
           ? "planning"

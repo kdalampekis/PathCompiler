@@ -1123,6 +1123,24 @@ interactions, confirmations) are reported as hypotheses, not redesign
 instructions. See
 [ADR 0061](docs/decisions/0061-cost-optimal-plans-and-ux-metrics.md).
 
+## Dead features (`reason dead-features`)
+
+```bash
+pnpm pathcompiler reason dead-features fixtures/next-demo
+```
+
+`reason dead-features` checks every capability goal (with any context) and
+every capability action. It flags three kinds of candidate:
+- an unreachable capability, with the proving constraints and possible
+  causes (an impossible permission combination, a stale flag, dead code, or
+  an incomplete model);
+- an action that can never be performed;
+- a capability whose button and API exist but which no formal trace
+  connects (a potential model or product gap).
+
+Findings are candidates for review. See
+[ADR 0062](docs/decisions/0062-dead-features-and-missing-transitions.md).
+
 ## Reasoning evaluation cases (`fixtures/reasoning/`)
 
 ```bash
@@ -1431,7 +1449,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/enable/alternatives/optimize/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

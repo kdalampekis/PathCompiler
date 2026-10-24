@@ -355,6 +355,27 @@ describe("pathcompiler reason reachable", () => {
     ).rejects.toThrow("--weight is only supported by reason optimize.");
   }, 300_000);
 
+  it("checks for dead features and missing transitions", async () => {
+    const out = await directory();
+    const output = await runCli([
+      "reason",
+      "dead-features",
+      fixture,
+      "--out",
+      out,
+    ]);
+    expect(output).toMatch(
+      /^Checked 6 capability goals, \d+ actions and 6 discovered capabilities: no dead features or missing transitions\./,
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(out, "reports/reasoning/dead-features.json"),
+        "utf8",
+      ),
+    );
+    expect(report).toMatchObject({ meaning: "candidate", findings: [] });
+  }, 300_000);
+
   it("reports a permission change semantically and feeds it into proposals", async () => {
     const cwd = await directory();
     const env = {

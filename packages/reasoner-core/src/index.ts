@@ -21,6 +21,7 @@ import { compareText } from "@pathcompiler/source-model";
 import type { EvidenceRef } from "@pathcompiler/workflow-ir";
 import { z } from "zod";
 
+export * from "./dead-features.js";
 export * from "./enablement.js";
 export * from "./optimize.js";
 

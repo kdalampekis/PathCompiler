@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "unreachable.orphaned-archive-capability",
+  "category": "unreachable",
+  "fixture": "next-demo",
+  "description": "Seeded gap: the Archive Plan test clicks a target that no longer exists, so no test session completes archiving. The capability still has a button and an API handler, so it is reported as a missing transition.",
+  "edits": [
+    {
+      "file": "tests/workflows.spec.ts",
+      "from": "data-pathcompiler=\"plans.archive\"",
+      "to": "data-pathcompiler=\"plans.archive-old\"",
+      "all": true
+    }
+  ],
+  "query": {
+    "kind": "dead-features",
+    "expectedFindings": ["missing-transition:plans.archive"]
+  }
+}

@@ -558,14 +558,14 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Prerequisites:** R1, R2. **Packages:** `reasoner-core`.
 - **Acceptance:** an orphaned fixture capability is flagged with candidate causes.
 - **Runtime change:** No. **Unblocks:** I0 findings (`product_dead_end`).
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-24): `detectDeadFeatures` (unreachable capabilities, dead actions, missing transitions; candidates with causes), `reason dead-features`, seeded orphan case, ADR 0062. Product dead ends (§71) deferred.
 
 #### R10 — Automated test generation
 - **Prerequisites:** R3, R8. **Packages:** new generator writing to
   `.pathcompiler/generated-tests/` (review required).
 - **Acceptance:** generated positive and negative Playwright candidates run
   against the fixture.
-- **Runtime change:** No. **Status:** 🟢 unblocked.
+- **Runtime change:** No. **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### R11 — Commit semantic reasoning
 - **Objective:** Formal model diff, reachability and applicability diff, and
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **R9** (next), O9, O10, O11, O12, R7, R9, R10, R12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅ | P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **R10** (next), O9, O10, O11, O12, R12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅ | P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,17 +839,18 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: R9 — Dead features and missing transitions
+## 7. Next implementation phase: R10 — Automated test generation
 
-R7 is complete. `findCheapestPlan` ranks plans by category costs and proves
-the optimum with a cost lower bound over incremental enumeration.
-`uxMetrics` reports per-plan metrics as hypotheses, and `reason optimize`
-shows the recommended path, the ranked variants and the metrics (ADR 0061).
+R9 is complete. `detectDeadFeatures` flags unreachable capabilities, actions
+that can never fire, and capabilities with UI and API but no formal
+transitions, each as a candidate with possible causes. `reason dead-features`
+exposes it, and a seeded orphan case is flagged (ADR 0062).
 
-R9 comes next. It finds dead features (capabilities whose goal no context can
-reach) and missing transitions (states with no way out, or targets without
-actions), reported with evidence. The planned order after R9:
-1. R10, R12;
+R10 comes next. It generates positive Playwright candidates from plans and
+negative ones from proofs and counterexamples into
+`.pathcompiler/generated-tests/` (review required), and runs them against the
+fixture. The planned order after R10:
+1. R12;
 2. C8, O9, O10, O11, O12, C4;
 3. C9;
 4. P1–P5 and P-RV;
