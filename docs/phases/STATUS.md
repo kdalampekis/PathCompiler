@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after R6)
+## Current state (updated 2026-10-24, after R7)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **R7** (next), O10, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **R9** (next), O9, O10, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **R7 — Optimization** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **R9 — Dead features and missing transitions** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3325,5 +3325,67 @@ The tests cover:
 
 - At slack 2 a third, genuine but pointless variant appears (fill in the
   name, then deactivate instead). The default slack stays 1.
-- Next recommended phase: R7 — Optimization.
+- R7 followed.
+
+---
+
+## Phase R7 — Optimization (cost-optimal plans, UX metrics)
+
+Complete — verified locally on 2026-10-24.
+
+- **Costs.** `actionCategories` (formal-abstraction) maps coverage rules to
+  navigation, entry, field, submit, confirmation, back, cancel and other.
+  `costsFromCategories` applies weights; the default is 1 each, and weights
+  must be positive.
+- **`findCheapestPlan`** (reasoner-core) enumerates plans one length at a
+  time. It is proven optimal once the best cost ÷ the cheapest action is
+  within the searched length. Otherwise it returns the best plan found as
+  `not-guaranteed`, with the reason. Plans come with per-step costs and the
+  full ranking. `enumeratePlans` gained `minLength` for incremental runs.
+- **`uxMetrics`** reports actions, page transitions, fields, dialog
+  interactions, confirmations, witness context, variants and effort, with
+  rule-based hypotheses (`meaning: "hypothesis"`).
+- **CLI:** `pathcompiler reason optimize <goal> [directory] [--weight
+  category=n …]`, gated by `reasoning.optimization`.
+- Recorded in ADR 0061.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 412 tests passed across 63 suites (4 optimization tests, a CLI optimize test) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- categories of extracted actions, and weight validation;
+- unit costs: the cheapest plan is the shortest and proven optimal;
+- an expensive row button: the longer Edit Client path wins (cost 4) and is
+  proven optimal;
+- the ranking order;
+- UX metrics for Create Plan (5 actions, 1 transition, 2 fields) and the
+  two-variant hypothesis for Deactivate;
+- the CLI output, the report and option errors.
+
+### Errors found during the phase
+
+- The first `findCheapestPlan` enumerated up to the full cost bound in one
+  pass and timed out (`unknown`). It now enumerates one length at a time and
+  stops as soon as the optimum is proven.
+- On a timeout at longer lengths, it first returned `unknown` although good
+  plans were already known. It now keeps the best plan as `not-guaranteed`.
+- Ranked plan steps carried the model's default cost, not the weighted cost.
+- `reason optimize` first listed only the cheapest variant (the proof stops
+  early). It now also enumerates alternatives with slack 1 for the ranking.
+- Two edit scripts failed against Biome-reformatted code and wrote nothing.
+  Both were rerun against the current text.
+- **Open (ISSUES_LOG #28):** heavy weights make the proof bound loose and
+  slow.
+
+### Scope notes
+
+- No solver-side OMT: the solver language has no integer sums, and
+  enumeration is exact at current sizes (ADR 0061).
+- Next recommended phase: R9 — Dead features and missing transitions.
 

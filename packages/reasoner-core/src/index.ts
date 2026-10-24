@@ -22,6 +22,7 @@ import type { EvidenceRef } from "@pathcompiler/workflow-ir";
 import { z } from "zod";
 
 export * from "./enablement.js";
+export * from "./optimize.js";
 
 export type FormalValue = boolean | number | string;
 export type FormalStateSnapshot = Record<string, FormalValue>;
@@ -170,7 +171,12 @@ export interface ProductReasoner {
    */
   enumeratePlans(
     model: FormalProductModel,
-    query: ReachabilityQuery & { slack?: number; limit?: number },
+    query: ReachabilityQuery & {
+      slack?: number;
+      limit?: number;
+      /** Skip plans shorter than this (for incremental enumeration). */
+      minLength?: number;
+    },
   ): Promise<PlanEnumerationResult>;
   /** Reachability plus, when unreachable, the constraints responsible and their source evidence. */
   explainUnreachable(
@@ -546,7 +552,7 @@ export function createProductReasoner(solver: SolverProvider): ProductReasoner {
       verify(solver, model, property, options ?? {}),
     findPlan: (input, query) => findPlan(solver, input, query),
     async enumeratePlans(input, query) {
-      const { slack = 1, limit = 50, ...reach } = query;
+      const { slack = 1, limit = 50, minLength, ...reach } = query;
       if (!Number.isInteger(slack) || slack < 0 || slack > 10)
         throw new ReasoningQueryError("slack must be an integer from 0 to 10.");
       if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
@@ -561,7 +567,7 @@ export function createProductReasoner(solver: SolverProvider): ProductReasoner {
         input,
         { ...reach, maxDepth: shortest + slack },
         "enumerate",
-        { minDepth: shortest, limit },
+        { minDepth: Math.max(shortest, minLength ?? shortest), limit },
       );
       if (result.status === "unknown") return result;
       if (result.status !== "enumerated")

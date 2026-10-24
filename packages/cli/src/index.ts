@@ -50,7 +50,10 @@ import {
   loadReasoningCases,
   reasoningStrategy,
 } from "@pathcompiler/evaluation";
-import { buildFormalModel } from "@pathcompiler/formal-abstraction";
+import {
+  actionCategories,
+  buildFormalModel,
+} from "@pathcompiler/formal-abstraction";
 import {
   type FormalProductModel,
   parseFormalModel,
@@ -89,12 +92,18 @@ import {
   readEventDirectory,
 } from "@pathcompiler/observed-graph";
 import {
+  type CheapestPlanResult,
+  type CostWeights,
+  costsFromCategories,
   createProductReasoner,
+  DEFAULT_COST_WEIGHTS,
   type ExplanationResult,
   evaluatePlan,
   type FormalValue,
+  findCheapestPlan,
   findMinimalEnablement,
   type MinimalEnablementResult,
+  type Plan,
   type PlanEnumerationResult,
   type PlanEvaluation,
   type PlanResult,
@@ -103,6 +112,7 @@ import {
   propertiesFromInvariants,
   type ReachabilityQuery,
   type ReachabilityResult,
+  uxMetrics,
 } from "@pathcompiler/reasoner-core";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import {
@@ -197,6 +207,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler reason optimize <goal> [directory] [--context <name=value> ...] [--weight <category=n> ...] [--json] [--out <directory>]
        pathcompiler reason alternatives <goal> [directory] [--context <name=value> ...] [--slack <0-10>] [--limit <1-1000>] [--json] [--out <directory>]
        pathcompiler reason reachable|plan|why-not|enable <goal> [directory] [--context <name=value> ...] [--max-depth <n>] [--timeout-ms <n>] [--model <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
 
@@ -273,7 +284,11 @@ reports/reasoning/enablement/<goal>.json. It is diagnostic only and never change
 reason alternatives enumerates every plan from the shortest length up to --slack (default 1)
 more steps, each reaching the goal only at its last step, and groups them into business variants
 (goal, entry capability, route family, major actions; navigation links, field order and detours
-do not count), writing reports/reasoning/alternatives/<goal>.json.
+do not count), writing reports/reasoning/alternatives/<goal>.json. reason optimize finds the
+cheapest plan under per-category costs (--weight navigation|entry|field|submit|confirmation|back|
+cancel|other=n; default 1 each), proven optimal when every plan that could be cheaper was
+enumerated, ranks the variants by cost and reports UX metrics as hypotheses, writing
+reports/reasoning/optimize/<goal>.json.
 eval scores PathCompiler itself against the reviewed ground truth in <directory>/eval
 (capabilities.json, workflows/*.yaml, impact-cases/*.json, queries.json): capability
 precision/recall, workflow discovery (recall, entrypoints, major steps, terminals, invented
@@ -349,6 +364,7 @@ const CLI_OPTIONS = {
   compare: { type: "boolean" },
   "explain-model-context": { type: "boolean" },
   slack: { type: "string" },
+  weight: { type: "string", multiple: true },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -430,6 +446,8 @@ export async function runCli(
   if (positionals[0] === "observe") return runObserve(positionals, values, cwd);
   if (values["explain-model-context"] && positionals[0] !== "scan")
     throw new Error("--explain-model-context is only supported by scan.");
+  if (values.weight !== undefined && positionals[0] !== "reason")
+    throw new Error("--weight is only supported by reason optimize.");
   if (values.slack !== undefined && positionals[0] !== "reason")
     throw new Error("--slack is only supported by reason alternatives.");
   if (values.compare && positionals[0] !== "eval")
@@ -1234,6 +1252,117 @@ export async function runCli(
   return `Scanned ${result.summary.filesAnalyzed} source files: ${result.summary.nodes} nodes, ${result.summary.edges} edges.\nArtifacts: ${output}\nDiagnostics: ${result.summary.diagnostics.length} (see scan-summary.json).\n`;
 }
 
+const COST_CATEGORIES = [
+  "navigation",
+  "entry",
+  "field",
+  "submit",
+  "confirmation",
+  "back",
+  "cancel",
+  "other",
+] as const;
+async function runOptimize(
+  goal: string,
+  model: FormalProductModel,
+  query: ReachabilityQuery,
+  extraction: Awaited<ReturnType<typeof loadReasoningModel>>["extraction"],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const weights: CostWeights = {};
+  for (const entry of values.weight ?? []) {
+    const [category, raw] = entry.split("=");
+    const value = Number(raw);
+    if (
+      !COST_CATEGORIES.includes(category as (typeof COST_CATEGORIES)[number]) ||
+      !(value > 0)
+    )
+      throw new Error(
+        `--weight expects <category>=<positive number> with a category from ${COST_CATEGORIES.join(", ")}; got ${entry}.`,
+      );
+    weights[category as (typeof COST_CATEGORIES)[number]] = value;
+  }
+  // Categories come from the extraction; a supplied model has none, so
+  // every action is "other".
+  const categories = extraction ? actionCategories(extraction) : {};
+  const costs = costsFromCategories(model, categories, weights);
+  const solver = await createZ3SolverProvider();
+  let result: CheapestPlanResult;
+  let alternatives: PlanEnumerationResult | undefined;
+  try {
+    const reasoner = createProductReasoner(solver);
+    result = await findCheapestPlan(reasoner, model, { ...query, costs });
+    // Alternatives for the ranking: every plan up to one step longer.
+    if (result.status === "found")
+      alternatives = await reasoner.enumeratePlans(model, {
+        ...query,
+        slack: 1,
+      });
+  } finally {
+    await solver.close();
+  }
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = `reports/reasoning/optimize/${goal}.json`;
+  const given =
+    Object.entries(query.context ?? {})
+      .map(([name, value]) => `${name}=${value}`)
+      .join(", ") || "any context";
+  if (result.status !== "found") {
+    const report = { schemaVersion: 1, type: "optimization_result", result };
+    await writeArtifacts(output, [
+      [file, `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+    return `${goal} under ${given}: ${result.status === "impossible" ? "IMPOSSIBLE (no plan)" : `UNKNOWN (${result.status === "unknown" ? result.reason : ""})`}.\nReport: ${path.join(output, file)}\n`;
+  }
+  // Variants (the cheapest plan plus every plan up to one step longer),
+  // ranked by their cheapest member.
+  const pool = [
+    result.plan,
+    ...(alternatives?.status === "found" ? alternatives.plans : []),
+  ];
+  const costOf = (plan: Plan) =>
+    plan.steps.reduce((total, step) => total + (costs[step.actionId] ?? 1), 0);
+  const variants = clusterTraces(pool)
+    .variants.map((variant) => ({
+      majorActions: variant.signature.majorActions,
+      cost: Math.min(
+        ...variant.members.map((index) => costOf(pool[index] as Plan)),
+      ),
+      plans: variant.members.length,
+    }))
+    .sort((a, b) => a.cost - b.cost);
+  const metrics = uxMetrics(result.plan, categories, {
+    variants: variants.length,
+    cost: result.plan.cost,
+  });
+  const report = {
+    schemaVersion: 1,
+    type: "optimization_result",
+    weights: { ...DEFAULT_COST_WEIGHTS, ...weights },
+    result,
+    variants,
+    uxMetrics: metrics,
+  };
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  const lines = [
+    `${goal} under ${given}: cheapest plan costs ${result.plan.cost} (${result.costOptimality === "optimal" ? "optimal" : "optimality not guaranteed"}; ${result.plan.length} steps).`,
+    ...result.plan.steps.map(
+      (step, index) =>
+        `  ${index + 1}. ${step.actionId}${step.semanticTarget ? ` [${step.semanticTarget}]` : ""} (${categories[step.actionId] ?? "other"}, ${step.cost})`,
+    ),
+    `Variants by cost: ${variants.map((variant) => `${variant.majorActions.join(" → ")} = ${variant.cost}`).join("; ")}.`,
+    `UX metrics (hypotheses): ${metrics.actions} actions, ${metrics.pageTransitions} page transitions, ${metrics.formFields} form fields, ${metrics.dialogInteractions} dialog interactions, ${metrics.confirmations} confirmations.`,
+    ...metrics.hypotheses.map((item) => `  - ${item}`),
+    `Report: ${path.join(output, file)}`,
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
 async function runAlternatives(
   goal: string,
   model: FormalProductModel,
@@ -1360,12 +1489,13 @@ async function runReason(
       mode !== "plan" &&
       mode !== "why-not" &&
       mode !== "enable" &&
-      mode !== "alternatives") ||
+      mode !== "alternatives" &&
+      mode !== "optimize") ||
     positionals.length < 3 ||
     positionals.length > 4
   )
     throw new Error(
-      "Expected: pathcompiler reason reachable|plan|why-not|enable|alternatives <goal> [directory]. Use --help for options.",
+      "Expected: pathcompiler reason reachable|plan|why-not|enable|alternatives|optimize <goal> [directory]. Use --help for options.",
     );
   if (
     mode !== "alternatives" &&
@@ -1374,6 +1504,8 @@ async function runReason(
     throw new Error(
       "--slack and --limit are only supported by reason alternatives.",
     );
+  if (mode !== "optimize" && values.weight !== undefined)
+    throw new Error("--weight is only supported by reason optimize.");
   const goal = positionals[2] as string;
   const integer = (flag: string, value: string | undefined) => {
     if (value === undefined) return undefined;
@@ -1397,6 +1529,8 @@ async function runReason(
   };
   if (mode === "enable")
     return runEnable(goal, model, query, extraction, values, cwd);
+  if (mode === "optimize")
+    return runOptimize(goal, model, query, extraction, values, cwd);
   if (mode === "alternatives") {
     const slack = integer("slack", values.slack);
     const limit = integer("limit", values.limit);
@@ -2108,11 +2242,13 @@ function applyConfig(
             ? "unsat_explanations"
             : sub === "alternatives"
               ? "enumeration"
-              : sub === "verify"
-                ? "property_checking"
-                : sub === "diff"
-                  ? "semantic_diff"
-                  : undefined;
+              : sub === "optimize"
+                ? "optimization"
+                : sub === "verify"
+                  ? "property_checking"
+                  : sub === "diff"
+                    ? "semantic_diff"
+                    : undefined;
     if (capability && !reasoningEnabled(config, capability))
       refuse(
         `reason ${sub}`,

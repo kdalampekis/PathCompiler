@@ -299,6 +299,62 @@ describe("pathcompiler reason reachable", () => {
     );
   }, 300_000);
 
+  it("finds the cheapest plan and reports UX metrics as hypotheses", async () => {
+    const out = await directory();
+    const output = await runCli([
+      "reason",
+      "optimize",
+      "clients.deactivated",
+      fixture,
+      "--context",
+      "role=editor",
+      "--out",
+      out,
+    ]);
+    expect(output).toContain(
+      "clients.deactivated under role=editor: cheapest plan costs 3 (optimal; 3 steps).",
+    );
+    expect(output).toContain(
+      "  2. clients.deactivate.open_clients_deactivate [clients.deactivate] (entry, 1)",
+    );
+    expect(output).toContain(
+      "Variants by cost: clients.deactivate → client.deactivate.confirm = 3; clients.edit → client.form.deactivate → client.deactivate.confirm = 4.",
+    );
+    expect(output).toContain(
+      "UX metrics (hypotheses): 3 actions, 1 page transitions",
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(out, "reports/reasoning/optimize/clients.deactivated.json"),
+        "utf8",
+      ),
+    );
+    expect(report.uxMetrics).toMatchObject({
+      meaning: "hypothesis",
+      actions: 3,
+    });
+    await expect(
+      runCli([
+        "reason",
+        "optimize",
+        "clients.deactivated",
+        fixture,
+        "--weight",
+        "clicks=2",
+      ]),
+    ).rejects.toThrow(/--weight expects <category>=<positive number>/);
+    await expect(
+      runCli([
+        "reason",
+        "plan",
+        "clients.deactivated",
+        fixture,
+        "--weight",
+        "entry=2",
+      ]),
+    ).rejects.toThrow("--weight is only supported by reason optimize.");
+  }, 300_000);
+
   it("reports a permission change semantically and feeds it into proposals", async () => {
     const cwd = await directory();
     const env = {

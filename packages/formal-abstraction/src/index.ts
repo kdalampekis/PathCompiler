@@ -122,6 +122,37 @@ const any = (expressions: FormalExpr[]): FormalExpr =>
     : f.or(...expressions);
 const past = (verb: string) => (verb.endsWith("e") ? `${verb}d` : `${verb}ed`);
 
+/** Action kinds for cost models and UX metrics (R7), from the coverage rules. */
+export type FormalActionCategory =
+  | "navigation"
+  | "entry"
+  | "field"
+  | "submit"
+  | "confirmation"
+  | "back"
+  | "cancel"
+  | "other";
+export function actionCategories(
+  abstraction: Pick<FormalAbstraction, "coverage">,
+): Record<string, FormalActionCategory> {
+  const byRule: [string, FormalActionCategory][] = [
+    ["navigates-to", "navigation"],
+    ["test-session-entry", "entry"],
+    ["test-session-field", "field"],
+    ["test-session-commit", "submit"],
+    ["test-session-direct", "submit"],
+    ["test-session-confirmation", "confirmation"],
+    ["test-session-back", "back"],
+    ["test-session-cancel", "cancel"],
+  ];
+  return Object.fromEntries(
+    abstraction.coverage.actions.map((item) => [
+      item.actionId,
+      byRule.find(([rule]) => item.rules.includes(rule))?.[1] ?? "other",
+    ]),
+  );
+}
+
 /**
  * Derives a candidate Formal Product Model from deterministic graph facts and
  * mined test traces. The result over-approximates where evidence is missing and

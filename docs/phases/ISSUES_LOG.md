@@ -6,6 +6,7 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 28 | R7 | Limitation | `findCheapestPlan` proves optimality with a length bound (best cost ÷ cheapest action). With heavy weights (e.g. `--weight entry=5`) the bound exceeds the default 2 extra steps, the search takes ~30 s and the answer is `not-guaranteed`. | Open; add solver-side cost bounds (integer sums in the solver language) or a tighter lower bound per goal. |
 | 27 | C7 | Deferred | `fixtures/harness/{tasks,results}/` (handoff §76) are not created: they need I2's `HarnessTaskSpec` and `MutationResult` schemas. | Open; create them in I2. |
 | 26 | C7 | Bug, resolved | The resolver treated deactivate and archive as synonyms of delete, so "delete a client" resolved to Deactivate Client once that workflow existed. | **Resolved** in C7: separate verb group for reversible state changes. |
 | 25 | C7 | Bug, resolved | Formal abstraction gave two Deactivate Client entries the same action ID (crash), and modeled the in-dialog entry as usable with no dialog open (the planner chose an impossible path). | **Resolved** in C7: distinct IDs; in-dialog entries require the host dialog observed in tests and close it. |

@@ -1105,6 +1105,24 @@ Deactivate Client has two variants: the row button, and the button inside
 Edit Client. See
 [ADR 0060](docs/decisions/0060-plan-enumeration-and-trace-clustering.md).
 
+## Cheapest paths and UX metrics (`reason optimize`)
+
+```bash
+pnpm pathcompiler reason optimize clients.deactivated fixtures/next-demo --context role=editor --weight entry=2
+```
+
+`reason optimize` ranks plans by per-category costs:
+- categories are navigation, entry, field, submit, confirmation, back, cancel
+  and other;
+- each costs 1 unless `--weight` changes it.
+
+The cheapest plan is proven optimal when every plan that could beat it was
+enumerated; otherwise it is marked `not-guaranteed`. The variants are ranked
+by cost. UX metrics (actions, page transitions, form fields, dialog
+interactions, confirmations) are reported as hypotheses, not redesign
+instructions. See
+[ADR 0061](docs/decisions/0061-cost-optimal-plans-and-ux-metrics.md).
+
 ## Reasoning evaluation cases (`fixtures/reasoning/`)
 
 ```bash
@@ -1413,7 +1431,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/enable/alternatives/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`), `graph inspect`, `capabilities list`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/enable/alternatives/optimize/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
