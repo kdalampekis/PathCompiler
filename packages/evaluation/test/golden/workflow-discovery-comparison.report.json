@@ -7,12 +7,12 @@
       "precision": 1,
       "recall": 0.833,
       "entrypointAccuracy": 1,
-      "meanMajorStepScore": 0.9,
+      "meanMajorStepScore": 1,
       "terminalAccuracy": 0.8,
-      "inventedStepCount": 1,
-      "inventedStepRate": 0.071,
+      "inventedStepCount": 0,
+      "inventedStepRate": 0,
       "applicabilityAccuracy": 0,
-      "meanEditDistance": 0.667,
+      "meanEditDistance": 0.5,
       "unexpectedCandidates": [],
       "cases": [
         {
@@ -29,12 +29,10 @@
           "id": "clients.deactivate",
           "found": true,
           "entrypointCorrect": true,
-          "majorStepScore": 0.5,
+          "majorStepScore": 1,
           "terminalCorrect": true,
-          "inventedSteps": [
-            "client.form.deactivate"
-          ],
-          "editDistance": 1,
+          "inventedSteps": [],
+          "editDistance": 0,
           "applicabilityCorrect": false
         },
         {

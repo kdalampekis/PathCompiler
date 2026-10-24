@@ -101,12 +101,15 @@ describe("workflow candidate discovery", () => {
       text: "Client created",
       match: "exact",
     });
-    // Deactivate Client is found through its alternative path test, starting
-    // at the in-dialog button: the step that opens the dialog is missing
-    // (ISSUES_LOG #23).
+    // Deactivate Client is found through its alternative-path test; the
+    // in-dialog button needs Edit Client's dialog, opened first.
     expect(
       workflows["clients.deactivate"]?.steps.map((step) => step.target),
-    ).toEqual(["client.form.deactivate", "client.deactivate.confirm"]);
+    ).toEqual([
+      "clients.edit",
+      "client.form.deactivate",
+      "client.deactivate.confirm",
+    ]);
     expect(report.skipped.map((item) => item.capabilityId)).toEqual([
       "clients.edit",
     ]);

@@ -1345,6 +1345,9 @@ importers:
       "@pathcompiler/graph-core":
         specifier: workspace:*
         version: link:../graph-core
+      "@pathcompiler/probabilistic-evidence":
+        specifier: workspace:*
+        version: link:../probabilistic-evidence
       "@pathcompiler/source-model":
         specifier: workspace:*
         version: link:../source-model

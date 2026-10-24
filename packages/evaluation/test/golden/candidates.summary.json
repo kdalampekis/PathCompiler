@@ -23,6 +23,7 @@
       "/clients"
     ],
     "steps": [
+      "click clients.edit",
       "click client.form.deactivate",
       "click client.deactivate.confirm"
     ],

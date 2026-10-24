@@ -503,7 +503,17 @@ See [ADR 0011](docs/decisions/0011-explicit-workflow-validation.md).
 pnpm test:e2e
 ```
 
-`@pathcompiler/workflow-validator/browser` exports `verifyFixtureWorkflow`, a
+`@pathcompiler/workflow-validator/browser` exports `verifyWorkflowInBrowser`
+(C8, report v2) for any linear workflow:
+- it checks everything before acting: an origin (loopback or a listed
+  preview), allowed actions, explicit input bindings, and an allowlist for
+  destructive-looking controls such as delete, deactivate or archive;
+- a `prepare` hook can set up records, role and flags;
+- stale or ambiguous targets fail with the step, and `browserEvidenceItem`
+  turns a report into `browser` evidence for evidence fusion.
+
+See [ADR 0065](docs/decisions/0065-generalized-browser-verification.md). It
+also exports `verifyFixtureWorkflow`, a
 deliberately narrow Playwright runner for the fixture's `clients.create` path. The
 caller supplies the candidate, a loopback fixture URL, a `Page` carrying the
 intended test session and explicit input values; values are never read from

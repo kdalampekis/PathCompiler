@@ -381,7 +381,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Tests/evals:** browser suite across fixture workflows and a seeded regression.
 - **Runtime change:** No (verification tooling).
 - **Unblocks:** I4, P3, model/browser consistency (§37), mode 5 browser checks.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-24): `verifyWorkflowInBrowser` with report v2 (`browser` evidence class), safe-action and destructive allowlists, input bindings, preview origins; all five discovered fixture workflows verify; ADR 0065.
 
 #### C9 — Provider adapters and evidence-first semantic interpretation (AI channel A, part 2)
 - **Objective:** The original-spec semantic layer (§45). Add OpenAI, Anthropic and
@@ -701,7 +701,7 @@ Minimum sample sizes come before any conclusion.
 - **Status:** ✅ complete (2026-10-23): `@pathcompiler/behavior-reconciliation`, `observe reconcile`, ADR 0052.
 
 #### O9 — Path efficiency · O10 — Drop-off and alternative paths
-- **Prerequisites:** O7 + R7 (O9); O7 + R6 (O10). **Status:** 🟢 both unblocked (R6 ✅, R7 ✅).
+- **Prerequisites:** O7 + R7 (O9); O7 + R6 (O10). **Status:** 🟢 both unblocked (R6 ✅, R7 ✅); **O9 recommended next** (§7).
 
 #### O11 — Probabilistic transition model · O12 — Release behavior diff
 - **Prerequisites:** O6 (O11); O7 + R11 + release binding (O12). **Status:** 🟢 unblocked.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **C8** (next), O9, O10, O11, O12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅ | P1 (C9) · P2 (P1) · P3 (C8) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O9** (next), O10, O11, O12, C4, C6 (needs repos), C8, C9, P-RV, P4 (needs P0 ✅, R11 ✅), I0 (needs P0 ✅, R4 ✅, R11 ✅). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅ | P1 (C9) · P2 (P1) · P3 (P0 ✅, C8 ✅: unblocked) · P5 (O11) · IG (I0) · I1 (IG) · I2 (I1) · I4 (P0 ✅, C8 ✅: unblocked) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,18 +839,18 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: C8 — Generalized browser verification
+## 7. Next implementation phase: O9 — Path efficiency
 
-R12 is complete, and with it every R-track phase (R0–R12 and R-WI).
-Developers and agents reach every reasoning operation through
-`/v1/reason/*` (behind a separate developer token) and a separate
-reasoning MCP (ADR 0064).
+C8 is complete. `verifyWorkflowInBrowser` replays any linear workflow under a
+safe action policy, with explicit inputs and preview origins, and reports
+`browser` evidence. All five discovered fixture workflows verify (ADR 0065).
+P3 and I4 are unblocked.
 
-C8 comes next. It generalizes the Phase 10 browser runner from Create Client
-to every approved workflow, with a safe action allowlist, explicit input
-bindings and candidate or preview origins. Browser evidence becomes its own
-evidence class. It unblocks I4 and P3. The planned order after C8:
-1. O9, O10, O11, O12, C4;
+O9 comes next. It compares observed paths (O6 and O7) with the cheapest
+formal path (R7): path efficiency ratio = observed path cost ÷ minimum valid
+formal path cost, per workflow and context, reported as hypotheses. The
+planned order after O9:
+1. O10, O11, O12, C4;
 2. C9;
 3. P1–P5 and P-RV;
 4. the I track.

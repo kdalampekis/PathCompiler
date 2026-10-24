@@ -5,6 +5,8 @@ import {
 import { expect, type Page } from "@playwright/test";
 import { z } from "zod";
 
+export * from "./browser-workflow.js";
+
 const status = z.enum(["not-run", "passed", "failed"]);
 export const BrowserVerificationReportSchema = z
   .strictObject({

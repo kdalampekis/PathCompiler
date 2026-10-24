@@ -1,7 +1,7 @@
 Capabilities: precision 1, recall 1.
-Workflow discovery (baseline): precision 1, recall 0.833, entrypoints 1, major steps 0.9, terminals 0.8, invented steps 1 (rate 0.071), applicability 0, mean edit distance 0.667.
+Workflow discovery (baseline): precision 1, recall 0.833, entrypoints 1, major steps 1, terminals 0.8, invented steps 0 (rate 0), applicability 0, mean edit distance 0.5.
   clients.create: steps 1, edit distance 0, terminal correct, applicability wrong
-  clients.deactivate: steps 0.5, edit distance 1, terminal correct, applicability wrong
+  clients.deactivate: steps 1, edit distance 0, terminal correct, applicability wrong
   clients.edit: not discovered
   plans.archive: steps 1, edit distance 0, terminal correct, applicability wrong
   plans.change_structure: steps 1, edit distance 0, terminal wrong, applicability wrong

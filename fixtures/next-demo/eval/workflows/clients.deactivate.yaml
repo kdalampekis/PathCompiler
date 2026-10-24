@@ -3,6 +3,10 @@ entrypoint: /clients
 steps:
   - { target: clients.deactivate, action: click }
   - { target: client.deactivate.confirm, action: click }
+alternativeSteps:
+  - - { target: clients.edit, action: click }
+    - { target: client.form.deactivate, action: click }
+    - { target: client.deactivate.confirm, action: click }
 terminal:
   { type: element_text, target: clients.feedback, text: Client deactivated }
 roles: [admin, editor]

@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after R12)
+## Current state (updated 2026-10-24, after C8)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **C8** (next), O9, O10, C9, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **O9** (next), O10, C9, P3, I4, O11, O12, R5, R7, R9, R10, R12, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
-| Next recommended phase | **C8 — Generalized browser verification** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0; I3 (mode 5, Evaluate); C1, C2, C3, C5, C7, C8; O0–O8 (mode 3, Observe, core). All 2026-10-23; details per phase below. |
+| Next recommended phase | **O9 — Path efficiency** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0, C5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -3558,5 +3558,72 @@ spawn the CLI; no browser code changed, so the e2e suite was not rerun.
 
 - `compare-releases` (§73) is not served: it needs two commits, and
   `reason diff` and the GitHub check cover it.
-- Next recommended phase: C8 — Generalized browser verification.
+- C8 followed.
+
+---
+
+## Phase C8 — Generalized browser verification
+
+Complete — verified locally on 2026-10-24.
+
+- **`verifyWorkflowInBrowser`** (`workflow-validator/browser`) replays any
+  linear candidate or approved workflow:
+  - preflight before any action: origin (loopback, or a listed preview),
+    action allowlist, explicit input bindings, destructive-target allowlist,
+    an observable terminal;
+  - an optional `prepare` hook for preconditions;
+  - unique-target resolution, so stale or ambiguous targets fail with the
+    step;
+  - an origin guard.
+
+  It returns report v2 (`evidenceClass: "browser"`), and
+  `browserEvidenceItem` turns that into a P0 evidence item. The Phase 10
+  runner is unchanged.
+- **Discovery (ISSUES_LOG #23 resolved):** an entry nested in another
+  capability's dialog gets the dialog-opening step, so the discovered
+  Deactivate Client starts at Edit Client.
+- **Evaluation:** ground-truth workflows can list `alternativeSteps`, and
+  Deactivate Client lists both paths. Baseline discovery now scores major
+  steps 1, with no invented steps.
+- Recorded in ADR 0065.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 431 tests passed across 69 suites |
+| `pnpm test:e2e` | 48 Chromium tests passed (10 workflow-validator tests, 4 of them new) |
+| `git diff --check` | Passed |
+
+The new browser suite (4 tests) covers:
+- all five discovered fixture workflows verifying, with prepared records,
+  role and flag;
+- a destructive control refused in preflight (page untouched);
+- stale and ambiguous targets;
+- a non-allowed origin, a missing input binding, and a seeded terminal
+  regression.
+
+### Errors found during the phase
+
+- **An amend hit a pushed commit.** A work-in-progress commit command fell
+  back to `git commit --amend` and amended the already-pushed R12 commit
+  locally. It was caught before any push: a soft reset to `origin/main` kept
+  the changes, and they were committed fresh. Nothing was force-pushed.
+- **A swallowed error.** The first `any`-terminal implementation had an
+  empty `catch {}`. It now reports each alternative's failure.
+- **A test type error under `exactOptionalPropertyTypes`.** An optional
+  `prepare` hook was passed as `undefined`. The typecheck stopped the commit
+  chain, as intended.
+- **A valid alternative scored as wrong.** After the discovery fix, the
+  baseline's (correct) alternative-path Deactivate was scored against the
+  row path only. The ground truth now lists both acceptable paths.
+
+### Scope notes
+
+- Branching workflows are refused, not replayed.
+- Preconditions come from the caller's `prepare` hook; the runner does not
+  infer setup.
+- Next recommended phase: O9 — Path efficiency.
 

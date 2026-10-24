@@ -86,6 +86,17 @@
       "steps": [
         {
           "id": "step.1",
+          "target": "clients.edit",
+          "action": {
+            "type": "click"
+          },
+          "instruction": {
+            "text": "Click Edit Client"
+          },
+          "next": "step.2"
+        },
+        {
+          "id": "step.2",
           "target": "client.form.deactivate",
           "action": {
             "type": "click"
@@ -93,10 +104,10 @@
           "instruction": {
             "text": "Click Deactivate Client"
           },
-          "next": "step.2"
+          "next": "step.3"
         },
         {
-          "id": "step.2",
+          "id": "step.3",
           "target": "client.deactivate.confirm",
           "action": {
             "type": "click"

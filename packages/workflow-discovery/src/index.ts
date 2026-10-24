@@ -263,6 +263,32 @@ export function discoverWorkflows(
         (item) => item.id === entryAnchors.get(entryTarget?.node.id ?? ""),
       );
       if (!capability || !entryTarget) continue;
+      // An entry nested in another capability's dialog (Deactivate inside
+      // Edit Client) needs that dialog open: the test's preceding click on
+      // the other capability's entry becomes the first step.
+      let host: TestAction | undefined;
+      if (
+        snapshot.edges.some(
+          (edge) =>
+            edge.type === "CONTAINS" &&
+            edge.target === entryTarget.node.id &&
+            nodes.get(edge.source)?.type === "UIAction",
+        )
+      ) {
+        const previous = events
+          .slice(0, index)
+          .filter(
+            (event): event is TestAction =>
+              "operation" in event &&
+              event.phase === "test" &&
+              !event.conditional,
+          )
+          .at(-1);
+        const owner =
+          previous && entryAnchors.get(mapped(previous)?.node.id ?? "");
+        if (previous?.operation === "click" && owner && owner !== capability.id)
+          host = previous;
+      }
       const actions: TestAction[] = [];
       const observed: TestAssertion[] = [];
       const issues: AnalysisDiagnostic[] = [];
@@ -362,7 +388,10 @@ export function discoverWorkflows(
           });
         }
       }
-      const selected = actions.filter((action) => !removed.has(action.order));
+      const selected = [
+        ...(host ? [host] : []),
+        ...actions.filter((action) => !removed.has(action.order)),
+      ];
       let route: string | undefined;
       for (const event of events.filter(
         (event) =>
@@ -556,7 +585,7 @@ export function discoverWorkflows(
           observations: [
             {
               traceId: trace.id,
-              startOrder: entry.order,
+              startOrder: (host ?? entry).order,
               terminalOrder: finish.event.order,
             },
           ],

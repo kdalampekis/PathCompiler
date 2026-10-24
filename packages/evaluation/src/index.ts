@@ -57,6 +57,8 @@ export const ExpectedWorkflowSchema = z.strictObject({
   id: z.string().min(1),
   entrypoint: z.string().min(1),
   steps: z.array(step).min(1),
+  /** Other step sequences that are equally correct (alternative paths). */
+  alternativeSteps: z.array(z.array(step).min(1)).optional(),
   terminal: z.strictObject({
     type: z.string().min(1),
     target: z.string().min(1).optional(),
@@ -361,10 +363,19 @@ export async function evaluateWorkflowDiscovery(
       const actualSteps = found.steps.flatMap((item) =>
         item.target ? [{ target: item.target, action: item.action.type }] : [],
       );
-      const wanted = normalize(expected.steps);
       const got = normalize(actualSteps);
+      // Score against the closest acceptable path.
+      const [chosen] = [expected.steps, ...(expected.alternativeSteps ?? [])]
+        .map((steps) => ({ steps, wanted: normalize(steps) }))
+        .sort(
+          (a, b) =>
+            levenshtein(a.wanted, got) - levenshtein(b.wanted, got) ||
+            lcs(b.wanted, got) / b.wanted.length -
+              lcs(a.wanted, got) / a.wanted.length,
+        ) as [{ steps: typeof expected.steps; wanted: string[] }];
+      const wanted = chosen.wanted;
       const terminal = found.terminal as Record<string, unknown>;
-      const targets = new Set(expected.steps.map((item) => item.target));
+      const targets = new Set(chosen.steps.map((item) => item.target));
       const flags = (found.preconditions ?? []).flatMap((item) =>
         item.type === "feature_flag" && item.enabled ? [item.flag] : [],
       );
