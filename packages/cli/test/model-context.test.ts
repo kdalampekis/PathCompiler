@@ -180,7 +180,7 @@ describe("analyze", () => {
       'Hypotheses: 0 supported, 1 rejected (never applied).\n  - rename clients.archive → "Delete Client" [unsupported-verb]\nSent 1 requests,',
     );
     expect(output).toContain(
-      "Interpretations: 2 capabilities, 0 with a different best meaning, 0 whose rule meaning violates a hard constraint, 0 unresolved.",
+      "Interpretations: 2 capabilities, 0 with a different best meaning, 0 whose rule meaning violates a hard constraint, 0 unresolved.\nJoint selection: 0 meanings differ from the per-capability best.",
     );
     const interpretations = JSON.parse(
       await readFile(
@@ -193,6 +193,7 @@ describe("analyze", () => {
         "utf8",
       ),
     );
+    expect(interpretations.joint).toMatchObject({ status: "optimal" });
     // The rejected hypothesis is an impossible candidate; the rule meaning stands.
     expect(
       interpretations.items.find(

@@ -71,6 +71,7 @@ import {
   actionCategories,
   buildFormalModel,
   interpretCapabilities,
+  selectCapabilityInterpretations,
 } from "@pathcompiler/formal-abstraction";
 import {
   type FormalProductModel,
@@ -421,7 +422,9 @@ the exact context sent. It then interprets each ambiguous capability (P1): candi
 from the rule and the hypotheses are removed when a hard constraint rules them out (the
 handler's endpoint cannot perform the verb, an entity no route or endpoint mentions, another
 action's ID with a different handler), and the rest are re-scored and fused (code outranks
-models), in reports/semantic-interpretations.json. Capabilities are never changed.
+models). A joint selection (P2, weighted soft constraints solved by Z3) then picks one
+meaning per capability so that actions with different handlers never share one, in
+reports/semantic-interpretations.json. Capabilities are never changed.
 --model-fixtures replays recorded responses ([{ kind, request | key, response }]) instead
 of calling a provider.
 No repository code is executed. Only analyze with a configured model_provider sends anything
@@ -3907,15 +3910,35 @@ async function runAnalyze(
     ),
     hypotheses: report.hypotheses,
   });
+  // P2: one joint choice; actions with different handlers never share a meaning.
+  let joint: Awaited<
+    ReturnType<typeof selectCapabilityInterpretations>
+  > | null = null;
+  if (interpretations.items.length > 0) {
+    const solver = await createZ3SolverProvider();
+    try {
+      joint = await selectCapabilityInterpretations({
+        report: interpretations,
+        graph: mined.graph,
+        capabilities,
+        solver,
+      });
+    } finally {
+      await solver.close();
+    }
+  }
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   const file = "reports/semantic-hypotheses.json";
   const interpretationFile = "reports/semantic-interpretations.json";
   await writeArtifacts(output, [
     [file, `${JSON.stringify(report, null, 2)}\n`],
-    [interpretationFile, `${JSON.stringify(interpretations, null, 2)}\n`],
+    [
+      interpretationFile,
+      `${JSON.stringify({ ...interpretations, joint }, null, 2)}\n`,
+    ],
   ]);
   if (values.json)
-    return `${JSON.stringify({ ...report, interpretations }, null, 2)}\n`;
+    return `${JSON.stringify({ ...report, interpretations: { ...interpretations, joint } }, null, 2)}\n`;
   const lines = [
     `Semantic analysis (provider: ${report.provider}): ${report.clusters.length} ambiguous clusters of ${capabilities.length} capabilities.`,
   ];
@@ -3956,6 +3979,18 @@ async function runAnalyze(
             .join("; ") || "none"
         }`,
       );
+  if (joint)
+    lines.push(
+      joint.status === "optimal"
+        ? `Joint selection: ${joint.assignments.filter((item) => item.joint).length} meanings differ from the per-capability best.${joint.assignments
+            .filter((item) => item.joint)
+            .map(
+              (item) =>
+                `\n  ${item.subject} → ${item.value ?? "(none)"} (alone: ${item.localBest ?? "unresolved"})`,
+            )
+            .join("")}`
+        : `Joint selection: ${joint.status}${joint.reason ? ` (${joint.reason})` : ""}; per-capability results stand.`,
+    );
   lines.push(
     `Reports: ${path.join(output, file)}, ${path.join(output, interpretationFile)}`,
     "",

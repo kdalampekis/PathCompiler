@@ -80,13 +80,69 @@ export type SolverCheckResult =
   | { status: "unknown"; reason: string };
 
 /**
- * Satisfiability backend. `enumerate` and `optimize` (reasoning spec §16) join
- * this interface in the phases that need them (R6, R7).
+ * Weighted soft constraints (P2, reasoning spec §50): the hard `assertions`
+ * must hold; among their models, the total weight of satisfied soft terms is
+ * maximized. Weights are positive integers so optima are exact.
+ */
+export const OptimizationProblemSchema = z
+  .strictObject({
+    variables: SolverProblemSchema.shape.variables,
+    assertions: SolverProblemSchema.shape.assertions,
+    soft: z.array(
+      z.strictObject({
+        id: name,
+        term: SolverTermSchema,
+        weight: z.number().int().positive().safe(),
+      }),
+    ),
+    timeoutMs: SolverProblemSchema.shape.timeoutMs,
+  })
+  .superRefine((problem, context) => {
+    const checked = SolverProblemSchema.safeParse({
+      variables: problem.variables,
+      assertions: [
+        ...problem.assertions,
+        ...problem.soft.map((item) => item.term),
+      ],
+      timeoutMs: problem.timeoutMs,
+    });
+    for (const issue of checked.success ? [] : checked.error.issues)
+      context.addIssue({ code: "custom", message: issue.message });
+    if (
+      new Set(problem.soft.map((item) => item.id)).size !== problem.soft.length
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Soft constraint IDs must be unique",
+      });
+  });
+export type OptimizationProblem = z.infer<typeof OptimizationProblemSchema>;
+export type OptimizationResult =
+  | {
+      status: "optimal";
+      model: Record<string, SolverValue>;
+      /** IDs of satisfied soft constraints, sorted. */
+      satisfied: string[];
+      /** Total weight of violated soft constraints (the minimized cost). */
+      cost: number;
+    }
+  /** The hard constraints alone are unsatisfiable. */
+  | { status: "unsat" }
+  | { status: "unknown"; reason: string };
+export function parseOptimizationProblem(input: unknown): OptimizationProblem {
+  return OptimizationProblemSchema.parse(input);
+}
+
+/**
+ * Satisfiability backend. `optimize` joined in P2; R6 and R7 enumerate and
+ * optimize plans with repeated `check` calls instead.
  */
 export interface SolverProvider {
   readonly name: string;
   /** Checks the conjunction of `assertions`; a `sat` model assigns every declared variable. */
   check(problem: SolverProblem): Promise<SolverCheckResult>;
+  /** Maximizes the weight of satisfied soft constraints subject to the hard ones. */
+  optimize(problem: OptimizationProblem): Promise<OptimizationResult>;
   /** Releases backend resources (worker threads, memory). */
   close(): Promise<void>;
 }

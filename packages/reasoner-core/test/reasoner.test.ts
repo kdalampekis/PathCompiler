@@ -137,6 +137,7 @@ describe("bounded reachability on the next-demo models", () => {
     const stub = (reason: string): SolverProvider => ({
       name: "stub",
       check: async () => ({ status: "unknown", reason }),
+      optimize: async () => ({ status: "unknown", reason }),
       close: async () => {},
     });
     const query = { goal: "clients.created", context: { role: "editor" } };
@@ -158,6 +159,7 @@ describe("bounded reachability on the next-demo models", () => {
         await new Promise((resolve) => setTimeout(resolve, 30));
         return { status: "unsat" };
       },
+      optimize: async () => ({ status: "unsat" }),
       close: async () => {},
     };
     const result = await createProductReasoner(slow).checkReachability(hand, {

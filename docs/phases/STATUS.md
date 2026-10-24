@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after P1)
+## Current state (updated 2026-10-24, after P2)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **P2** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories) |
+| Unblocked | **P3** (next), P4, P5, P-RV, I0, I4, C6 (needs repositories) |
 | Blocked | IG (I0), I1 (IG), I2 (I1), I5–I8 (O0, O7 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0, P1; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **P2 — Weighted soft constraints (MaxSAT)** (`MASTER_ROADMAP.md` §7). Parallel candidates: P3, P4, P-RV, I0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0, P1, P2; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **P3 — Browser failure diagnosis** (`MASTER_ROADMAP.md` §7). Parallel candidates: P4, P5, P-RV, I0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4053,3 +4053,66 @@ No runtime or browser code changed, so the e2e suite was not rerun.
   capability names, so checking names against it would be circular
   (ADR 0072).
 - Next recommended phase: P2 — Weighted soft constraints (MaxSAT).
+
+---
+
+## Phase P2 — Weighted soft constraints (MaxSAT)
+
+Complete — verified locally on 2026-10-24.
+
+- **`SolverProvider.optimize`** (solver-provider): hard assertions plus
+  weighted soft terms with positive integer weights. The result is
+  `optimal` (model, satisfied IDs, cost), `unsat` or `unknown`. The problem
+  is validated like `check`'s.
+- **Z3 backend:** `Z3_optimize` in a fresh context per call; term
+  translation is shared with `check`.
+- **`selectInterpretations`** (probabilistic-evidence):
+  - one boolean per consistent P1 candidate;
+  - hard constraints: at most one meaning per subject, and exclusive pairs
+    never share one;
+  - soft weights: evidence tier × 1000 + the scaled P1 weight, so code still
+    outranks models;
+  - each assignment is marked when the joint optimum differs from the
+    per-subject best.
+- **`selectCapabilityInterpretations`** (formal-abstraction): capabilities
+  whose handlers call different endpoints are exclusive.
+- **`analyze`** adds `joint` to `reports/semantic-interpretations.json` and
+  prints the meanings the joint constraints changed.
+- Recorded in ADR 0073.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 477 tests passed across 82 suites (Z3 optimize, joint selection, capability exclusivity, CLI `analyze`) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- Z3 `optimize`: the optimum under a hard constraint, unsatisfiable hard
+  constraints, duplicate soft IDs, undeclared variables;
+- joint selection:
+  - exclusive subjects kept apart, with the higher total chosen;
+  - non-exclusive subjects merging;
+  - tier dominance in weights;
+  - nothing to choose;
+  - unknown solver answers;
+- capabilities: two mislabeled actions with different PATCH handlers both
+  prefer "Edit Client" alone, and jointly get edit and archive;
+- CLI `analyze` writes the joint selection.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- None beyond iteration on the test design (finding two capabilities with
+  different handlers whose rule meanings are both impossible).
+- The R7 heavy-weight bound (#28) can now use `optimize`; noted in the
+  issues log.
+
+### Scope notes
+
+- `SolverProvider` gained a required method; the two test stubs in
+  reasoner-core were updated.
+- Next recommended phase: P3 — Browser failure diagnosis.

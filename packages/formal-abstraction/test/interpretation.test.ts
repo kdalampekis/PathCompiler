@@ -1,12 +1,14 @@
 import { fileURLToPath } from "node:url";
 import { analyzeNextProject } from "@pathcompiler/adapter-nextjs";
 import { discoverCapabilities } from "@pathcompiler/capability-engine";
+import { createZ3SolverProvider } from "@pathcompiler/solver-z3";
 import { readSourceProject } from "@pathcompiler/source-model";
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import { describe, expect, it } from "vitest";
 import {
   type InterpretationHypothesis,
   interpretCapabilities,
+  selectCapabilityInterpretations,
 } from "../src/index.js";
 
 function analyze(files: Record<string, string>) {
@@ -168,5 +170,50 @@ export default function Page() { return <><button onClick={make}>Create Plan</bu
     expect(report.items[0]?.candidates[1]?.violations.join()).toContain(
       "duplicate-meaning",
     );
+  });
+
+  it("never gives two actions with different handlers the same meaning (P2)", async () => {
+    const { graph, capabilities } = analyze({
+      "app/clients/page.tsx": `"use client";
+async function save() { await fetch("/api/clients/1", { method: "PATCH" }); }
+async function flag() { await fetch("/api/clients/1/flags", { method: "PATCH" }); }
+export default function Page() { return <><button onClick={save}>Add Client</button><button onClick={flag}>Delete Client</button></>; }`,
+      "app/api/clients/[id]/route.ts":
+        "export async function PATCH() { return Response.json({}); }",
+      "app/api/clients/[id]/flags/route.ts":
+        "export async function PATCH() { return Response.json({}); }",
+    });
+    expect(capabilities.map((capability) => capability.id)).toEqual([
+      "clients.create",
+      "clients.delete",
+    ]);
+    const report = interpretCapabilities({
+      graph,
+      capabilities,
+      hypotheses: [
+        hypothesis("Edit Client", ["clients.create"]),
+        hypothesis("Edit Client", ["clients.delete"], 0.7),
+        hypothesis("Archive Client", ["clients.delete"], 0.6),
+      ],
+    });
+    // Alone, each would take edit (or tie); PATCH rules out both rule meanings.
+    expect(report.summary.ruleImpossible).toBe(2);
+    const solver = await createZ3SolverProvider();
+    try {
+      const selection = await selectCapabilityInterpretations({
+        report,
+        graph,
+        capabilities,
+        solver,
+      });
+      expect(
+        selection.assignments.map((item) => [item.subject, item.value]),
+      ).toEqual([
+        ["clients.create", "clients.edit"],
+        ["clients.delete", "clients.archive"],
+      ]);
+    } finally {
+      await solver.close();
+    }
   });
 });

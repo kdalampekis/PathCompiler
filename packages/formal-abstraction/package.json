@@ -21,11 +21,13 @@
     "@pathcompiler/formal-model": "workspace:*",
     "@pathcompiler/graph-core": "workspace:*",
     "@pathcompiler/probabilistic-evidence": "workspace:*",
+    "@pathcompiler/solver-provider": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*",
     "@pathcompiler/workflow-ir": "workspace:*"
   },
   "devDependencies": {
-    "@pathcompiler/adapter-nextjs": "workspace:*"
+    "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/solver-z3": "workspace:*"
   }
 }

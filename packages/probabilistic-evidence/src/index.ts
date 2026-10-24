@@ -480,3 +480,4 @@ export function graphEvidenceItems(
   });
 }
 export * from "./interpretation.js";
+export * from "./joint.js";

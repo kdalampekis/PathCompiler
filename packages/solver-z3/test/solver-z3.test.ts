@@ -101,4 +101,48 @@ describe("z3 assumptions", () => {
       solver.check({ ...problem, assumptions: ["x"] }),
     ).rejects.toThrow(/not a declared boolean variable/);
   });
+
+  it("maximizes the weight of satisfied soft constraints under hard ones", async () => {
+    const p: SolverTerm = { op: "var", name: "p" };
+    const q: SolverTerm = { op: "var", name: "q" };
+    const problem = {
+      variables: [
+        { name: "p", sort: "bool" as const },
+        { name: "q", sort: "bool" as const },
+      ],
+      // Hard: not both.
+      assertions: [
+        { op: "not" as const, arg: { op: "and" as const, args: [p, q] } },
+      ],
+      soft: [
+        { id: "want-p", term: p, weight: 2 },
+        { id: "want-q", term: q, weight: 3 },
+      ],
+      timeoutMs: 5000,
+    };
+    expect(await solver.optimize(problem)).toEqual({
+      status: "optimal",
+      model: { p: false, q: true },
+      satisfied: ["want-q"],
+      cost: 2,
+    });
+    expect(
+      await solver.optimize({
+        ...problem,
+        assertions: [...problem.assertions, p, q],
+      }),
+    ).toEqual({ status: "unsat" });
+    await expect(
+      solver.optimize({
+        ...problem,
+        soft: [...problem.soft, { id: "want-p", term: q, weight: 1 }],
+      }),
+    ).rejects.toThrow("Soft constraint IDs must be unique");
+    await expect(
+      solver.optimize({
+        ...problem,
+        soft: [{ id: "bad", term: { op: "var", name: "missing" }, weight: 1 }],
+      }),
+    ).rejects.toThrow();
+  });
 });

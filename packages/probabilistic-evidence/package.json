@@ -18,11 +18,13 @@
   },
   "dependencies": {
     "@pathcompiler/graph-core": "workspace:*",
+    "@pathcompiler/solver-provider": "workspace:*",
     "@pathcompiler/workflow-ir": "workspace:*",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/solver-z3": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*"

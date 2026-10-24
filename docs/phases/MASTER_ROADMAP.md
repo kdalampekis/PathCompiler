@@ -621,26 +621,26 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Prerequisites:** P1, R2 (optimization-capable provider; R7 preferred).
 - **Acceptance:** hard constraints always hold, and the best-supported
   interpretation is selected.
-- **Runtime change:** No. **Status:** 🟢 unblocked (P1 ✅, R2 ✅, R7 ✅); **recommended next phase** (§7).
+- **Runtime change:** No. **Status:** ✅ complete (2026-10-24): `SolverProvider.optimize` (Z3 MaxSAT), `selectInterpretations`, `selectCapabilityInterpretations`, joint selection in `analyze`, ADR 0073.
 
 #### P3 — Browser failure diagnosis
 - **Prerequisites:** P0, C8, R2. **Acceptance:** seeded failures rank the true
   cause first (stale target, permission or flag mismatch, model wrong).
-- **Runtime change:** No. **Unblocks:** I4 diagnostics. **Status:** 🔒 blocked.
+- **Runtime change:** No. **Unblocks:** I4 diagnostics. **Status:** 🟢 unblocked (P0 ✅, C8 ✅, R2 ✅); **recommended next phase** (§7).
 
 #### P4 — Commit risk scoring
 - **Prerequisites:** P0, R11. **Acceptance:** definite, probable and uncertain
   impacts are separated, with no uncalibrated probability claims.
-- **Runtime change:** No. **Status:** 🔒 blocked.
+- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅, R11 ✅).
 
 #### P-RV — Review prioritization and feedback (spec §52–53, unnumbered)
 - **Prerequisites:** P0; review and proposal decisions (✅); usage factor needs O7.
 - **Acceptance:** review queue ordering with explained components; decisions
   stored as calibration data.
-- **Runtime change:** No. **Status:** 🔒 blocked on P0.
+- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅).
 
 #### P5 — Probabilistic model checking
-- **Prerequisites:** O11 (meaningful telemetry), R8. **Status:** 🔒 blocked.
+- **Prerequisites:** O11 (meaningful telemetry), R8. **Status:** 🟢 unblocked (O11 ✅, R8 ✅).
 
 ### 4.4 O track: observability (optional, privacy-first, never replaces tests or formal reasoning)
 
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **P2** (next), P3, P4, P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **P3** (next), P4, P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,22 +839,18 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: P2 — Weighted soft constraints (MaxSAT)
+## 7. Next implementation phase: P3 — Browser failure diagnosis
 
-C9 and P1 are complete (ADR 0071, ADR 0072):
-- `analyze` sends only ambiguous clusters' evidence and validates the
-  answers as `SemanticHypothesis` records;
-- it then removes the candidate meanings that hard constraints rule out;
-- it re-scores and fuses the rest.
+C9, P1 and P2 are complete (ADR 0071–0073). Model hypotheses for ambiguous
+capabilities are validated and filtered by hard constraints. They are then
+selected jointly with weighted soft constraints (`SolverProvider.optimize`,
+Z3 MaxSAT).
 
-Every C phase except C6 (which needs user repositories) is done.
-
-P2 comes next. It turns P1's per-capability candidates into one joint
-optimization: hard constraints always hold, and the best-supported
-interpretation across all capabilities is selected. Examples of joint
-constraints are one meaning per action and no two actions with one ID.
-The planned order after P2:
-1. P3–P5 and P-RV;
+P3 comes next. When browser verification (C8) fails, it ranks the candidate
+causes with P0 evidence fusion: stale target, permission or flag mismatch,
+or a wrong formal model. It unblocks I4 diagnostics. The planned order
+after P3:
+1. P4, P5 and P-RV;
 2. the I track.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)

@@ -8,7 +8,10 @@ import {
   type InterpretationCandidate,
   type InterpretationOutcome,
   interpretCandidates,
+  type JointSelection,
+  selectInterpretations,
 } from "@pathcompiler/probabilistic-evidence";
+import type { SolverProvider } from "@pathcompiler/solver-provider";
 
 /**
  * P1 over capabilities (reasoning spec §48–§49): each capability's meaning is
@@ -83,6 +86,18 @@ const IMPOSSIBLE: Record<string, readonly string[]> = {
   GET: CapabilityVerbSchema.options.filter((verb) => verb !== "export"),
 };
 const VERBS = new Set<string>(CapabilityVerbSchema.options);
+/** Endpoints the capability's own handler calls (not component context). */
+function handlerEndpoints(graph: ProductGraph, capability: Capability) {
+  return capability.apiEvidence
+    .filter((item) => item.association === "handler")
+    .flatMap((item) => {
+      const { method, path } = graph.getNode(item.nodeId)?.data ?? {};
+      return typeof method === "string" && typeof path === "string"
+        ? [{ id: item.nodeId, method, path }]
+        : [];
+    })
+    .sort((a, b) => compare(a.id, b.id));
+}
 
 export function interpretCapabilities(input: {
   graph: ProductGraph;
@@ -100,15 +115,7 @@ export function interpretCapabilities(input: {
       return typeof value === "string" ? [value] : [];
     });
   const endpoints = (capability: Capability) =>
-    capability.apiEvidence
-      .filter((item) => item.association === "handler")
-      .flatMap((item) => {
-        const { method, path } = data(item.nodeId);
-        return typeof method === "string" && typeof path === "string"
-          ? [{ id: item.nodeId, method, path }]
-          : [];
-      })
-      .sort((a, b) => compare(a.id, b.id));
+    handlerEndpoints(graph, capability);
   // Product vocabulary: route and endpoint path segments, and capability terms.
   const vocabulary = new Set<string>();
   for (const node of graph.toJSON().nodes)
@@ -256,4 +263,49 @@ export function interpretCapabilities(input: {
       ).length,
     },
   };
+}
+
+/**
+ * P2 over capabilities: one joint choice of meanings. Two capabilities whose
+ * handlers call different endpoints are different actions, so they never
+ * end up with the same meaning; capabilities without handler evidence may
+ * merge.
+ */
+export async function selectCapabilityInterpretations(input: {
+  report: CapabilityInterpretationReport;
+  graph: ProductGraph;
+  capabilities: readonly Capability[];
+  solver: SolverProvider;
+  timeoutMs?: number;
+}): Promise<JointSelection> {
+  const byId = new Map(
+    input.capabilities.map((capability) => [capability.id, capability]),
+  );
+  const handlers = input.report.items.map((item) => {
+    const capability = byId.get(item.subject);
+    return {
+      subject: item.subject,
+      ids: capability
+        ? handlerEndpoints(input.graph, capability).map(
+            (endpoint) => endpoint.id,
+          )
+        : [],
+    };
+  });
+  const exclusive: [string, string][] = [];
+  handlers.forEach((a, index) => {
+    for (const b of handlers.slice(index + 1))
+      if (
+        a.ids.length > 0 &&
+        b.ids.length > 0 &&
+        !a.ids.some((id) => b.ids.includes(id))
+      )
+        exclusive.push([a.subject, b.subject]);
+  });
+  return selectInterpretations({
+    outcomes: input.report.items,
+    exclusive,
+    solver: input.solver,
+    ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+  });
 }

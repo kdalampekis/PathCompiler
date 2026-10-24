@@ -498,6 +498,9 @@ importers:
       "@pathcompiler/probabilistic-evidence":
         specifier: workspace:*
         version: link:../probabilistic-evidence
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
       "@pathcompiler/source-model":
         specifier: workspace:*
         version: link:../source-model
@@ -511,6 +514,9 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
 
   packages/formal-model:
     dependencies:
@@ -809,6 +815,9 @@ importers:
       "@pathcompiler/graph-core":
         specifier: workspace:*
         version: link:../graph-core
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
       "@pathcompiler/workflow-ir":
         specifier: workspace:*
         version: link:../workflow-ir
@@ -822,6 +831,9 @@ importers:
       "@pathcompiler/capability-engine":
         specifier: workspace:*
         version: link:../capability-engine
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
       "@pathcompiler/source-model":
         specifier: workspace:*
         version: link:../source-model
