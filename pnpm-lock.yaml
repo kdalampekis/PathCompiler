@@ -562,6 +562,12 @@ importers:
         specifier: workspace:*
         version: link:../workflow-validator
 
+  packages/observability-core:
+    dependencies:
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
   packages/react:
     dependencies:
       "@pathcompiler/runtime-core":

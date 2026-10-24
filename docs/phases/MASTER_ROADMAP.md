@@ -659,7 +659,7 @@ Minimum sample sizes come before any conclusion.
 - **Interfaces:** `ProductRuntimeEvent` union, `RuntimeEventBase`, `PrivacyPolicy`.
 - **Acceptance:** schemas reject raw-content fields by default; events reference
   semantic targets, workflow IDs and versions.
-- **Runtime change:** No. **Unblocks:** O1, O5, I5. **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Runtime change:** No. **Unblocks:** O1, O5, I5. **Status:** ✅ complete (2026-10-23): `@pathcompiler/observability-core`, ADR 0044.
 
 #### O1 — Lightweight Analytics SDK
 - **Prerequisites:** O0. Soft: C2 (configured privacy defaults).
@@ -667,7 +667,7 @@ Minimum sample sizes come before any conclusion.
 - **Interfaces:** `track`, `workflowStarted`, `workflowCompleted`, `goalReached`,
   `AnalyticsTransport`, `ConsoleTransport`, `InMemoryTransport`.
 - **Acceptance:** batching; no network by default; privacy filters enforced.
-- **Runtime change:** Opt-in only. **Status:** 🔒 blocked.
+- **Runtime change:** Opt-in only. **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### O2 — React integration
 - **Objective:** Optional analytics in the **existing** `@pathcompiler/react`
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **O0** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O1–O12 (O0 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O1** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O2–O12 (O1 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,23 +839,18 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: O0 — Event Model
+## 7. Next implementation phase: O1 — Lightweight Analytics SDK
 
-C1 is complete, so the observability track (lane D) is unblocked. O0 defines
-the typed, privacy-first semantic event model that mode 3 (Observe) and the
-improvement loop build on:
-- events reference `workflowId`, `workflowVersion`, semantic targets and
-  `RuntimeContext.productRelease`;
-- no raw user content is collected by default;
-- there is no transport.
+O0 is complete. O1 adds the framework-independent, opt-in analytics SDK on top
+of `observability-core`: `track`, workflow and goal helpers, batching, an
+`AnalyticsTransport` interface, and console and in-memory transports. It sends
+nothing over the network by default, and the O0 privacy rules are enforced on
+every event. O2 (React) and O3 (guide runtime events) follow it. Parallel
+candidates: C8, C2 (configured privacy defaults are a soft prerequisite of
+O1), and P0.
 
-Parallel candidates: C8 (browser verifier, which unblocks I4 and P3), C2
-(configuration and flags), and P0 (which gates I0).
-
-C1 (2026-10-23) aligned the public runtime contract with Runtime Result v1 and
-the full `RuntimeContext`. It added integer workflow versions from approval
-lineage and guide `manifest-mismatch` detection (ADR 0043, with a migration
-table).
+O0 (2026-10-23) defined eight semantic event types with schema-level privacy
+enforcement, canonical serialization and release binding (ADR 0044).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

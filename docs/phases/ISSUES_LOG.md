@@ -6,6 +6,8 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 11 | O0 | Bug, resolved | The event-schema helper spread base and type shapes generically, so overridden fields (`workflowId`) were typed `never` and the factory input was unusable. | **Resolved** in O0: Zod `extend`. |
+| 10 | O0 | Bug, resolved | The sensitive context-key check matched substrings, so `domain` was refused ("dom"). | **Resolved** in O0: whole-word matching on snake_case and camelCase words. |
 | 9 | C1 (2026-10-23) | Tooling | The auto-mode safety classifier repeatedly returned "no verdict" for Bash and Edit calls mid-phase, and the session paused with C1 uncommitted. | Environment fault; no code impact. Retry: rerun the step. |
 | 8 | Environment | Tooling | The default shell resolves nvm Node 20 (`/usr/local/bin/node` is 18); the repository needs Node ≥ 22.12. Builds use `/tmp/pathcompiler-toolchain/node_modules/.bin` (Node 22.23.3, pnpm 10.34.7), which `/tmp` cleanup can delete. | Open. Fix: install Node 22 via nvm (`nvm install 22 && nvm alias default 22`) or add `.nvmrc`. |
 | 7 | I3 | Deferred | The GitHub check section and dashboard view for candidate evaluations are not built. | Open; needs C2 (configuration) and stored evaluations in the dashboard. |

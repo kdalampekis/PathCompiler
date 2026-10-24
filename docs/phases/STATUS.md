@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after C1)
+## Current state (updated 2026-10-23, after O0)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O0** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **O1** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
-| Next recommended phase | **O0 — Event Model** (`MASTER_ROADMAP.md` §7). Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
+| Next recommended phase | **O1 — Lightweight Analytics SDK** (`MASTER_ROADMAP.md` §7). Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -47,7 +47,7 @@ All checks below passed with Node 22.23.3 and pnpm 10.34.7:
 | --- | --- |
 | `pnpm install` | Passed |
 | `pnpm install --frozen-lockfile` | Passed |
-| `pnpm lint` | Passed without warnings |
+| `pnpm lint` | Passed without warnings; 245 files |
 | `pnpm typecheck` | Passed for root tests, both core packages and fixture routes/tests |
 | `pnpm test` | 34 tests passed across two suites |
 | `pnpm --filter './packages/*' build` | Both ESM/declaration builds passed |
@@ -103,7 +103,7 @@ All checks below passed with Node 22.23.3 and pnpm 10.34.7:
 | --- | --- |
 | Phase 0 baseline lint/typecheck/tests | Passed; 34 tests |
 | `pnpm install --frozen-lockfile` | Passed |
-| `pnpm lint` | Passed without warnings |
+| `pnpm lint` | Passed without warnings; 245 files |
 | `pnpm typecheck` | Passed, including all package builds and tests |
 | `pnpm test` | 56 tests passed across five suites |
 | `pnpm pathcompiler scan ./fixtures/next-demo` | 19 files, 98 nodes, 205 edges |
@@ -160,7 +160,7 @@ All checks below passed with Node 22.23.3 and pnpm 10.34.7:
 | Command / check | Result |
 | --- | --- |
 | Phase 1 baseline lint/typecheck/tests | Passed immediately before phase work; 56 tests |
-| `pnpm lint` | Passed without warnings |
+| `pnpm lint` | Passed without warnings; 245 files |
 | `pnpm typecheck` | Passed, including package builds, root tests and fixture |
 | `pnpm test` | 66 tests passed across six suites |
 | `pnpm test:e2e` | Fresh production fixture build; seven Chromium tests passed |
@@ -228,7 +228,7 @@ All checks below passed with Node 22.23.3 and pnpm 10.34.7:
 | --- | --- |
 | Phase 2 baseline lint/typecheck/tests | Passed; 66 tests |
 | `pnpm install --frozen-lockfile` | Passed |
-| `pnpm lint` | Passed without warnings |
+| `pnpm lint` | Passed without warnings; 245 files |
 | `pnpm typecheck` | Passed, including six package builds, root tests and fixture |
 | `pnpm test` | 79 tests passed across seven suites |
 | `pnpm pathcompiler tests mine ./fixtures/next-demo` | Seven traces; two fully extracted and five explicitly partial |
@@ -2355,3 +2355,66 @@ Complete — verified locally on 2026-10-23.
 - `locale`, `tenant` and `productRelease` are accepted but not yet used to
   select workflows.
 - Next recommended phase: O0 — Event Model.
+
+---
+
+## Phase O0 — Event Model
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/observability-core` (browser-safe, no transport). It
+  defines eight semantic event types as the union `ProductRuntimeEvent`:
+  `workflow.started`, `workflow.step_reached`, `workflow.completed`,
+  `workflow.abandoned`, `semantic_target.activated`, `goal.reached`,
+  `route.changed` and `action.blocked`. Workflow events require `workflowId`
+  and `workflowVersion`.
+- `RuntimeEventBase` holds the schema version, event ID and time, project,
+  release, session, optional workflow, semantic target, route, role, locale and
+  a bounded context, plus privacy metadata.
+- **Privacy in the schema.** Strict objects reject raw values, DOM and
+  coordinates. Semantic targets must be semantic IDs, and routes may not carry
+  query strings or fragments.
+- **Privacy in `validateEvent(event, policy)`.** The default policy has
+  analytics off, no PII, hashed user IDs and no context keys. Context keys must
+  be allowlisted, and keys containing sensitive words are refused even if
+  allowlisted. PII needs `collectPii`. `hashUserId` produces salted SHA-256
+  pseudonyms via Web Crypto.
+- `serializeEvent` writes canonical JSON and `parseEvents` reads
+  newline-delimited events. `createEventFactory` binds project, session and
+  release, with an injectable clock and ID generator.
+- Recorded in ADR 0044. No runtime change.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| Baseline before edits | lint, typecheck, 323 tests passed |
+| `pnpm install --frozen-lockfile` | Passed |
+| `pnpm lint` | Passed without warnings; 245 files |
+| `pnpm typecheck` | Passed, including the new package and its tests |
+| `pnpm test` | 328 tests passed across 45 suites (5 new) |
+| `git diff --check` | Passed |
+
+Tests cover:
+- every event type, and required workflow fields;
+- rejection of raw values, coordinates, DOM, query strings and non-semantic
+  targets;
+- the context allowlist and sensitive-key refusal (a key like `domain` is
+  allowed, `userEmail` is refused);
+- PII, user-ID hashing (deterministic, salt-dependent, a salt is required);
+- canonical serialization and NDJSON round trips;
+- release binding in the factory.
+
+### Errors found during the phase
+
+- The sensitive-key check first matched substrings, so `domain` was refused
+  because it contains "dom". It now matches whole words.
+- The event-schema helper first spread base and type shapes generically, so
+  TypeScript typed overridden fields such as `workflowId` as `never`. It now
+  uses Zod `extend`. Both are listed in ISSUES_LOG #10 and #11.
+
+### Scope notes
+
+- Explicit domain events (`track("client.created")`) are O4. Batching and
+  transports are O1.
+- Next recommended phase: O1 — Lightweight Analytics SDK.

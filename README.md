@@ -1131,6 +1131,24 @@ nonzero on failure. A candidate's claimed outcome is recorded but never
 trusted.
 See [ADR 0042](docs/decisions/0042-candidate-evaluation.md).
 
+## Observability event model (mode 3, foundation)
+
+`@pathcompiler/observability-core` (phase O0) defines the privacy-first
+semantic events that later observability phases build on:
+- workflow started, step reached, completed and abandoned, bound to
+  `workflowId` and `workflowVersion`;
+- semantic target activated;
+- goal reached;
+- route changed;
+- action blocked.
+
+The schemas reject raw values, DOM, coordinates and query strings.
+`validateEvent` enforces the privacy policy, which by default has analytics
+off, no PII, hashed user IDs and no context keys. Events serialize canonically
+as NDJSON, and `createEventFactory` binds project, session and release. There
+is no transport yet (O1).
+See [ADR 0044](docs/decisions/0044-semantic-event-model.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1171,6 +1189,7 @@ Analysis packages:
 | `@pathcompiler/solver-z3` | `createZ3SolverProvider` (only package importing Z3) |
 | `@pathcompiler/reasoner-core` | `createProductReasoner`, `ProductReasoner.checkReachability`, `ProductReasoner.findPlan`, `ProductReasoner.explainUnreachable`, `ProductReasoner.compareModels`, `ProductReasoner.verifyProperty`, `ProductPropertySchema`, `PropertyResult`, `propertiesFromInvariants`, `ModelComparison`, `ReachabilityChange`, `ExplanationResult`, `UnreachableExplanation`, `ConstraintProvenance`, `describeFormalExpr`, `evaluatePlan`, `PlanResult`, `Plan`, `PlanEvaluation`, `ReachabilityResult`, `ReasoningTrace`, `sliceFormalModel`, `evaluateFormalExpr`, `applyFormalAction`, `formalExprVariables`, `ReasoningQueryError` |
 | `@pathcompiler/semantic-change` | `analyzeSemanticChange`, `buildCommitModel`, `summarizeSemanticChange`, `collapseContexts`, `describeContext`, `SemanticChangeReport`, `SemanticWorkflowImpact` |
+| `@pathcompiler/observability-core` | `ProductRuntimeEventSchema` (eight semantic event types), `RuntimeEventBaseSchema`, `PrivacyPolicySchema`, `DEFAULT_PRIVACY_POLICY`, `validateEvent`, `hashUserId`, `serializeEvent`, `parseEvents`, `createEventFactory`, `EventPolicyError` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
 | `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
