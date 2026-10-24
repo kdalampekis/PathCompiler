@@ -11,7 +11,7 @@ import { z } from "zod";
  */
 export const TOOL_NAME = "resolve_product_help";
 export const TOOL_DESCRIPTION =
-  "Find the approved product workflow that answers a user's how-to question about this application. Returns a workflow (with ID, title and routes), several options to choose from, or unsupported. Use it before explaining how to do something in the product; do not invent steps.";
+  "Find the approved product workflow that answers a user's how-to question about this application. Returns workflow_help (workflow ID and version, title, ordered steps, entry route and what can be offered: explain, navigate, guide, checklist), ambiguous candidates to choose from, or unsupported with a reason. Use it before explaining how to do something in the product; present the returned steps and do not invent any.";
 
 type JsonSchema = Record<string, unknown>;
 const contextProperties = {
@@ -19,6 +19,11 @@ const contextProperties = {
     type: "string",
     description: "The user's current route, e.g. /clients",
     maxLength: 500,
+  },
+  locale: {
+    type: "string",
+    description: "The user's locale as a BCP 47 tag, e.g. en-GB",
+    maxLength: 35,
   },
   role: { type: "string", description: "The user's role", maxLength: 120 },
   permissions: {
@@ -71,6 +76,7 @@ export const STRICT_INPUT_SCHEMA: JsonSchema = {
       type: ["object", "null"],
       properties: {
         route: nullable(contextProperties.route),
+        locale: nullable(contextProperties.locale),
         role: nullable(contextProperties.role),
         permissions: nullable(contextProperties.permissions),
         // Strict mode cannot express open maps; flags are name/value pairs.
@@ -88,7 +94,7 @@ export const STRICT_INPUT_SCHEMA: JsonSchema = {
           },
         },
       },
-      required: ["route", "role", "permissions", "featureFlags"],
+      required: ["route", "locale", "role", "permissions", "featureFlags"],
       additionalProperties: false,
     },
   },
@@ -130,6 +136,7 @@ const InputSchema = z.strictObject({
   context: z
     .strictObject({
       route: z.string().max(500).nullable().optional(),
+      locale: z.string().max(35).nullable().optional(),
       role: z.string().max(120).nullable().optional(),
       permissions: z.array(z.string().max(200)).max(500).nullable().optional(),
       featureFlags: z
@@ -168,7 +175,7 @@ export function parseToolInput(raw: unknown): ResolveRequest {
   const parsed = InputSchema.safeParse(value);
   if (!parsed.success)
     throw new ToolInputError(
-      "Provide {query} (at most 500 characters) and an optional context with route, role, permissions and featureFlags.",
+      "Provide {query} (at most 500 characters) and an optional context with route, locale, role, permissions and featureFlags.",
       { cause: parsed.error },
     );
   const { query, context } = parsed.data;
@@ -181,6 +188,7 @@ export function parseToolInput(raw: unknown): ResolveRequest {
     query,
     context: {
       ...(context.route ? { route: context.route } : {}),
+      ...(context.locale ? { locale: context.locale } : {}),
       ...(context.role ? { role: context.role } : {}),
       ...(context.permissions ? { permissions: context.permissions } : {}),
       ...(featureFlags ? { featureFlags } : {}),

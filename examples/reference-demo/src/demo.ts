@@ -190,7 +190,7 @@ export async function runReferenceDemo(
     Object.entries(answers)
       .map(
         ([query, answer]) =>
-          `${query} → ${answer.type === "workflow" ? answer.workflow.id : answer.type}`,
+          `${query} → ${answer.type === "workflow_help" ? answer.workflowId : answer.type}`,
       )
       .join("\n"),
   );

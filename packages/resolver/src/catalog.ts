@@ -1,6 +1,4 @@
 import {
-  type RuntimeWorkflow,
-  RuntimeWorkflowSchema,
   type SearchIndex,
   SearchIndexSchema,
 } from "@pathcompiler/workflow-compiler/schema";
@@ -52,32 +50,9 @@ export function relatedWorkflows(
     .slice(0, Math.max(0, limit));
 }
 
-export const SupportedActionsSchema = z.strictObject({
-  explain: z.boolean(),
-  checklist: z.boolean(),
-  /** A static entry route exists; templated routes need concrete parameters. */
-  navigate: z.boolean(),
-  /** Every step can be followed by the observing guide runtime. */
-  guide: z.boolean(),
-  /** PathCompiler never executes workflows on the user's behalf. */
-  execute: z.literal(false),
-});
-export type SupportedActions = z.infer<typeof SupportedActionsSchema>;
-
-/** What an assistant or UI can offer for a compiled workflow. */
-export function supportedActions(workflow: RuntimeWorkflow): SupportedActions {
-  const parsed = RuntimeWorkflowSchema.parse(workflow);
-  return {
-    explain: true,
-    checklist: true,
-    navigate: parsed.entrypoints.some(
-      (entry) => entry.route !== undefined && !entry.route.includes("["),
-    ),
-    guide: parsed.steps.every(
-      (step) =>
-        step.target !== undefined ||
-        ["navigate", "explain", "wait"].includes(step.action.type),
-    ),
-    execute: false,
-  };
-}
+// Capabilities are computed at compile time; re-exported for existing callers.
+export {
+  type SupportedActions,
+  SupportedActionsSchema,
+  supportedActions,
+} from "@pathcompiler/workflow-compiler/schema";

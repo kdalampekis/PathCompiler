@@ -4,9 +4,9 @@ import {
   ProductHelpResultSchema,
   type RelatedWorkflow,
   RelatedWorkflowSchema,
-  type ResolveContext,
   type ResolveRequest,
   ResolveRequestSchema,
+  type RuntimeContext,
   relatedWorkflows,
   type SupportedActions,
   supportedActions,
@@ -22,11 +22,15 @@ import {
 import { z } from "zod";
 
 export type {
+  AmbiguousResult,
   ProductHelpResult,
   RelatedWorkflow,
   ResolveContext,
   ResolveRequest,
+  RuntimeContext,
   SupportedActions,
+  UnsupportedResult,
+  WorkflowHelpResult,
 } from "@pathcompiler/resolver";
 export type { RuntimeWorkflow } from "@pathcompiler/workflow-compiler/schema";
 export { createHttpTransport, type HttpTransportOptions } from "./http.js";
@@ -36,7 +40,11 @@ export const WorkflowDetailsSchema = DocumentationRecordSchema.omit({
   commit: true,
 });
 export type WorkflowDetails = z.infer<typeof WorkflowDetailsSchema>;
-export type WorkflowSummary = { id: string; revision: string; title: string };
+export type WorkflowSummary = {
+  workflowId: string;
+  workflowVersion: number;
+  title: string;
+};
 
 export interface RuntimeTransport {
   resolve(request: ResolveRequest): Promise<ProductHelpResult>;
@@ -93,7 +101,7 @@ export class PathCompiler {
     /** Explain/checklist/navigate/guide availability; never execute. */
     getSupportedActions(id: string): Promise<SupportedActions>;
     /** Workflows the resolver considers relevant: one match, all ambiguous options, or none. */
-    search(query: string, context?: ResolveContext): Promise<WorkflowSummary[]>;
+    search(query: string, context?: RuntimeContext): Promise<WorkflowSummary[]>;
   };
   readonly #transport: RuntimeTransport;
 
@@ -132,15 +140,22 @@ export class PathCompiler {
         const result = await this.resolve(
           context === undefined ? { query } : { query, context },
         );
-        if (result.type === "workflow")
+        if (result.type === "workflow_help")
           return [
             {
-              id: result.workflow.id,
-              revision: result.workflow.revision,
-              title: result.workflow.title,
+              workflowId: result.workflowId,
+              workflowVersion: result.workflowVersion,
+              title: result.content.title,
             },
           ];
-        if (result.type === "ambiguous") return result.options;
+        if (result.type === "ambiguous")
+          return result.candidates.map(
+            ({ workflowId, workflowVersion, title }) => ({
+              workflowId,
+              workflowVersion,
+              title,
+            }),
+          );
         return [];
       },
     };
@@ -151,7 +166,7 @@ export class PathCompiler {
     if (!parsed.success)
       throw new PathCompilerError(
         "invalid-request",
-        "Resolve requests need a query of at most 500 characters and an optional route/role/permissions/featureFlags context.",
+        "Resolve requests need a query of at most 500 characters and an optional context (route, locale, role, permissions, featureFlags, tenant, productRelease).",
         { cause: parsed.error },
       );
     return checked(

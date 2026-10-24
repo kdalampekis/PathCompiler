@@ -5,7 +5,10 @@ import type {
   WorkflowTerminalCondition,
   WorkflowV1,
 } from "@pathcompiler/workflow-ir";
-import { ApprovedWorkflowSchema } from "@pathcompiler/workflow-review";
+import {
+  ApprovedWorkflowSchema,
+  approvalVersion,
+} from "@pathcompiler/workflow-review";
 import {
   COMPILER_VERSION,
   type CompiledWorkflows,
@@ -15,6 +18,7 @@ import {
   type RuntimeWorkflow,
   SearchIndexSchema,
   type SearchRecord,
+  supportedActions,
 } from "./schema.js";
 
 export * from "./render.js";
@@ -27,32 +31,39 @@ export * from "./schema.js";
 export function compileWorkflows(
   approved: readonly unknown[],
 ): CompiledWorkflows {
-  const workflows = approved
-    .map((record) => ApprovedWorkflowSchema.parse(record).workflow)
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  for (const [index, workflow] of workflows.entries())
-    if (workflows[index + 1]?.id === workflow.id)
+  const records = approved
+    .map((record) => ApprovedWorkflowSchema.parse(record))
+    .sort((a, b) =>
+      a.workflow.id < b.workflow.id
+        ? -1
+        : a.workflow.id > b.workflow.id
+          ? 1
+          : 0,
+    );
+  for (const [index, record] of records.entries())
+    if (records[index + 1]?.workflow.id === record.workflow.id)
       throw new Error(
-        `Duplicate approved workflow ${workflow.id}. Keep one approved record per ID.`,
+        `Duplicate approved workflow ${record.workflow.id}. Keep one approved record per ID.`,
       );
-  const compiled = workflows.map((workflow) => ({
-    workflow,
-    revision: workflowRevision(workflow),
+  const compiled = records.map((record) => ({
+    workflow: record.workflow,
+    revision: workflowRevision(record.workflow),
+    version: approvalVersion(record),
   }));
   const base = { schemaVersion: 1, compilerVersion: COMPILER_VERSION } as const;
   return {
     searchIndex: SearchIndexSchema.parse({
       ...base,
       kind: "search-index",
-      workflows: compiled.map(({ workflow, revision }) =>
-        searchRecord(workflow, revision),
+      workflows: compiled.map(({ workflow, revision, version }) =>
+        searchRecord(workflow, revision, version),
       ),
     }),
     runtimeManifest: RuntimeManifestSchema.parse({
       ...base,
       kind: "runtime-manifest",
-      workflows: compiled.map(({ workflow, revision }) =>
-        runtimeWorkflow(workflow, revision),
+      workflows: compiled.map(({ workflow, revision, version }) =>
+        runtimeWorkflow(workflow, revision, version),
       ),
     }),
     documentation: DocumentationSchema.parse({
@@ -85,7 +96,11 @@ function unique(values: string[]): string[] {
   return [...new Set(values)].sort();
 }
 
-function searchRecord(workflow: WorkflowV1, revision: string): SearchRecord {
+function searchRecord(
+  workflow: WorkflowV1,
+  revision: string,
+  version: number,
+): SearchRecord {
   const preconditions = workflow.preconditions ?? [];
   const flags = new Map<string, { flag: string; enabled: boolean }>();
   for (const condition of preconditions)
@@ -97,6 +112,7 @@ function searchRecord(workflow: WorkflowV1, revision: string): SearchRecord {
   return {
     id: workflow.id,
     revision,
+    version,
     title: workflow.title,
     ...(workflow.description === undefined
       ? {}
@@ -120,16 +136,29 @@ function searchRecord(workflow: WorkflowV1, revision: string): SearchRecord {
     featureFlags: [...flags.entries()]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([, value]) => value),
+    steps: workflow.steps.map((step) => ({
+      id: step.id,
+      text: stepText(step),
+    })),
+    capabilities: supportedActions(
+      runtimeWorkflow(workflow, revision, version),
+    ),
   };
+}
+
+function stepText(step: WorkflowStep): string {
+  return step.instruction?.text ?? describeAction(step);
 }
 
 function runtimeWorkflow(
   workflow: WorkflowV1,
   revision: string,
+  version: number,
 ): RuntimeWorkflow {
   return {
     id: workflow.id,
     revision,
+    version,
     title: workflow.title,
     entrypoints: workflow.entrypoints,
     preconditions: workflow.preconditions ?? [],
@@ -160,7 +189,7 @@ function documentationRecord(
     prerequisites: (workflow.preconditions ?? []).map(describeCondition),
     steps: workflow.steps.map((step) => ({
       id: step.id,
-      text: step.instruction?.text ?? describeAction(step),
+      text: stepText(step),
       optional: step.optional ?? false,
       ...(step.expected === undefined
         ? {}

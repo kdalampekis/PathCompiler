@@ -25,6 +25,7 @@ const revision = `sha256:${"d".repeat(64)}`;
 const manifest: RuntimeWorkflow = {
   id: "notes.create",
   revision,
+  version: 2,
   title: "Create Note",
   entrypoints: [{ route: "/" }],
   preconditions: [],
@@ -76,11 +77,33 @@ const details: WorkflowDetails = {
   ],
   completion: 'notes.feedback shows "Saved"',
 };
-const option = { id: "notes.create", revision, title: "Create Note" };
+const option = {
+  workflowId: "notes.create",
+  workflowVersion: 2,
+  title: "Create Note",
+  confidence: 0.5,
+};
 const found: ProductHelpResult = {
-  type: "workflow",
-  workflow: { ...option, routes: ["/"] },
+  type: "workflow_help",
+  workflowId: "notes.create",
+  workflowVersion: 2,
+  revision,
   confidence: 1,
+  content: {
+    title: "Create Note",
+    steps: [
+      { id: "open", text: "Click New note" },
+      { id: "save", text: "Save the note" },
+    ],
+  },
+  entrypoint: { route: "/" },
+  capabilities: {
+    explain: true,
+    checklist: true,
+    navigate: true,
+    guide: true,
+    execute: false,
+  },
   matched: { alias: null, action: "create", entity: "note", qualifiers: [] },
 };
 const resolved: string[] = [];
@@ -91,7 +114,7 @@ const transport: RuntimeTransport = {
       ? found
       : {
           type: "unsupported",
-          reason: "no-match",
+          reason: "no_matching_workflow",
           message: "x",
           unavailable: [],
         };
@@ -178,7 +201,7 @@ describe("optional UI components", () => {
           type: "ambiguous",
           reason: "multiple-matches",
           message: "x",
-          options: [option],
+          candidates: [option],
         },
         onSelect: (id: string) => selected.push(id),
         labels: { chooseWorkflow: "Choose one" },
@@ -187,7 +210,7 @@ describe("optional UI components", () => {
         key: "u",
         result: {
           type: "unsupported",
-          reason: "unavailable-in-context",
+          reason: "not_available_for_context",
           message: "x",
           unavailable: [],
         },

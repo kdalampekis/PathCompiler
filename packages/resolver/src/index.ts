@@ -2,36 +2,56 @@ import {
   type SearchIndex,
   SearchIndexSchema,
   type SearchRecord,
+  SupportedActionsSchema,
 } from "@pathcompiler/workflow-compiler/schema";
 import { z } from "zod";
 
 export * from "./catalog.js";
 export * from "./evaluate.js";
 
-export const ResolveContextSchema = z.strictObject({
+/** Runtime context (spec §75). Every field is optional; unknown values never exclude. */
+export const RuntimeContextSchema = z.strictObject({
   /** Current route; a matching entry route breaks ties but never excludes. */
   route: z.string().min(1).max(500).optional(),
+  /** BCP 47 tag. Accepted for consumers and analytics; resolution is locale-neutral. */
+  locale: z.string().min(1).max(35).optional(),
   role: z.string().min(1).max(120).optional(),
   permissions: z.array(z.string().min(1).max(200)).max(500).optional(),
   featureFlags: z.record(z.string().min(1).max(200), z.boolean()).optional(),
+  /** Accepted and passed through; tenant-specific workflows are not modeled yet. */
+  tenant: z.string().min(1).max(200).optional(),
+  /** Accepted and passed through; workflows are bound to one compiled release. */
+  productRelease: z.string().min(1).max(200).optional(),
 });
+/** @deprecated Use `RuntimeContextSchema`. */
+export const ResolveContextSchema = RuntimeContextSchema;
 export const ResolveRequestSchema = z.strictObject({
   query: z.string().max(500),
-  context: ResolveContextSchema.optional(),
+  context: RuntimeContextSchema.optional(),
 });
-export type ResolveContext = z.infer<typeof ResolveContextSchema>;
+export type RuntimeContext = z.infer<typeof RuntimeContextSchema>;
+/** @deprecated Use `RuntimeContext`. */
+export type ResolveContext = RuntimeContext;
 export type ResolveRequest = z.infer<typeof ResolveRequestSchema>;
 
-const option = z.strictObject({
-  id: z.string(),
-  revision: z.string(),
-  title: z.string(),
-});
+const workflowVersion = z.number().int().positive();
+/** Runtime Result v1 (spec §63). Plain data: no HTML, no UI nodes, no provider objects. */
 export const WorkflowHelpResultSchema = z.strictObject({
-  type: z.literal("workflow"),
-  workflow: option.extend({ routes: z.array(z.string()) }),
+  type: z.literal("workflow_help"),
+  workflowId: z.string(),
+  /** Monotonic per workflow ID; `revision` is the content hash. */
+  workflowVersion,
+  revision: z.string(),
   /** Share of the record's action/entity/qualifier signals found in the query. */
   confidence: z.number().min(0).max(1),
+  content: z.strictObject({
+    title: z.string(),
+    summary: z.string().optional(),
+    steps: z.array(z.strictObject({ id: z.string(), text: z.string() })),
+  }),
+  entrypoint: z.strictObject({ route: z.string().optional() }).optional(),
+  capabilities: SupportedActionsSchema,
+  /** Which query signals matched (diagnostic). */
   matched: z.strictObject({
     alias: z.string().nullable(),
     action: z.string().nullable(),
@@ -39,18 +59,30 @@ export const WorkflowHelpResultSchema = z.strictObject({
     qualifiers: z.array(z.string()),
   }),
 });
+const candidate = z.strictObject({
+  workflowId: z.string(),
+  workflowVersion,
+  title: z.string(),
+  confidence: z.number().min(0).max(1),
+});
+/** Spec §64: close matches are never decided arbitrarily. */
 export const AmbiguousResultSchema = z.strictObject({
   type: z.literal("ambiguous"),
   reason: z.enum(["multiple-matches", "action-unclear"]),
   message: z.string(),
-  options: z.array(option).min(1),
+  candidates: z.array(candidate).min(1),
 });
+/** Spec §65; `workflow_not_verified` is reserved for workflows marked unverified. */
 export const UnsupportedResultSchema = z.strictObject({
   type: z.literal("unsupported"),
-  reason: z.enum(["empty-query", "no-match", "unavailable-in-context"]),
+  reason: z.enum([
+    "no_matching_workflow",
+    "not_available_for_context",
+    "workflow_not_verified",
+  ]),
   message: z.string(),
   unavailable: z.array(
-    option.extend({
+    candidate.omit({ confidence: true }).extend({
       requires: z.array(z.string()).min(1),
     }),
   ),
@@ -149,7 +181,7 @@ export function createResolver(index: unknown): ProductHelpResolver {
       const tokens = normalizeTokens(query);
       if (!tokens.length)
         return unsupported(
-          "empty-query",
+          "no_matching_workflow",
           "Ask about a task, for example the action and the thing it applies to.",
         );
       const present = new Set(tokens);
@@ -190,7 +222,7 @@ export function createResolver(index: unknown): ProductHelpResolver {
       });
       if (!matches.length)
         return unsupported(
-          "no-match",
+          "no_matching_workflow",
           "No approved workflow matches that request.",
         );
       const available = matches.filter(
@@ -199,11 +231,13 @@ export function createResolver(index: unknown): ProductHelpResolver {
       if (!available.length)
         return {
           ...unsupported(
-            "unavailable-in-context",
+            "not_available_for_context",
             "Matching workflows exist but are not available with the current role, permissions or feature flags.",
           ),
           unavailable: matches.map((match) => ({
-            ...summary(match.item.record),
+            workflowId: match.item.record.id,
+            workflowVersion: match.item.record.version,
+            title: match.item.record.title,
             requires: requirements(match.item.record, context),
           })),
         };
@@ -219,7 +253,7 @@ export function createResolver(index: unknown): ProductHelpResolver {
           type: "ambiguous",
           reason: "multiple-matches",
           message: "Several approved workflows match. Ask the user to choose.",
-          options: tied.map((match) => summary(match.item.record)),
+          candidates: tied.map(candidateOf),
         };
       if (!best.alias && !best.action && !best.qualifiers.length)
         return {
@@ -227,15 +261,26 @@ export function createResolver(index: unknown): ProductHelpResolver {
           reason: "action-unclear",
           message:
             "The request names what to work on but not what to do with it. Confirm the intended task.",
-          options: [summary(best.item.record)],
+          candidates: [candidateOf(best)],
         };
+      const record = best.item.record;
+      const route =
+        record.routes.find((item) => !item.includes("[")) ?? record.routes[0];
       return {
-        type: "workflow",
-        workflow: {
-          ...summary(best.item.record),
-          routes: best.item.record.routes,
+        type: "workflow_help",
+        workflowId: record.id,
+        workflowVersion: record.version,
+        revision: record.revision,
+        confidence: rounded(best.confidence),
+        content: {
+          title: record.title,
+          ...(record.description === undefined
+            ? {}
+            : { summary: record.description }),
+          steps: record.steps,
         },
-        confidence: Math.round(best.confidence * 1000) / 1000,
+        ...(route === undefined ? {} : { entrypoint: { route } }),
+        capabilities: record.capabilities,
         matched: {
           alias: best.alias,
           action: best.action ? best.item.record.action : null,
@@ -256,7 +301,7 @@ function containsSequence(tokens: string[], sequence: string[]): boolean {
 }
 
 /** Unmet context requirements; unknown context values never exclude. */
-function requirements(record: SearchRecord, context: ResolveContext): string[] {
+function requirements(record: SearchRecord, context: RuntimeContext): string[] {
   const missing: string[] = [];
   if (
     context.role !== undefined &&
@@ -277,8 +322,14 @@ function requirements(record: SearchRecord, context: ResolveContext): string[] {
   return missing;
 }
 
-function summary(record: SearchRecord) {
-  return { id: record.id, revision: record.revision, title: record.title };
+const rounded = (value: number) => Math.round(value * 1000) / 1000;
+function candidateOf(match: { item: Prepared; confidence: number }) {
+  return {
+    workflowId: match.item.record.id,
+    workflowVersion: match.item.record.version,
+    title: match.item.record.title,
+    confidence: rounded(match.confidence),
+  };
 }
 
 function unsupported(

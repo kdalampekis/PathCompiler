@@ -303,7 +303,7 @@ describe("pathcompiler CLI", () => {
         arguments: { query: "how do I add a new client" },
       });
       expect(result.structuredContent).toMatchObject({
-        result: { type: "workflow", workflow: { id: "clients.create" } },
+        result: { type: "workflow_help", workflowId: "clients.create" },
       });
     } finally {
       await client.close();
@@ -353,8 +353,8 @@ describe("pathcompiler CLI", () => {
         body: JSON.stringify({ query: "add a new client" }),
       });
       expect(await response.json()).toMatchObject({
-        type: "workflow",
-        workflow: { id: "clients.create" },
+        type: "workflow_help",
+        workflowId: "clients.create",
       });
     } finally {
       child.kill();
@@ -914,8 +914,8 @@ describe("pathcompiler CLI", () => {
         }),
       });
       expect(await client.resolve({ query: "add a client" })).toMatchObject({
-        type: "workflow",
-        workflow: { id: "clients.create" },
+        type: "workflow_help",
+        workflowId: "clients.create",
       });
       expect(
         (await client.workflows.getRuntimeManifest("clients.create")).steps,

@@ -52,15 +52,15 @@ export class ScriptedModel implements ChatModel {
           };
     if (last?.role === "tool") {
       const result = JSON.parse(last.text) as ProductHelpResult;
-      if (result.type === "workflow")
+      if (result.type === "workflow_help")
         return {
           type: "text",
-          text: `Here's how to ${result.workflow.title.toLowerCase()}.`,
+          text: `Here's how to ${result.content.title.toLowerCase()}.`,
         };
       if (result.type === "ambiguous")
         return {
           type: "text",
-          text: `Which of these did you mean: ${result.options.map((option) => option.title).join(" or ")}?`,
+          text: `Which of these did you mean: ${result.candidates.map((candidate) => candidate.title).join(" or ")}?`,
         };
       return {
         type: "text",
@@ -94,15 +94,12 @@ export class ExistingAssistant {
       const reply = await this.#model.respond(messages, [anthropicTool()]);
       if (reply.type === "text") {
         const workflow =
-          help?.type === "workflow"
-            ? await this.#pathcompiler.workflows.get(help.workflow.id)
+          help?.type === "workflow_help"
+            ? await this.#pathcompiler.workflows.get(help.workflowId)
             : null;
+        // Runtime Result v1 carries the capabilities; no extra request needed.
         const actions =
-          help?.type === "workflow"
-            ? await this.#pathcompiler.workflows.getSupportedActions(
-                help.workflow.id,
-              )
-            : null;
+          help?.type === "workflow_help" ? help.capabilities : null;
         return { text: reply.text, help, workflow, actions };
       }
       if (reply.name !== TOOL_NAME)

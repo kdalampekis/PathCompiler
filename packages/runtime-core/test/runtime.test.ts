@@ -81,6 +81,7 @@ function createClient(): RuntimeWorkflow {
   return {
     id: "clients.create",
     revision,
+    version: 3,
     title: "Create Client",
     entrypoints: [{ route: "/clients" }],
     preconditions: [],
@@ -327,6 +328,22 @@ describe("guide runtime", () => {
     });
     expect(allowed.start(guarded).status).toBe("active");
     allowed.dispose();
+  });
+
+  it("refuses a manifest that differs from the resolved revision or version", () => {
+    const { runtime } = setup();
+    expect(
+      runtime.start(createClient(), { revision, version: 3 }).status,
+    ).not.toBe("failed");
+    for (const expected of [
+      { revision: `sha256:${"e".repeat(64)}` },
+      { version: 2 },
+    ])
+      expect(runtime.start(createClient(), expected)).toMatchObject({
+        status: "failed",
+        workflowId: "clients.create",
+        failure: { code: "manifest-mismatch" },
+      });
   });
 
   it("matches canonical route templates", () => {

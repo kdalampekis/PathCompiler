@@ -1,0 +1,17 @@
+# Issues log
+
+Errors, bugs and deferred items found during phase work, kept so they can be
+retried or fixed later. Newest first. Mark entries **resolved** with the fixing
+commit instead of deleting them.
+
+| # | Found in | Kind | Description | Status / retry |
+| --- | --- | --- | --- | --- |
+| 9 | C1 (2026-10-23) | Tooling | The auto-mode safety classifier repeatedly returned "no verdict" for Bash and Edit calls mid-phase, and the session paused with C1 uncommitted. | Environment fault; no code impact. Retry: rerun the step. |
+| 8 | Environment | Tooling | The default shell resolves nvm Node 20 (`/usr/local/bin/node` is 18); the repository needs Node ≥ 22.12. Builds use `/tmp/pathcompiler-toolchain/node_modules/.bin` (Node 22.23.3, pnpm 10.34.7), which `/tmp` cleanup can delete. | Open. Fix: install Node 22 via nvm (`nvm install 22 && nvm alias default 22`) or add `.nvmrc`. |
+| 7 | I3 | Deferred | The GitHub check section and dashboard view for candidate evaluations are not built. | Open; needs C2 (configuration) and stored evaluations in the dashboard. |
+| 6 | R8 | Deviation | C7 (shared seeded-bug fixtures) does not exist. R8 and I3 tests seed bugs in temporary copies of the fixture. | Open; move the cases into `fixtures/reasoning/` in C7. |
+| 5 | R1 | Limitation | The extracted model slices poorly: 20 of 21 variables remain, because every dialog entry requires "no dialog open". Fine at fixture size; larger apps may be slow. | Open; revisit with incremental solving or a finer abstraction. |
+| 4 | R1/R3 | Limitation | The extracted Change Plan Structure plan skips the selector (2/3 major steps), because selected values are not tied to entity state (`value-not-persisted`). | Open; needs data-flow or semantic (C5/C9) abstraction. |
+| 3 | R3 | Bug, resolved | The Z3 high-level API leaked AST memory until the 2 GB WASM heap aborted (OOM), followed by bogus "sort mismatch" errors. | **Resolved** in 55ce4c3: one low-level Z3 context per check, deleted afterwards. |
+| 2 | R2 | Bug, resolved | The slice added initial-constraint variables after the cone fixpoint, so actions referenced undeclared variables (`s0:plan_exists`). | **Resolved** in 2473d87. |
+| 1 | R1 | Bug, resolved | The extracted model's expression order depended on input capability order. The determinism test caught it. | **Resolved** in bf426cd (sorted iteration). |

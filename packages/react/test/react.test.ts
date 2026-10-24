@@ -164,7 +164,7 @@ describe("React runtime", () => {
     await settle();
     expect(seen["how do I add a client"]).toMatchObject({
       status: "success",
-      data: { type: "workflow", workflow: { id: "clients.create" } },
+      data: { type: "workflow_help", workflowId: "clients.create" },
     });
     expect(seen.plan).toMatchObject({
       status: "success",

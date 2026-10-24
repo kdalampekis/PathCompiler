@@ -102,10 +102,10 @@ acceptance criteria. They become the **C track** (§4.1).
 
 | Spec section | State | Evidence |
 | --- | --- | --- |
-| §63–65 Runtime Result v1, Ambiguity, Unsupported | Divergent | Resolver returns `type: "workflow"` with `workflow{id,revision,title,routes}`, not `type: "workflow_help"` with `content.steps`, `capabilities` or `workflowVersion`. Ambiguous uses `options` rather than `candidates[{workflowId,title,confidence}]`. Unsupported reasons are `empty-query/no-match/unavailable-in-context`, not `no_matching_workflow/not_available_for_context/workflow_not_verified`. |
-| §75 RuntimeContext | Partial | `ResolveContextSchema` is strict, so `locale`, `tenant` and `productRelease` are **rejected**. |
-| §70 Versioning | Partial | Schema version, content-hash revision and compiler version are present. There is no integer workflow revision (ADR 0014 chose a hash) and no repository commit in runtime artifacts. |
-| §68 Guide failure modes | Partial | Target missing, wrong route, unmet permission precondition, timeout and stop are covered. There is no workflow manifest mismatch detection. |
+| §63–65 Runtime Result v1, Ambiguity, Unsupported | ✅ Aligned in C1 (ADR 0043). Was: divergent. | Resolver returns `type: "workflow"` with `workflow{id,revision,title,routes}`, not `type: "workflow_help"` with `content.steps`, `capabilities` or `workflowVersion`. Ambiguous uses `options` rather than `candidates[{workflowId,title,confidence}]`. Unsupported reasons are `empty-query/no-match/unavailable-in-context`, not `no_matching_workflow/not_available_for_context/workflow_not_verified`. |
+| §75 RuntimeContext | ✅ Aligned in C1. Was: partial. | `ResolveContextSchema` is strict, so `locale`, `tenant` and `productRelease` are **rejected**. |
+| §70 Versioning | ✅ Integer `workflowVersion` added in C1. Was: partial. | Schema version, content-hash revision and compiler version are present. There is no integer workflow revision (ADR 0014 chose a hash) and no repository commit in runtime artifacts. |
+| §68 Guide failure modes | ✅ `manifest-mismatch` added in C1. Was: partial. | Target missing, wrong route, unmet permission precondition, timeout and stop are covered. There is no workflow manifest mismatch detection. |
 | §44 `pathcompiler.yaml`, `pathcompiler init`; §43 `graph inspect`, `capabilities list` | Missing | No config loader or `init` command; CLI uses flags only. |
 | §46–47 `packages/model-provider` (Noop/Fixture), `scan --explain-model-context` | Missing | Only the `SemanticModel` interface (with a test fake) exists in `capability-engine`. |
 | §51 Error taxonomy | Partial | Typed errors are `PathCompilerError`, `ReviewError`, `ProposalError`, `ToolInputError` and `HttpError`, not the named taxonomy. |
@@ -279,7 +279,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
   accept-update; paraphrase eval; all e2e suites.
 - **Runtime change:** **Yes, breaking** (migration note required).
 - **Unblocks:** O0, I0 (`ProductTarget` versions), P-query ranking.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): Runtime Result v1, full `RuntimeContext`, integer `workflowVersion`, guide `manifest-mismatch`, ADR 0043.
 
 #### C2 — Configuration and feature flags
 - **Objective:** Add `pathcompiler.yaml` (§44) with Zod validation and
@@ -659,7 +659,7 @@ Minimum sample sizes come before any conclusion.
 - **Interfaces:** `ProductRuntimeEvent` union, `RuntimeEventBase`, `PrivacyPolicy`.
 - **Acceptance:** schemas reject raw-content fields by default; events reference
   semantic targets, workflow IDs and versions.
-- **Runtime change:** No. **Unblocks:** O1, O5, I5. **Status:** 🔒 blocked on C1.
+- **Runtime change:** No. **Unblocks:** O1, O5, I5. **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### O1 — Lightweight Analytics SDK
 - **Prerequisites:** O0. Soft: C2 (configured privacy defaults).
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **C1** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5) | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O0 (C1) · O1–O12 (O0 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O0** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O1–O12 (O0 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,22 +839,23 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: C1 — Runtime contract alignment
+## 7. Next implementation phase: O0 — Event Model
 
-Modes 1 (Understand), 2 (Guide) and 5 (Evaluate) now work end to end.
-- **C1 is now the most valuable unblocked phase.** It gates the whole
-  observability track: O0 needs it, then O1–O12 and mode 3 (Observe). It also
-  fixes the known divergence of the public runtime contract from Runtime
-  Result v1 (§1 gaps) before external consumers depend on the current shapes.
-- **The reasoning track can wait.** Its next phases (R5, R7, R9, R10, R12)
-  extend capabilities that already work.
-- **The other parallel candidates:** C8 (generalized browser verifier, which
-  unblocks I4 and P3), C2 (configuration and flags, which unblocks R-WI, IG and
-  turning on the opt-in reasoning surfaces), and P0 (which gates I0).
+C1 is complete, so the observability track (lane D) is unblocked. O0 defines
+the typed, privacy-first semantic event model that mode 3 (Observe) and the
+improvement loop build on:
+- events reference `workflowId`, `workflowVersion`, semantic targets and
+  `RuntimeContext.productRelease`;
+- no raw user content is collected by default;
+- there is no transport.
 
-I3 (2026-10-23) evaluates any candidate commit independently (ADR 0042). For
-example, the §254 demo, a "UX improvement" that drops a guard and claims
-success, fails with `reject`.
+Parallel candidates: C8 (browser verifier, which unblocks I4 and P3), C2
+(configuration and flags), and P0 (which gates I0).
+
+C1 (2026-10-23) aligned the public runtime contract with Runtime Result v1 and
+the full `RuntimeContext`. It added integer workflow versions from approval
+lineage and guide `manifest-mismatch` detection (ADR 0043, with a migration
+table).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

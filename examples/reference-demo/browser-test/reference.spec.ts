@@ -92,14 +92,15 @@ test("1–7: scan, graph, discovery, approval, compile, resolver and assistant a
     transcript.baseArtifacts.runtimeManifest.workflows.map((item) => item.id),
   ).toEqual(["clients.create", "plans.change_structure", "plans.create"]);
   expect(transcript.answers["How do I add a new client?"]).toMatchObject({
-    type: "workflow",
-    workflow: { id: "clients.create", routes: ["/clients"] },
+    type: "workflow_help",
+    workflowId: "clients.create",
+    entrypoint: { route: "/clients" },
   });
   expect(
     transcript.answers["How do I change the structure of a plan?"],
   ).toMatchObject({
-    type: "workflow",
-    workflow: { id: "plans.change_structure" },
+    type: "workflow_help",
+    workflowId: "plans.change_structure",
   });
   expect(transcript.card).toMatchObject({
     heading: "Create Client",
@@ -112,10 +113,10 @@ test("8–9: the assistant's navigate action and an interactive guide on the pro
 }) => {
   await page.goto(`${BASE}/plans`);
   const answer = transcript.answers["How do I add a new client?"];
-  if (answer?.type !== "workflow")
-    throw new Error("Expected a workflow answer");
+  if (answer?.type !== "workflow_help")
+    throw new Error("Expected a workflow_help answer");
   // "Open /clients": the host app navigates to the workflow's entry route.
-  await page.goto(new URL(answer.workflow.routes[0] ?? "/", BASE).href);
+  await page.goto(new URL(answer.entrypoint?.route ?? "/", BASE).href);
   await expect(
     page.getByRole("heading", { name: "Clients", exact: true }),
   ).toBeVisible();

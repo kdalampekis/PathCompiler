@@ -19,16 +19,18 @@ export function toCard(answer: Answer): Card {
     body.push(`Done when ${answer.workflow.completion}.`);
   }
   if (answer.help?.type === "ambiguous")
-    body.push(...answer.help.options.map((option) => `• ${option.title}`));
+    body.push(
+      ...answer.help.candidates.map((candidate) => `• ${candidate.title}`),
+    );
   const buttons: string[] = [];
-  if (answer.actions?.navigate && answer.help?.type === "workflow")
-    buttons.push(`Open ${answer.help.workflow.routes[0] ?? ""}`.trim());
+  if (answer.actions?.navigate && answer.help?.type === "workflow_help")
+    buttons.push(`Open ${answer.help.entrypoint?.route ?? ""}`.trim());
   if (answer.actions?.guide) buttons.push("Show me");
   if (answer.actions?.checklist) buttons.push("Checklist");
   return {
     heading:
-      answer.help?.type === "workflow"
-        ? answer.help.workflow.title
+      answer.help?.type === "workflow_help"
+        ? answer.help.content.title
         : "Assistant",
     body,
     buttons,

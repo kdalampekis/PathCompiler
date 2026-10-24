@@ -1981,6 +1981,7 @@ async function runProposals(
           traces: mined.report,
         }),
         repository: project.repository,
+        current: await readCurrentApproved(output, proposal.workflowId),
       });
       const approvedFile = path.join(
         output,
@@ -2230,6 +2231,16 @@ async function loadGeneratedClient(output: string): Promise<PathCompiler> {
       documentation,
     }),
   });
+}
+
+async function readCurrentApproved(output: string, id: string) {
+  const file = path.join(output, reviewPaths(id).approved);
+  const content = await readOptional(file);
+  if (content === undefined)
+    throw new Error(
+      `No approved ${id} at ${file}; a proposal can only update an approved workflow.`,
+    );
+  return parseStored(content, id, parseApprovedWorkflowYaml);
 }
 
 async function readApproved(output: string) {

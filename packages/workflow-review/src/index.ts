@@ -30,6 +30,11 @@ export const ApprovedWorkflowSchema = z
       approvedBy: ReviewerSchema,
       approvedAt: z.iso.datetime(),
       approvedCommit: CommitSchema,
+      /**
+       * Monotonic per workflow ID: 1 on first approval, +1 per accepted update.
+       * Absent on records approved before versioning, which count as 1.
+       */
+      version: z.number().int().positive().optional(),
     }),
     workflow: WorkflowV1Schema,
   })
@@ -168,9 +173,15 @@ export function approveCandidate(
       approvedBy: input.approvedBy,
       approvedAt: input.approvedAt,
       approvedCommit: workflow.repository.commit,
+      version: 1,
     },
     workflow: { ...workflow, status: "approved" },
   });
+}
+
+/** The workflow version of an approved record (records without one are version 1). */
+export function approvalVersion(record: ApprovedWorkflow): number {
+  return record.approval.version ?? 1;
 }
 
 export type RejectionInput = {

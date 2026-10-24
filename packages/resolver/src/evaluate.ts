@@ -71,11 +71,11 @@ function matches(
   actual: ProductHelpResult,
 ): boolean {
   if (wanted.type === "workflow")
-    return actual.type === "workflow" && actual.workflow.id === wanted.id;
+    return actual.type === "workflow_help" && actual.workflowId === wanted.id;
   if (wanted.type === "ambiguous")
     return (
       actual.type === "ambiguous" &&
-      actual.options.map((item) => item.id).join() ===
+      actual.candidates.map((item) => item.workflowId).join() ===
         [...wanted.ids].sort().join()
     );
   return actual.type === "unsupported";

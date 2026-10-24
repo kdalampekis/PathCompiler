@@ -658,16 +658,32 @@ resolver.resolveProductHelp({
   query: 'How do I add a new client?',
   context: { route: '/clients', role: 'editor', permissions: [], featureFlags: {} },
 });
-// { type: 'workflow', workflow: { id: 'clients.create', ... }, confidence: 1, matched: {...} }
+// { type: 'workflow_help', workflowId: 'clients.create', workflowVersion: 1, revision: 'sha256:…',
+//   confidence: 1, content: { title: 'Create Client', steps: [{ id: 'step.1', text: 'Click Create Client' }, …] },
+//   entrypoint: { route: '/clients' },
+//   capabilities: { explain: true, checklist: true, navigate: true, guide: true, execute: false }, matched: {...} }
 ```
 
 The resolver uses only the compiled search index, never the graph. It normalizes
 text (case, diacritics, simple plurals, `set up`), matches approved aliases, then
 requires the record's entity and a compatible action from a small generic verb
 lexicon (create/change/delete groups). Product vocabulary such as entity synonyms
-belongs in approved aliases, not in the lexicon. Results are `workflow`,
-`ambiguous` (`multiple-matches`, or `action-unclear` when only the entity is
-named) or `unsupported` (`empty-query`, `no-match`, `unavailable-in-context`).
+belongs in approved aliases, not in the lexicon.
+
+Results follow Runtime Result v1 (spec §63–65):
+- `workflow_help`: the workflow ID, its version (an integer, `workflowVersion`)
+  and content hash (`revision`), plus `content.steps`, `entrypoint` and
+  `capabilities`.
+- `ambiguous`: `candidates[{ workflowId, workflowVersion, title, confidence }]`,
+  with reason `multiple-matches`, or `action-unclear` when only the entity is
+  named.
+- `unsupported`: reason `no_matching_workflow`, `not_available_for_context` or
+  `workflow_not_verified`. The last one is reserved and not yet produced.
+
+The context is the full `RuntimeContext`: `route`, `locale`, `role`,
+`permissions`, `featureFlags`, `tenant` and `productRelease`. `locale`,
+`tenant` and `productRelease` are accepted and passed through, but do not
+change resolution yet. See ADR 0043 for the migration from the earlier shapes.
 Role, permission and feature-flag requirements exclude workflows only when the
 caller supplies that context. The current route breaks ties but never excludes.
 `confidence` is the share of action/entity/qualifier signals found, not a
@@ -735,7 +751,13 @@ A target that does not resolve to exactly one visible element becomes
 `target-missing` after a grace period, keeping the step's instruction available
 as a fallback. It recovers when the target appears. `pause`/`resume` stop
 observation and timers. `stop` is explicit. A step without progress becomes
-`timed-out`. The React provider creates the runtime after mount, so server
+`timed-out`.
+
+`start(workflow, { revision, version })` takes the revision and version from a
+`workflow_help` result. If the loaded manifest differs, the guide fails with
+`manifest-mismatch` instead of guiding through stale steps. The UI card and
+`useGuideRuntime().start(id, expected)` pass these values automatically. The
+React provider creates the runtime after mount, so server
 rendering is safe and reports `idle`. Pass the router's route so SPA navigation
 is observed. See [ADR 0017](docs/decisions/0017-observing-guide-runtime.md).
 

@@ -67,13 +67,25 @@ describe("headless SDK", () => {
         query: "how do I add a client",
         context: { route: "/clients" },
       }),
-    ).toMatchObject({ type: "workflow", workflow: { id: "clients.create" } });
-    expect((await sdk.workflows.search("plan")).map((item) => item.id)).toEqual(
-      ["plans.change_structure", "plans.create"],
-    );
+    ).toMatchObject({
+      type: "workflow_help",
+      workflowId: "clients.create",
+      workflowVersion: 1,
+      content: { title: "Create Client" },
+      entrypoint: { route: "/clients" },
+      capabilities: { guide: true, execute: false },
+    });
+    const help = await sdk.resolve({ query: "how do I add a client" });
+    if (help.type !== "workflow_help") throw new Error(help.type);
+    expect(help.content.steps).toHaveLength(4);
+    expect(
+      (await sdk.workflows.search("plan")).map((item) => item.workflowId),
+    ).toEqual(["plans.change_structure", "plans.create"]);
     expect(await sdk.workflows.search("delete a client")).toEqual([]);
     expect(
-      (await sdk.workflows.search("create client")).map((item) => item.id),
+      (await sdk.workflows.search("create client")).map(
+        (item) => item.workflowId,
+      ),
     ).toEqual(["clients.create"]);
     const details = await sdk.workflows.get("clients.create");
     expect(details.steps.map((step) => step.text)).toHaveLength(4);

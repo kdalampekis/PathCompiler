@@ -23,14 +23,23 @@ import {
 } from "../src/index.js";
 
 const result: ProductHelpResult = {
-  type: "workflow",
-  workflow: {
-    id: "clients.create",
-    revision: `sha256:${"a".repeat(64)}`,
-    title: "Create Client",
-    routes: ["/clients"],
-  },
+  type: "workflow_help",
+  workflowId: "clients.create",
+  workflowVersion: 1,
+  revision: `sha256:${"a".repeat(64)}`,
   confidence: 1,
+  content: {
+    title: "Create Client",
+    steps: [{ id: "step.1", text: "Click Create Client" }],
+  },
+  entrypoint: { route: "/clients" },
+  capabilities: {
+    explain: true,
+    checklist: true,
+    navigate: true,
+    guide: true,
+    execute: false,
+  },
   matched: { alias: null, action: "create", entity: "client", qualifiers: [] },
 };
 function client(requests: ResolveRequest[] = []) {

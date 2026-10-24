@@ -5,6 +5,7 @@ import {
   useProductHelp,
   useWorkflow,
   useWorkflowProgress,
+  type WorkflowHelpResult,
 } from "@pathcompiler/react";
 import { type FormEvent, useEffect, useId, useState } from "react";
 
@@ -70,7 +71,7 @@ export function ProductHelpCard(props: ProductHelpCardProps) {
     return (
       <section className={className} role="status">
         <p>
-          {result.reason === "unavailable-in-context"
+          {result.reason === "not_available_for_context"
             ? text.unavailable
             : text.unsupported}
         </p>
@@ -81,10 +82,13 @@ export function ProductHelpCard(props: ProductHelpCardProps) {
       <section className={className} aria-labelledby={headingId}>
         <h2 id={headingId}>{text.chooseWorkflow}</h2>
         <ul>
-          {result.options.map((option) => (
-            <li key={option.id}>
-              <button type="button" onClick={() => props.onSelect?.(option.id)}>
-                {option.title}
+          {result.candidates.map((candidate) => (
+            <li key={candidate.workflowId}>
+              <button
+                type="button"
+                onClick={() => props.onSelect?.(candidate.workflowId)}
+              >
+                {candidate.title}
               </button>
             </li>
           ))}
@@ -96,8 +100,7 @@ export function ProductHelpCard(props: ProductHelpCardProps) {
       className={className}
       headingId={headingId}
       text={text}
-      workflowId={result.workflow.id}
-      title={result.workflow.title}
+      result={result}
       {...(props.onStartGuide ? { onStartGuide: props.onStartGuide } : {})}
     />
   );
@@ -107,37 +110,39 @@ function WorkflowCard(props: {
   className: string;
   headingId: string;
   text: Labels;
-  workflowId: string;
-  title: string;
+  result: WorkflowHelpResult;
   onStartGuide?: (workflowId: string) => void;
 }) {
-  const details = useWorkflow(props.workflowId);
+  const { result } = props;
   const guide = useGuideRuntime();
   const [error, setError] = useState<string | null>(null);
   const start = () => {
     setError(null);
-    if (props.onStartGuide) return props.onStartGuide(props.workflowId);
-    guide.start(props.workflowId).catch((cause: unknown) => {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    });
+    if (props.onStartGuide) return props.onStartGuide(result.workflowId);
+    guide
+      .start(result.workflowId, {
+        revision: result.revision,
+        version: result.workflowVersion,
+      })
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      });
   };
+  // Runtime Result v1 carries the steps; no second request is needed.
   return (
     <section className={props.className} aria-labelledby={props.headingId}>
-      <h2 id={props.headingId}>{props.title}</h2>
-      {details.status === "loading" && <p>{props.text.loading}</p>}
-      {details.status === "error" && (
-        <p role="alert">{props.text.loadFailed}</p>
+      <h2 id={props.headingId}>{result.content.title}</h2>
+      {result.content.summary && <p>{result.content.summary}</p>}
+      <ol aria-label={props.text.steps}>
+        {result.content.steps.map((step) => (
+          <li key={step.id}>{step.text}</li>
+        ))}
+      </ol>
+      {result.capabilities.guide && (
+        <button type="button" onClick={start}>
+          {props.text.startGuide}
+        </button>
       )}
-      {details.status === "success" && (
-        <ol aria-label={props.text.steps}>
-          {details.data.steps.map((step) => (
-            <li key={step.id}>{step.text}</li>
-          ))}
-        </ol>
-      )}
-      <button type="button" onClick={start}>
-        {props.text.startGuide}
-      </button>
       {error && <p role="alert">{error}</p>}
     </section>
   );
@@ -205,10 +210,10 @@ export function WorkflowSearch(props: WorkflowSearchProps) {
   const options =
     help.status !== "success"
       ? []
-      : help.data.type === "workflow"
-        ? [help.data.workflow]
+      : help.data.type === "workflow_help"
+        ? [{ workflowId: help.data.workflowId, title: help.data.content.title }]
         : help.data.type === "ambiguous"
-          ? help.data.options
+          ? help.data.candidates
           : [];
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -236,8 +241,11 @@ export function WorkflowSearch(props: WorkflowSearchProps) {
       {options.length > 0 && (
         <ul>
           {options.map((option) => (
-            <li key={option.id}>
-              <button type="button" onClick={() => props.onSelect(option.id)}>
+            <li key={option.workflowId}>
+              <button
+                type="button"
+                onClick={() => props.onSelect(option.workflowId)}
+              >
                 {option.title}
               </button>
             </li>

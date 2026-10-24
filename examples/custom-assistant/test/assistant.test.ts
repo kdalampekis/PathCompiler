@@ -48,8 +48,8 @@ describe("existing assistant using PathCompiler", () => {
     const assistant = new ExistingAssistant(new ScriptedModel(), pathcompiler);
     const answer = await assistant.ask("How do I add a new client?");
     expect(answer.help).toMatchObject({
-      type: "workflow",
-      workflow: { id: "clients.create" },
+      type: "workflow_help",
+      workflowId: "clients.create",
     });
     expect(answer.actions).toEqual({
       explain: true,

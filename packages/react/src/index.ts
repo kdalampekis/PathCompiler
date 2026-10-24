@@ -1,6 +1,7 @@
 import {
   createDomEnvironment,
   createGuideRuntime,
+  type ExpectedWorkflow,
   type GuideContext,
   type GuideEnvironment,
   type GuideRuntime,
@@ -27,11 +28,17 @@ import {
   useSyncExternalStore,
 } from "react";
 
-export type { GuideState, GuideStatus } from "@pathcompiler/runtime-core";
+export type {
+  ExpectedWorkflow,
+  GuideState,
+  GuideStatus,
+} from "@pathcompiler/runtime-core";
 export type {
   ProductHelpResult,
   ResolveContext,
+  RuntimeContext,
   WorkflowDetails,
+  WorkflowHelpResult,
 } from "@pathcompiler/sdk-js";
 
 export type PathCompilerProviderProps = {
@@ -202,8 +209,11 @@ function useGuideState(runtime: GuideRuntime | null): GuideState {
 
 export type GuideControls = {
   state: GuideState;
-  /** Loads the runtime manifest and starts the guide; rejects if loading fails. */
-  start(workflowId: string): Promise<GuideState>;
+  /**
+   * Loads the runtime manifest and starts the guide; rejects if loading fails.
+   * Pass the resolved revision/version to fail with `manifest-mismatch` on stale manifests.
+   */
+  start(workflowId: string, expected?: ExpectedWorkflow): Promise<GuideState>;
   pause(): void;
   resume(): void;
   stop(): void;
@@ -217,13 +227,13 @@ export function useGuideRuntime(): GuideControls {
   return useMemo(
     () => ({
       state,
-      async start(workflowId) {
+      async start(workflowId, expected) {
         if (!runtime)
           throw new Error(
             "The guide runtime is not ready yet. Start guides after the provider has mounted.",
           );
         const manifest = await client.workflows.getRuntimeManifest(workflowId);
-        return runtime.start(manifest);
+        return runtime.start(manifest, expected);
       },
       pause: () => runtime?.pause(),
       resume: () => runtime?.resume(),

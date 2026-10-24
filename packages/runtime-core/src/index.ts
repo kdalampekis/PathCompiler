@@ -82,10 +82,17 @@ export type GuideRuntimeOptions = {
   clock?: GuideClock;
 };
 
+export type ExpectedWorkflow = { revision?: string; version?: number };
+
 export interface GuideRuntime {
   getState(): GuideState;
   subscribe(listener: (state: GuideState) => void): () => void;
-  start(workflow: unknown): GuideState;
+  /**
+   * Starts a guide. `expected` is the revision/version the caller resolved
+   * (e.g. from a `workflow_help` result); a different manifest fails with
+   * `manifest-mismatch` instead of guiding through stale steps.
+   */
+  start(workflow: unknown, expected?: ExpectedWorkflow): GuideState;
   pause(): void;
   resume(): void;
   stop(): void;
@@ -423,7 +430,7 @@ export function createGuideRuntime(options: GuideRuntimeOptions): GuideRuntime {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    start(input) {
+    start(input, expected) {
       const parsed = RuntimeWorkflowSchema.safeParse(input);
       clearTimers();
       unsubscribe?.();
@@ -438,6 +445,26 @@ export function createGuideRuntime(options: GuideRuntimeOptions): GuideRuntime {
             code: "invalid-workflow",
             message:
               "Provide a runtime manifest workflow from pathcompiler build.",
+          },
+        });
+        return state;
+      }
+      const mismatch =
+        (expected?.revision !== undefined &&
+          expected.revision !== parsed.data.revision) ||
+        (expected?.version !== undefined &&
+          expected.version !== parsed.data.version);
+      if (mismatch) {
+        workflow = null;
+        publish({
+          ...IDLE,
+          status: "failed",
+          workflowId: parsed.data.id,
+          revision: parsed.data.revision,
+          failure: {
+            code: "manifest-mismatch",
+            message:
+              "This guide changed since the help answer was produced. Ask again to get the current steps.",
           },
         });
         return state;

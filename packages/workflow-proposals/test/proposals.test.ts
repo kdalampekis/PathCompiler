@@ -165,6 +165,9 @@ const decision = (overrides: Record<string, unknown> = {}) => ({
   decidedAt: "2026-10-22T12:00:00.000Z",
   validation: validator(head)(proposal().proposed as WorkflowV1),
   repository: { commit: head.commit, dirty: false },
+  current: approved.find(
+    (item) => item.workflow.id === "plans.change_structure",
+  ),
   ...overrides,
 });
 
@@ -219,7 +222,21 @@ describe("workflow update proposals", () => {
       approvedBy: "Ana",
       approvedAt: "2026-10-22T12:00:00.000Z",
       approvedCommit: head.commit,
+      version: 2,
     });
+    const current = decision().current as (typeof approved)[number];
+    const second = acceptProposal(proposal(), {
+      ...decision(),
+      current: { ...current, approval: { ...current.approval, version: 6 } },
+    });
+    expect(second.approved.approval.version).toBe(7);
+    const stale = structuredClone(current);
+    stale.workflow.title = "Changed meanwhile";
+    expect(
+      proposalError(() =>
+        acceptProposal(proposal(), decision({ current: stale })),
+      ).code,
+    ).toBe("approved-changed");
     expect(record.workflow).toMatchObject({
       id: "plans.change_structure",
       status: "approved",

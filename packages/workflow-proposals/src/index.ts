@@ -12,6 +12,7 @@ import { type WorkflowV1, WorkflowV1Schema } from "@pathcompiler/workflow-ir";
 import {
   type ApprovedWorkflow,
   ApprovedWorkflowSchema,
+  approvalVersion,
   type DeprecatedWorkflow,
   DeprecatedWorkflowSchema,
   ReviewerSchema,
@@ -469,6 +470,8 @@ export function acceptProposal(
     note?: string;
     validation: unknown;
     repository: { commit: string | null; dirty: boolean | null };
+    /** The approved record this proposal updates; its version is incremented. */
+    current: unknown;
   },
 ): { approved: ApprovedWorkflow; proposal: WorkflowUpdateProposal } {
   const parsed = ProposalSchema.parse(input);
@@ -493,6 +496,15 @@ export function acceptProposal(
     throw new ProposalError(
       "dirty-repository",
       "Commit or stash changes so the accepted workflow matches its commit.",
+    );
+  const current = ApprovedWorkflowSchema.parse(decision.current);
+  if (
+    current.workflow.id !== proposal.workflowId ||
+    workflowRevision(current.workflow) !== proposal.approved.revision
+  )
+    throw new ProposalError(
+      "approved-changed",
+      `The approved ${proposal.workflowId} changed since this proposal was generated. Regenerate the proposal.`,
     );
   const validation = ValidationReportSchema.parse(decision.validation);
   if (
@@ -522,6 +534,7 @@ export function acceptProposal(
         approvedBy: decision.decidedBy,
         approvedAt: decision.decidedAt,
         approvedCommit: proposal.head.commit,
+        version: approvalVersion(current) + 1,
       },
       workflow: { ...proposal.proposed, status: "approved" },
     }),

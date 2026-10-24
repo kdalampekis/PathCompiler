@@ -1,3 +1,4 @@
+import { COMPILER_VERSION } from "@pathcompiler/workflow-compiler/schema";
 import { expect, test } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
@@ -106,7 +107,7 @@ test("lists evidence and settings", async ({ page }) => {
     page.getByRole("region", { name: "Playwright traces" }),
   ).toContainText("Create, Edit and Deactivate Client");
   await page.goto("/p/demo/settings");
-  await expect(page.getByText("1.0.0")).toBeVisible();
+  await expect(page.getByText(COMPILER_VERSION)).toBeVisible();
   await expect(
     page.getByRole("row", { name: /runtime-manifest\.json/ }),
   ).not.toContainText("not built");

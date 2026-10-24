@@ -63,6 +63,15 @@ function record(overrides: Partial<SearchRecord>): SearchRecord {
     routes: ["/invoices"],
     permissions: [],
     featureFlags: [],
+    version: 1,
+    steps: [{ id: "step.1", text: "Select send" }],
+    capabilities: {
+      explain: true,
+      checklist: true,
+      navigate: true,
+      guide: true,
+      execute: false,
+    },
     ...overrides,
   };
 }
@@ -115,22 +124,58 @@ describe("product help resolver", () => {
     );
     expect(
       resolver.resolveProductHelp({ query: "Register an invoice, please" }),
-    ).toMatchObject({
-      type: "workflow",
-      workflow: { id: "invoices.create", routes: ["/invoices"] },
+    ).toEqual({
+      type: "workflow_help",
+      workflowId: "invoices.create",
+      workflowVersion: 1,
+      revision,
       confidence: 1,
-      matched: { action: "create", entity: "invoice", alias: null },
+      content: {
+        title: "Create Invoice",
+        steps: [{ id: "step.1", text: "Select send" }],
+      },
+      entrypoint: { route: "/invoices" },
+      capabilities: {
+        explain: true,
+        checklist: true,
+        navigate: true,
+        guide: true,
+        execute: false,
+      },
+      matched: {
+        action: "create",
+        entity: "invoice",
+        alias: null,
+        qualifiers: [],
+      },
     });
     expect(
       resolver.resolveProductHelp({ query: "send the invoices" }),
-    ).toMatchObject({ type: "workflow", workflow: { id: "invoices.send" } });
+    ).toMatchObject({ type: "workflow_help", workflowId: "invoices.send" });
     expect(
       resolver.resolveProductHelp({ query: "remove an invoice" }),
-    ).toMatchObject({ type: "unsupported", reason: "no-match" });
+    ).toMatchObject({ type: "unsupported", reason: "no_matching_workflow" });
+    expect(resolver.resolveProductHelp({ query: "  " })).toMatchObject({
+      type: "unsupported",
+      reason: "no_matching_workflow",
+    });
     expect(resolver.resolveProductHelp({ query: "invoices" })).toMatchObject({
       type: "ambiguous",
       reason: "multiple-matches",
-      options: [{ id: "invoices.create" }, { id: "invoices.send" }],
+      candidates: [
+        {
+          workflowId: "invoices.create",
+          workflowVersion: 1,
+          title: "Create Invoice",
+          confidence: 0.5,
+        },
+        {
+          workflowId: "invoices.send",
+          workflowVersion: 1,
+          title: "Send Invoice",
+          confidence: 0.5,
+        },
+      ],
     });
   });
 
@@ -141,14 +186,14 @@ describe("product help resolver", () => {
     expect(
       resolver.resolveProductHelp({ query: "How do I bill a customer?" }),
     ).toMatchObject({
-      type: "workflow",
+      type: "workflow_help",
       matched: { alias: "bill a customer" },
       confidence: 1,
     });
     expect(resolver.resolveProductHelp({ query: "invoice" })).toMatchObject({
       type: "ambiguous",
       reason: "action-unclear",
-      options: [{ id: "invoices.send" }],
+      candidates: [{ workflowId: "invoices.send" }],
     });
   });
 
@@ -163,7 +208,7 @@ describe("product help resolver", () => {
       ),
     );
     const query = "send invoice";
-    expect(resolver.resolveProductHelp({ query }).type).toBe("workflow");
+    expect(resolver.resolveProductHelp({ query }).type).toBe("workflow_help");
     expect(
       resolver.resolveProductHelp({
         query,
@@ -173,7 +218,7 @@ describe("product help resolver", () => {
           featureFlags: { billing: true },
         },
       }).type,
-    ).toBe("workflow");
+    ).toBe("workflow_help");
     expect(
       resolver.resolveProductHelp({
         query,
@@ -185,10 +230,11 @@ describe("product help resolver", () => {
       }),
     ).toMatchObject({
       type: "unsupported",
-      reason: "unavailable-in-context",
+      reason: "not_available_for_context",
       unavailable: [
         {
-          id: "invoices.send",
+          workflowId: "invoices.send",
+          workflowVersion: 1,
           requires: [
             "role:accountant",
             "permission:invoices.send",
@@ -206,9 +252,21 @@ describe("product help resolver", () => {
     expect(
       routed.resolveProductHelp({ query, context: { route: "/drafts" } }),
     ).toMatchObject({
-      type: "workflow",
-      workflow: { id: "invoices.send_draft" },
+      type: "workflow_help",
+      workflowId: "invoices.send_draft",
     });
+    // The full RuntimeContext (spec §75) is accepted; unknown keys are still rejected.
+    expect(
+      routed.resolveProductHelp({
+        query,
+        context: {
+          route: "/drafts",
+          locale: "en-GB",
+          tenant: "acme",
+          productRelease: "2026.10",
+        },
+      }).type,
+    ).toBe("workflow_help");
     expect(routed.resolveProductHelp({ query }).type).toBe("ambiguous");
   });
 
@@ -271,6 +329,7 @@ describe("product help resolver", () => {
     const base = {
       id: "invoices.send",
       revision,
+      version: 1,
       title: "Send Invoice",
       entrypoints: [{ route: "/invoices" }],
       preconditions: [],

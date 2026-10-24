@@ -17,6 +17,7 @@ import {
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   ApprovedWorkflowSchema,
+  approvalVersion,
   approveCandidate,
   parseApprovedWorkflowYaml,
   parseRejectedWorkflowYaml,
@@ -77,7 +78,15 @@ describe("workflow review", () => {
       approvedBy: "Test Reviewer",
       approvedAt,
       approvedCommit: candidate.workflow.repository.commit,
+      version: 1,
     });
+    // Records approved before versioning have no version and count as 1.
+    const { version: _version, ...legacy } = record.approval;
+    expect(
+      approvalVersion(
+        ApprovedWorkflowSchema.parse({ ...record, approval: legacy }),
+      ),
+    ).toBe(1);
     expect(record.workflow).toEqual({
       ...candidate.workflow,
       status: "approved",
