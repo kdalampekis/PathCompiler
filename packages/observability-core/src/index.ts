@@ -124,6 +124,14 @@ export const ActionBlockedEventSchema = event("action.blocked", {
   reason: z.enum(["permission", "feature_flag", "precondition", "unknown"]),
 });
 
+/**
+ * An explicit business event the application emits (spec §138), e.g.
+ * `client.created`. Only a semantic name: no payload, so no user content.
+ */
+export const DomainEventSchema = event("domain.event", {
+  name: semanticId,
+});
+
 export const ProductRuntimeEventSchema = z.discriminatedUnion("type", [
   WorkflowStartedEventSchema,
   WorkflowStepReachedEventSchema,
@@ -133,6 +141,7 @@ export const ProductRuntimeEventSchema = z.discriminatedUnion("type", [
   GoalReachedEventSchema,
   RouteChangedEventSchema,
   ActionBlockedEventSchema,
+  DomainEventSchema,
 ]);
 export type ProductRuntimeEvent = z.infer<typeof ProductRuntimeEventSchema>;
 export type ProductRuntimeEventType = ProductRuntimeEvent["type"];

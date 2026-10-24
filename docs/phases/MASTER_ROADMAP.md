@@ -680,12 +680,12 @@ Minimum sample sizes come before any conclusion.
 - **Runtime change:** Opt-in. **Status:** ✅ complete (2026-10-23): `instrumentGuide`, `GuideState.version`, ADR 0047.
 
 #### O4 — Domain events
-- **Prerequisites:** O1; R0 goal IDs. **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Prerequisites:** O1; R0 goal IDs. **Status:** ✅ complete (2026-10-23): `domain.event`, `domainEvent`, goal/event allowlists, ADR 0048.
 
 #### O5 — Event ingestion
 - **Prerequisites:** O0; `http-service` (✅). **Acceptance:** `POST /v1/events/batch`
   with validation, rate limits, project isolation and privacy filtering.
-- **Runtime change:** Yes (new endpoint). **Status:** 🟢 unblocked.
+- **Runtime change:** Yes (new endpoint). **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### O6 — Observed Transition Graph
 - **Prerequisites:** O0 and events from O1 or O5. **Status:** 🔒 blocked.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **O4** (next), O5, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O6 (events from O1/O5) · O7–O12 (O6 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O5** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O6 (events from O1/O5) · O7–O12 (O6 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,18 +839,16 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: O4 — Domain events
+## 7. Next implementation phase: O5 — Event ingestion
 
-O0–O3 are complete. O4 adds explicit, application-emitted domain events (spec
-§138: `track("client.created")`, `goalReached("clients.created")`). These are
-validated against Formal Product Model goal IDs where a model is available, so
-they can confirm formal goals and workflow terminal states. O5 (ingestion
-endpoint) is the parallel candidate. After both, O6 (Observed Transition
-Graph) can start.
+O0–O4 are complete. O5 adds `POST /v1/events/batch` to `http-service`. The
+endpoint validates every event with the O0 schema and privacy policy, isolates
+projects, rate-limits, and stores events as canonical NDJSON. It gives the
+SDK's transports a destination. O6 (Observed Transition Graph) then works from
+the stored events.
 
-O3 (2026-10-23) emits guide lifecycle events through `instrumentGuide`
-(ADR 0047). It also fixed a guide trap for workflows whose terminal condition
-is `explicit_next`.
+O4 (2026-10-23) added payload-free domain events and goal and event-name
+allowlists (ADR 0048).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

@@ -75,6 +75,7 @@ describe("semantic runtime events", () => {
         reason: "feature_flag",
         role: "viewer",
       },
+      { ...base, type: "domain.event", name: "client.created" },
     ];
     for (const event of events) expect(issues(event), event.type).toEqual([]);
     expect(

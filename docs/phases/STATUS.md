@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after O3)
+## Current state (updated 2026-10-23, after O4)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O4** (next), O5, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **O5** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
-| Next recommended phase | **O4 — Domain events** (`MASTER_ROADMAP.md` §7); O5 can run in parallel. Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry**, **O4 — Domain events** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
+| Next recommended phase | **O5 — Event ingestion** (`MASTER_ROADMAP.md` §7). Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2561,3 +2561,36 @@ Complete — verified locally on 2026-10-23.
 - Abandonment by navigating away is not distinguished yet (logged as
   ISSUES_LOG #14).
 - Next recommended phase: O4 — Domain events.
+
+---
+
+## Phase O4 — Domain events
+
+Complete — verified locally on 2026-10-23.
+
+- `observability-core` gains `domain.event` (`name`: a semantic ID, with no
+  payload), added to the union under schema version 1.
+- `analytics.domainEvent(name)`, plus optional `goals` (Formal Product Model
+  goal IDs) and `domainEvents` allowlists. Names outside a set list are
+  rejected and reported through `onError`. Without the lists, the semantic-ID
+  schema still applies.
+- Recorded in ADR 0048.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 340 tests passed across 47 suites (1 new SDK test; core event-type coverage extended) |
+| `git diff --check` | Passed |
+
+### Errors found during the phase
+
+- None. Behavior note: with an allowlist set, a non-semantic name is reported
+  as an unknown domain event rather than as a schema error.
+
+### Scope notes
+
+- Reconciling domain events with goals is O8.
+- Next recommended phase: O5 — Event ingestion.

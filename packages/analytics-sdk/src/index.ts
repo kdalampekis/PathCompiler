@@ -58,6 +58,13 @@ export type AnalyticsOptions = {
   flushIntervalMs?: number;
   /** Queue bound; the oldest events are dropped beyond it. Default 1000. */
   maxQueue?: number;
+  /**
+   * Known Formal Product Model goal IDs (`model.goals.map((goal) => goal.id)`).
+   * When set, `goal.reached` events for other IDs are rejected and reported.
+   */
+  goals?: readonly string[];
+  /** When set, only these `domain.event` names are accepted. */
+  domainEvents?: readonly string[];
   /** Rejected events and failed sends; analytics never throws into the app. */
   onError?: (error: Error) => void;
   now?: () => Date;
@@ -113,6 +120,8 @@ export interface Analytics {
     semanticTarget: string,
     reason: "permission" | "feature_flag" | "precondition" | "unknown",
   ): void;
+  /** Explicit business event, e.g. `client.created` (spec §138). */
+  domainEvent(name: string): void;
   setContext(context: AnalyticsContext): void;
   /** Sends queued events now; resolves when the transport has accepted them or failed. */
   flush(): Promise<void>;
@@ -209,8 +218,28 @@ export function createAnalytics(options: AnalyticsOptions): Analytics {
       counters.dropped += excess;
     }
   };
+  const goals = options.goals ? new Set(options.goals) : null;
+  const domainEvents = options.domainEvents
+    ? new Set(options.domainEvents)
+    : null;
   const track: Analytics["track"] = (type, fields) => {
     if (!enabled || stopped) return;
+    const goal = (fields as { goalId?: string }).goalId;
+    const name = (fields as { name?: string }).name;
+    const unknown =
+      type === "goal.reached" && goals && goal !== undefined && !goals.has(goal)
+        ? `Unknown goal ${goal}; known goals: ${[...goals].join(", ") || "none"}.`
+        : type === "domain.event" &&
+            domainEvents &&
+            name !== undefined &&
+            !domainEvents.has(name)
+          ? `Unknown domain event ${name}; declare it in domainEvents.`
+          : null;
+    if (unknown) {
+      counters.rejected += 1;
+      report(new Error(unknown));
+      return;
+    }
     let event: ProductRuntimeEvent;
     try {
       event = create(type, { ...sticky, ...fields } as typeof fields);
@@ -260,6 +289,7 @@ export function createAnalytics(options: AnalyticsOptions): Analytics {
       }),
     actionBlocked: (semanticTarget, reason) =>
       track("action.blocked", { semanticTarget, reason }),
+    domainEvent: (name) => track("domain.event", { name }),
     setContext(context) {
       sticky = { ...sticky, ...context };
     },

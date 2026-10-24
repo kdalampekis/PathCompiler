@@ -302,3 +302,38 @@ describe("guide telemetry", () => {
     ]);
   });
 });
+
+describe("domain events", () => {
+  it("emits explicit business events and checks goal and event names when declared", async () => {
+    const { analytics, transport, errors } = setup({
+      batchSize: 100,
+      goals: ["clients.created", "plans.structure_changed"],
+      domainEvents: ["client.created"],
+    });
+    analytics.domainEvent("client.created");
+    analytics.goalReached("clients.created", "clients.create");
+    analytics.goalReached("clients.creatd");
+    analytics.domainEvent("client.deleted");
+    analytics.domainEvent("Client Created");
+    await analytics.flush();
+    expect(transport.events.map((event) => event.type)).toEqual([
+      "domain.event",
+      "goal.reached",
+    ]);
+    expect(transport.events[0]).toMatchObject({ name: "client.created" });
+    expect(errors.map((error) => error.message)).toEqual([
+      "Unknown goal clients.creatd; known goals: clients.created, plans.structure_changed.",
+      "Unknown domain event client.deleted; declare it in domainEvents.",
+      "Unknown domain event Client Created; declare it in domainEvents.",
+    ]);
+    expect(analytics.stats().rejected).toBe(3);
+    const open = setup({ batchSize: 100 });
+    open.analytics.goalReached("anything.reached");
+    open.analytics.domainEvent("anything.happened");
+    // Without an allowlist the schema still requires a semantic name.
+    open.analytics.domainEvent("Client Created");
+    await open.analytics.flush();
+    expect(open.transport.events).toHaveLength(2);
+    expect(open.analytics.stats().rejected).toBe(1);
+  });
+});
