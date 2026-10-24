@@ -2901,7 +2901,7 @@ Complete — verified locally on 2026-10-23.
 | --- | --- |
 | `pnpm lint` | Passed without warnings |
 | `pnpm typecheck` | Passed |
-| `pnpm test` | 371 tests passed across 55 suites (5 evaluation tests, 2 CLI eval tests), with the fixture committed |
+| `pnpm test` | 371 tests passed across 55 suites (7 evaluation tests, 2 CLI eval tests), with the fixture committed |
 | `git diff --check` | Passed |
 
 Reports are deterministic: the tests compute them twice and compare them with
