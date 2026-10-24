@@ -1210,6 +1210,16 @@ p95 duration, actions per run, a step funnel, and role and release segments
 `reports/workflow-analytics.json`.
 See [ADR 0051](docs/decisions/0051-workflow-analytics.md).
 
+`pathcompiler observe reconcile [directory] [--model <json>]` (phase O8)
+compares the formal model with the stored events for each observed role.
+Goals and semantic targets are classified as possible and observed, possible
+but unobserved (only with enough sessions), or observed although the model
+says they cannot happen. The last class is a high-priority discrepancy, listed
+with the model's reasons and candidate causes (authorization or business-rule
+bug, extraction error, wrong role, event-mapping error), and never labeled a
+bug. The report is written to `reports/reconciliation.json`.
+See [ADR 0052](docs/decisions/0052-behavior-reconciliation.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1253,8 +1263,9 @@ Analysis packages:
 | `@pathcompiler/observability-core` | `ProductRuntimeEventSchema` (nine semantic event types, including `domain.event`), `RuntimeEventBaseSchema`, `PrivacyPolicySchema`, `DEFAULT_PRIVACY_POLICY`, `validateEvent`, `hashUserId`, `serializeEvent`, `parseEvents`, `createEventFactory`, `EventPolicyError` |
 | `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `instrumentGuide`, `FetchTransport`, `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
 | `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
+| `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `observe graph/workflows`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `observe graph/workflows/reconcile`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

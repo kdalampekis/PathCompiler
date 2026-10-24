@@ -1,0 +1,28 @@
+{
+  "name": "@pathcompiler/behavior-reconciliation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pathcompiler/formal-model": "workspace:*",
+    "@pathcompiler/observability-core": "workspace:*",
+    "@pathcompiler/reasoner-core": "workspace:*",
+    "@pathcompiler/solver-provider": "workspace:*"
+  },
+  "devDependencies": {
+    "@pathcompiler/solver-z3": "workspace:*"
+  }
+}

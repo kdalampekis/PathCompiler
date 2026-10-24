@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after O7)
+## Current state (updated 2026-10-23, after O8)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O8** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **C2** (next), O11, O12, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry**, **O4 — Domain events**, **O5 — Event ingestion**, **O6 — Observed Transition Graph**, **O7 — Workflow analytics** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
-| Next recommended phase | **O8 — Possible-vs-Observed Reconciliation** (`MASTER_ROADMAP.md` §7). Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry**, **O4 — Domain events**, **O5 — Event ingestion**, **O6 — Observed Transition Graph**, **O7 — Workflow analytics**, **O8 — Possible-vs-Observed Reconciliation** (2026-10-23). Mode 3 (Observe) core is complete. The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
+| Next recommended phase | **C2 — Configuration and feature flags** (`MASTER_ROADMAP.md` §7). Parallel candidates: O11, O12, C8, P0. Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2742,3 +2742,61 @@ and restart handling.
 
 - Plan-tier and feature-flag segments need allowlisted context keys.
 - Next recommended phase: O8 — Possible-vs-Observed Reconciliation.
+
+---
+
+## Phase O8 — Possible-vs-Observed Reconciliation
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/behavior-reconciliation`.
+  `reconcileBehavior(model, events, solver)` works per observed role. Unknown
+  roles map to `unlisted` when the model has it; otherwise the role stays free.
+  - **Goals:** R2 reachability, with R4 reasons, against `goal.reached`
+    sessions.
+  - **Targets:** whether any action on the target can be enabled (an R8
+    reachability check), against activation sessions.
+- **Classes:** possible+observed, possible+unobserved (only with at least 30
+  sessions for the role; otherwise insufficient data), observed but formally
+  unexpected, impossible+unobserved, and unknown.
+- **Discrepancies:** `unexpected_observed` is high priority, with the model's
+  reasons and candidate causes, and is never labeled a bug.
+  `unobserved_reachable` is low priority, with a witness and candidate
+  explanations.
+- `pathcompiler observe reconcile [directory] [--model]` writes
+  `reports/reconciliation.json`.
+- Recorded in ADR 0052.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 354 tests passed across 51 suites (3 reconciliation tests; CLI round trip extended) |
+| `git diff --check` | Passed |
+
+Fixture (hand model) with 31 editor sessions, 1 viewer and 1 unknown `admin`
+role:
+
+- **Editors:** `clients.created` is possible+observed. `plans.structure_changed`
+  is possible+unobserved, with a witness ending in `plans.save_structure`.
+- **Viewers:** reaching `clients.created` and activating `clients.create`
+  are both **observed but formally unexpected**. The reason given is "Context
+  fixes role = viewer. clients.submit_create requires role = editor.", with
+  candidate causes and no bug label.
+- **`admin`:** the role stays free, so the result is "insufficient data", not
+  "unexpected".
+
+### Errors found during the phase
+
+- One wrong expectation in a test: I assumed the unknown `admin` role was
+  blocked, but a free role makes the behavior possible. The code was right;
+  the test was fixed.
+
+### Scope notes
+
+- Reconciliation works at the goal and target level, not edge by edge (see
+  ADR 0052). Model repair from contradictions (§148) stays a human,
+  proposal-based action.
+- Next recommended phase: C2 — Configuration and feature flags.

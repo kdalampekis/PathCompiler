@@ -296,7 +296,7 @@ acceptance · tests/evals · runtime behavior change · unblocks · status.
 - **Tests/evals:** schema tests; CLI golden output with and without config.
 - **Runtime change:** No (defaults preserve behavior).
 - **Unblocks:** R-WI, C9, IG, O1 privacy configuration, flag-gated rollouts.
-- **Status:** 🟢 unblocked.
+- **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### C3 — Evaluation harness and golden tests
 - **Objective:** Fixture ground truth (§54: `capabilities.json`,
@@ -698,13 +698,13 @@ Minimum sample sizes come before any conclusion.
 - **Prerequisites:** O6, R2 (R1 model). Soft: R6.
 - **Acceptance:** classifies possible+observed, possible+unobserved and
   observed+formally-unexpected. Never labels a discrepancy a bug.
-- **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-23): `@pathcompiler/behavior-reconciliation`, `observe reconcile`, ADR 0052.
 
 #### O9 — Path efficiency · O10 — Drop-off and alternative paths
 - **Prerequisites:** O7 + R7 (O9); O7 + R6 (O10). **Status:** 🔒 blocked.
 
 #### O11 — Probabilistic transition model · O12 — Release behavior diff
-- **Prerequisites:** O6 (O11); O7 + R11 + release binding (O12). **Status:** 🔒 blocked.
+- **Prerequisites:** O6 (O11); O7 + R11 + release binding (O12). **Status:** 🟢 unblocked.
 
 #### O13 — Existing analytics adapters
 - ⏸ Deferred until the native event model is stable in real use.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **O8** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O9 (R7) · O10 (R6) · O11 (O6) · O12 (release binding) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **C2** (next), O11, O12, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core) | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O9 (R7) · O10 (R6) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,17 +839,25 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: O8 — Possible-vs-Observed Reconciliation
+## 7. Next implementation phase: C2 — Configuration and feature flags
 
-O0–O7 are complete. O8 compares the formal model (R1 extraction, R2
-reachability) with observed behavior (O6). It classifies transitions and goals
-as possible and observed, possible but not observed, or observed but formally
-unexpected (spec §142–§144). The last class is a high-priority discrepancy,
-such as an extraction gap or an instrumentation issue, but O8 never labels it
-a bug. This is the core of mode 3 (Observe).
+Modes 1, 2, 3 (core) and 5 work end to end. Several capabilities are opt-in
+only through CLI flags or code, and three deferred items are waiting for a
+reviewed project configuration:
+- reasoning in impact and in the GitHub check;
+- the candidate-evaluation check section;
+- analytics privacy settings.
 
-O7 (2026-10-23) added per-workflow-version analytics with sample thresholds
-and privacy-suppressed segments (ADR 0051).
+C2 adds `pathcompiler.yaml` with Zod validation and `pathcompiler init`. It
+adds reasoning, probabilistic and analytics flags (off by default), enabled
+operating modes, model-provider selection (keys only from the environment) and
+`improvement_policy` with `autonomous_mutation: false`. It also unblocks
+R-WI, C9 and IG. O11 (probabilistic transition model) and O12 (release
+behavior diff) are unblocked in parallel, as are C8 (browser verifier) and P0.
+
+O8 (2026-10-23) reconciles the formal model with observed behavior per role
+(ADR 0052). Observed-but-impossible behavior is a high-priority discrepancy
+with reasons and candidate causes, never a verdict.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

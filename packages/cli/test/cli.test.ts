@@ -405,6 +405,13 @@ describe("pathcompiler CLI", () => {
       expect(await run(["observe", "workflows"])).toContain(
         "No guide runs recorded (workflow.started events).",
       );
+      const reconciled = await run(["observe", "reconcile", fixture]);
+      expect(reconciled).toMatch(
+        /^Reconciled \d+ goal\/target × role pairs \(roles: \(none\) 1 sessions\)/,
+      );
+      expect(reconciled).toContain(
+        "Discrepancies are evidence to investigate, not verdicts.",
+      );
     } finally {
       child.kill();
     }

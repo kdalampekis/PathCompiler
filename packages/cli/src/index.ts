@@ -16,6 +16,7 @@ import {
   scanNextRepository,
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
+import { reconcileBehavior } from "@pathcompiler/behavior-reconciliation";
 import {
   type CandidateEvaluation,
   evaluateCandidate,
@@ -154,6 +155,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler mcp [--out <directory>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
        pathcompiler observe graph|workflows [--release <id>] [--json] [--out <directory>]
+       pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -214,7 +216,10 @@ role/release segments (what happened; never compared with the formal model here)
 observe workflows reconstructs guide runs per workflow version: starts, completions,
 abandonments, unfinished runs, completion rate (only with 30+ runs), median/p95 duration,
 actions per run, a step funnel and privacy-suppressed role/release segments, written to
-reports/workflow-analytics.json.
+reports/workflow-analytics.json. observe reconcile compares the formal model (extracted from
+the repository, or --model) with the stored events per observed role: possible+observed,
+possible+unobserved, and observed-but-formally-unexpected (high priority, with the model's
+reasons and candidate causes; never labelled a bug). Writes reports/reconciliation.json.
 reason reachable asks whether a goal of the Formal Product Model can be reached under
 fixed context values (role, flags; omitted ones are free). Without --model it extracts the
 model from the repository and its tests (static evidence). It answers reachable (with a
@@ -308,10 +313,15 @@ export async function runCli(
       values["max-depth"] !== undefined ||
       values["timeout-ms"] !== undefined ||
       values.model !== undefined) &&
-    positionals[0] !== "reason"
+    positionals[0] !== "reason" &&
+    !(
+      positionals[0] === "observe" &&
+      positionals[1] === "reconcile" &&
+      values.context === undefined
+    )
   )
     throw new Error(
-      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable, plan, why-not and verify.",
+      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable, plan, why-not and verify (and --model, --max-depth, --timeout-ms by observe reconcile).",
     );
   if (
     values.property !== undefined &&
@@ -1577,12 +1587,16 @@ async function runObserve(
   values: Values,
   cwd: string,
 ): Promise<string> {
+  const reconcile = positionals[1] === "reconcile";
   if (
-    (positionals[1] !== "graph" && positionals[1] !== "workflows") ||
-    positionals.length !== 2
+    !(
+      ((positionals[1] === "graph" || positionals[1] === "workflows") &&
+        positionals.length === 2) ||
+      (reconcile && positionals.length <= 3)
+    )
   )
     throw new Error(
-      "Expected: pathcompiler observe graph|workflows. Use --help for options.",
+      "Expected: pathcompiler observe graph|workflows, or observe reconcile [directory]. Use --help for options.",
     );
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   // Same project name `serve` uses for ingestion.
@@ -1593,6 +1607,53 @@ async function runObserve(
     throw new Error(
       `No stored events under ${directory}. Run pathcompiler serve --events and send events first.`,
     );
+  if (reconcile) {
+    const { model, extraction } = await loadReasoningModel(
+      positionals[2],
+      values,
+      cwd,
+    );
+    const solver = await createZ3SolverProvider();
+    let report: Awaited<ReturnType<typeof reconcileBehavior>>;
+    try {
+      const integer = (value: string | undefined) =>
+        value === undefined ? undefined : Number(value);
+      const maxDepth = integer(values["max-depth"]);
+      const timeoutMs = integer(values["timeout-ms"]);
+      report = await reconcileBehavior(model, events, solver, {
+        ...(maxDepth === undefined ? {} : { maxDepth }),
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      });
+    } finally {
+      await solver.close();
+    }
+    const file = "reports/reconciliation.json";
+    const full = {
+      ...report,
+      ...(extraction
+        ? {
+            modelCoverage: extraction.coverage,
+            uncertainties: extraction.uncertainties,
+          }
+        : {}),
+    };
+    await writeArtifacts(output, [
+      [file, `${JSON.stringify(full, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(full, null, 2)}\n`;
+    const count = (name: string) =>
+      report.items.filter((item) => item.class === name).length;
+    return `${[
+      `Reconciled ${report.items.length} goal/target × role pairs (roles: ${report.roles.map((item) => `${item.role} ${item.sessions}`).join(", ")} sessions): ${count("possible-observed")} possible+observed, ${count("possible-unobserved")} possible+unobserved, ${count("unexpected-observed")} observed but formally unexpected, ${count("insufficient-data")} insufficient data, ${count("unknown")} unknown.`,
+      ...report.discrepancies.map((item) =>
+        item.type === "unexpected_observed"
+          ? `! HIGH ${item.kind} ${item.id} observed for role ${item.role} in ${item.observed.sessions} sessions, but the model says it cannot happen. ${item.formalReason.join(" ")} Possible causes: ${item.possibleCauses.join("; ")}.`
+          : `- ${item.kind} ${item.id} is reachable for role ${item.role} but unobserved in ${item.roleSessions} sessions.`,
+      ),
+      "Discrepancies are evidence to investigate, not verdicts.",
+      `Report: ${path.join(output, file)}`,
+    ].join("\n")}\n`;
+  }
   if (positionals[1] === "workflows") {
     const report = computeWorkflowAnalytics(events, {
       ...(values.release === undefined ? {} : { release: values.release }),
