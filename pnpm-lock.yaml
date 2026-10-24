@@ -265,6 +265,9 @@ importers:
       "@pathcompiler/mcp-server":
         specifier: workspace:*
         version: link:../mcp-server
+      "@pathcompiler/observed-graph":
+        specifier: workspace:*
+        version: link:../observed-graph
       "@pathcompiler/reasoner-core":
         specifier: workspace:*
         version: link:../reasoner-core
@@ -579,6 +582,12 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/observed-graph:
+    dependencies:
+      "@pathcompiler/observability-core":
+        specifier: workspace:*
+        version: link:../observability-core
 
   packages/react:
     dependencies:

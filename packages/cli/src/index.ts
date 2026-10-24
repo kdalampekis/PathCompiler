@@ -57,6 +57,10 @@ import {
 import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
+  buildObservedGraph,
+  readEventDirectory,
+} from "@pathcompiler/observed-graph";
+import {
   createProductReasoner,
   type ExplanationResult,
   evaluatePlan,
@@ -148,6 +152,7 @@ Usage: pathcompiler scan <directory> [--out <directory>] [--exclude <directory> 
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
+       pathcompiler observe graph [--release <id>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -202,7 +207,9 @@ serve runs the HTTP runtime API on 127.0.0.1:4310 by default from the same files
 requires PATHCOMPILER_API_TOKEN (Authorization: Bearer <token>). --events enables
 POST /v1/events/batch: semantic events are validated against the default privacy policy and
 appended as NDJSON under events/<project>/<day>.ndjson; PATHCOMPILER_INGEST_TOKEN optionally
-sets a token that may only post events.
+sets a token that may only post events. observe graph aggregates the stored events into
+reports/observed-graph.json: transition counts, sessions, frequencies, median times and
+role/release segments (what happened; never compared with the formal model here).
 reason reachable asks whether a goal of the Formal Product Model can be reached under
 fixed context values (role, flags; omitted ones are free). Without --model it extracts the
 model from the repository and its tests (static evidence). It answers reachable (with a
@@ -260,6 +267,7 @@ const CLI_OPTIONS = {
   criteria: { type: "string" },
   tests: { type: "string" },
   events: { type: "boolean" },
+  release: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -317,6 +325,9 @@ export async function runCli(
     );
   if (values.events && positionals[0] !== "serve")
     throw new Error("--events is only supported by serve.");
+  if (values.release !== undefined && positionals[0] !== "observe")
+    throw new Error("--release is only supported by observe graph.");
+  if (positionals[0] === "observe") return runObserve(positionals, values, cwd);
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (
     (values.criteria !== undefined || values.tests !== undefined) &&
@@ -1552,6 +1563,49 @@ async function runEvaluate(
   if (evaluation.status === "fail")
     throw new Error(`Candidate evaluation failed.\n${text}`);
   return values.json ? `${JSON.stringify(evaluation, null, 2)}\n` : text;
+}
+
+async function runObserve(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals[1] !== "graph" || positionals.length !== 2)
+    throw new Error(
+      "Expected: pathcompiler observe graph. Use --help for options.",
+    );
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  // Same project name `serve` uses for ingestion.
+  const project = path.basename(path.dirname(output));
+  const directory = path.join(output, "events", encodeURIComponent(project));
+  const events = await readEventDirectory(directory);
+  if (events.length === 0)
+    throw new Error(
+      `No stored events under ${directory}. Run pathcompiler serve --events and send events first.`,
+    );
+  const graph = buildObservedGraph(events, {
+    projectId: project,
+    ...(values.release === undefined ? {} : { release: values.release }),
+  });
+  const file = "reports/observed-graph.json";
+  await writeArtifacts(output, [[file, `${JSON.stringify(graph, null, 2)}\n`]]);
+  if (values.json) return `${JSON.stringify(graph, null, 2)}\n`;
+  const top = [...graph.edges]
+    .filter(
+      (edge) => edge.from !== "session:start" && edge.to !== "session:end",
+    )
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  const insufficient = graph.edges.filter((edge) => !edge.sufficient).length;
+  return `${[
+    `Observed ${graph.events} events in ${graph.sessions} sessions${values.release ? ` (release ${values.release})` : ""}: ${graph.nodes.length} states, ${graph.edges.length} transitions.`,
+    ...top.map(
+      (edge) =>
+        `  ${edge.from} → ${edge.to}: ${edge.count}× (${Math.round(edge.frequency * 100)}%, ${edge.sessions} sessions${edge.medianMs === null ? "" : `, median ${edge.medianMs} ms`})`,
+    ),
+    `${insufficient} transitions have fewer than ${graph.minSessions} sessions; treat them as anecdotes, not evidence.`,
+    `Report: ${path.join(output, file)}`,
+  ].join("\n")}\n`;
 }
 
 async function semanticChange(

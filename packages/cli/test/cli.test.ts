@@ -385,6 +385,23 @@ describe("pathcompiler CLI", () => {
           "utf8",
         ),
       ).toContain('"goalId":"clients.created"');
+      const observed = await run(["observe", "graph"]);
+      expect(observed).toContain(
+        "Observed 1 events in 1 sessions: 3 states, 2 transitions.",
+      );
+      expect(
+        JSON.parse(
+          await readFile(
+            path.join(cwd, "out/reports/observed-graph.json"),
+            "utf8",
+          ),
+        ).edges.map(
+          (edge: { from: string; to: string }) => `${edge.from}>${edge.to}`,
+        ),
+      ).toEqual([
+        "goal:clients.created>session:end",
+        "session:start>goal:clients.created",
+      ]);
     } finally {
       child.kill();
     }

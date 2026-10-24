@@ -688,17 +688,17 @@ Minimum sample sizes come before any conclusion.
 - **Runtime change:** Yes (new endpoint). **Status:** ✅ complete (2026-10-23): `POST /v1/events/batch`, `EventSink`, `FetchTransport`, `serve --events`, ADR 0049.
 
 #### O6 — Observed Transition Graph
-- **Prerequisites:** O0 and events from O1 or O5. **Status:** 🟢 unblocked; **recommended next phase** (§7).
+- **Prerequisites:** O0 and events from O1 or O5. **Status:** ✅ complete (2026-10-23): `@pathcompiler/observed-graph`, `observe graph`, ADR 0050.
 
 #### O7 — Workflow analytics
 - **Prerequisites:** O6, O3. **Acceptance:** completion, abandonment, duration and
-  action counts with sample thresholds. **Status:** 🔒 blocked.
+  action counts with sample thresholds. **Status:** 🟢 unblocked; **recommended next phase** (§7).
 
 #### O8 — Possible-vs-Observed Reconciliation
 - **Prerequisites:** O6, R2 (R1 model). Soft: R6.
 - **Acceptance:** classifies possible+observed, possible+unobserved and
   observed+formally-unexpected. Never labels a discrepancy a bug.
-- **Status:** 🔒 blocked.
+- **Status:** 🟢 unblocked.
 
 #### O9 — Path efficiency · O10 — Drop-off and alternative paths
 - **Prerequisites:** O7 + R7 (O9); O7 + R6 (O10). **Status:** 🔒 blocked.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **O6** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O7–O12 (O6 chain) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **O7** (next), O8, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repos), C7, C8, P0. Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅ | C9 (C5, C2, C3) · R6 (C7) · R-WI (C2, C3) · P1 (P0, C9) · P2 (P1) · P3 (P0, C8) · P4 (P0) · P-RV (P0) · P5 (O11) · O9 (O7, R7) · O10 (O7, R6) · O11 (O6) · O12 (O7, release binding) · I0 (P0) · IG (I0, C2) · I1 (IG) · I2 (I1) · I4 (C8) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,18 +839,18 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: O6 — Observed Transition Graph
+## 7. Next implementation phase: O7 — Workflow analytics
 
-O0–O5 are complete: events can be emitted, validated, sent and stored as
-NDJSON. O6 builds the observed transition graph (spec §141), states and
-transitions with counts, from stored events. It works per release and per
-workflow version, kept separate from the formal model (possible vs. observed,
-§131). O7 (workflow analytics) and O8 (reconciliation with the formal model)
-then build on it.
+O0–O6 are complete. O7 computes per-workflow-version completion, abandonment,
+duration and observed action counts (spec §145), with sample thresholds,
+from the observed graph and guide lifecycle events. O8 (Possible-vs-Observed
+Reconciliation) is unblocked in parallel: it compares the extracted formal
+model's transitions with the observed graph and never labels a discrepancy
+a bug.
 
-O5 (2026-10-23) added the ingestion endpoint with per-event privacy
-validation, project isolation, batch and rate limits, NDJSON storage and the
-SDK's fetch transport (ADR 0049).
+O6 (2026-10-23) added the observed transition graph, with counts, sessions,
+frequencies, medians, role and release segments, sufficiency flags and top
+paths (ADR 0050).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

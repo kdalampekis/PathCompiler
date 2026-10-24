@@ -32,6 +32,7 @@
     "@pathcompiler/http-service": "workspace:*",
     "@pathcompiler/impact-analysis": "workspace:*",
     "@pathcompiler/mcp-server": "workspace:*",
+    "@pathcompiler/observed-graph": "workspace:*",
     "@pathcompiler/reasoner-core": "workspace:*",
     "@pathcompiler/sdk-js": "workspace:*",
     "@pathcompiler/semantic-change": "workspace:*",

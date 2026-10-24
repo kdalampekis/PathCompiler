@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-23, after O5)
+## Current state (updated 2026-10-23, after O6)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **O6** (next), R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
+| Unblocked | **O7** (next), O8, R5, R7, R9, R10, R12, C2, C3, C4, C5, C6 (needs repositories), C7, C8, P0 |
 | Blocked | All other R, P, O and I phases, plus C9 (see the roadmap §5) |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry**, **O4 — Domain events**, **O5 — Event ingestion** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
-| Next recommended phase | **O6 — Observed Transition Graph** (`MASTER_ROADMAP.md` §7). Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | **R0 — Formal Model Foundation**, **R1 — Formal Abstraction Builder**, **R2 — SMT Reachability**, **R3 — Planning**, **R4 — UNSAT Explanation**, **R11 — Commit semantic reasoning**, **R8 — Bounded model checking**, **I3 — Candidate Evaluation**, **C1 — Runtime contract alignment**, **O0 — Event Model**, **O1 — Lightweight Analytics SDK**, **O2 — React integration**, **O3 — Workflow runtime telemetry**, **O4 — Domain events**, **O5 — Event ingestion**, **O6 — Observed Transition Graph** (2026-10-23). The reasoning MVP (spec §94) and mode 5 (Evaluate) are complete. |
+| Next recommended phase | **O7 — Workflow analytics** (`MASTER_ROADMAP.md` §7); O8 can run in parallel. Parallel candidates: C8, C2, P0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -2645,3 +2645,55 @@ Complete — verified locally on 2026-10-23.
 - Hosted multi-tenant ingestion, a database sink and analytics-vendor adapters
   are deferred.
 - Next recommended phase: O6 — Observed Transition Graph.
+
+---
+
+## Phase O6 — Observed Transition Graph
+
+Complete — verified locally on 2026-10-23.
+
+- Added `@pathcompiler/observed-graph`, which depends only on
+  `observability-core` and never on the formal model (spec §131).
+- **States:** routes, `target:<id>:<interaction>`, workflow steps and
+  outcomes (per version), goals, domain events, blocked actions, and session
+  start and end.
+- **Session paths:** events are ordered by timestamp, then event ID. A
+  repeated state is not a transition.
+- **Edges:** count, sessions, frequency among the source state's outgoing
+  edges, median time, counts by role and release, and `sufficient` (at least
+  `minSessions` sessions, default 30). Nodes carry entry counts; top session
+  paths are listed.
+- **Filters:** project, release, role, workflow ID and version.
+- `readEventDirectory` reads the O5 NDJSON files. `pathcompiler observe graph
+  [--release]` writes `reports/observed-graph.json` for the served project.
+- Recorded in ADR 0050. No runtime change.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 348 tests passed across 49 suites (3 new graph tests; CLI serve → ingest → observe round trip) |
+| `git diff --check` | Passed |
+
+Tests check:
+- exact counts, frequencies (2/3 vs. 1/3 from the Clients page), medians
+  (1000 ms; 1500 ms with a repeated click), role and release segments, and
+  sufficiency;
+- the top path;
+- independence from input order;
+- release and workflow filters;
+- lifecycle states per version;
+- NDJSON directory reading, where missing directories and non-NDJSON files
+  are ignored.
+
+### Errors found during the phase
+
+- None.
+
+### Scope notes
+
+- A repeated state is measured from its first entry; an uninstrumented page
+  appears as a direct transition (an instrumentation gap, not impossibility).
+- Next recommended phase: O7 — Workflow analytics (O8 in parallel).

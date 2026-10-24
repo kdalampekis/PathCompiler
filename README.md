@@ -1193,6 +1193,15 @@ optional token that can only post events. The SDK's
 `new FetchTransport({ url, token })` sends to this endpoint.
 See [ADR 0049](docs/decisions/0049-event-ingestion.md).
 
+`pathcompiler observe graph [--release <id>]` (phase O6) aggregates the
+stored events into the observed transition graph, written to
+`reports/observed-graph.json`. It records transition counts, sessions,
+frequencies, median times, role and release segments and top session paths.
+Edges taken by fewer than 30 sessions are flagged as not sufficient. The graph
+is kept separate from the formal model: it shows what happened, not what is
+possible.
+See [ADR 0050](docs/decisions/0050-observed-transition-graph.md).
+
 ## Packages
 
 | Package                     | Public API                                                                        |
@@ -1235,8 +1244,9 @@ Analysis packages:
 | `@pathcompiler/semantic-change` | `analyzeSemanticChange`, `buildCommitModel`, `summarizeSemanticChange`, `collapseContexts`, `describeContext`, `SemanticChangeReport`, `SemanticWorkflowImpact` |
 | `@pathcompiler/observability-core` | `ProductRuntimeEventSchema` (nine semantic event types, including `domain.event`), `RuntimeEventBaseSchema`, `PrivacyPolicySchema`, `DEFAULT_PRIVACY_POLICY`, `validateEvent`, `hashUserId`, `serializeEvent`, `parseEvents`, `createEventFactory`, `EventPolicyError` |
 | `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `instrumentGuide`, `FetchTransport`, `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
+| `@pathcompiler/observed-graph` | `buildObservedGraph`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler scan`, `targets suggest`, `tests mine`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `evaluate`, `observe graph`, `reason reachable/plan/why-not/diff/verify`, `github-app manifest/serve`, `mcp`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
