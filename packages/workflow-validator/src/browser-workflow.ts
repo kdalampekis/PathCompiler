@@ -41,6 +41,8 @@ export type WorkflowVerificationOptions = {
   prepare?: (page: Page) => Promise<void>;
   /** Approved workflow version, for the report. */
   version?: number;
+  /** Commit of the build under test (a candidate or preview); defaults to the workflow's commit. */
+  candidateCommit?: string;
 };
 /** Words that mark a control as destructive unless the policy allows it. */
 export const DESTRUCTIVE_PATTERN =
@@ -88,7 +90,8 @@ export async function verifyWorkflowInBrowser(
       );
     const workflow = parsed.data;
     report.workflowId = workflow.id;
-    report.candidateCommit = workflow.repository.commit;
+    report.candidateCommit =
+      options.candidateCommit ?? workflow.repository.commit;
     if (!["candidate", "approved"].includes(workflow.status))
       throw new Refusal(
         "unsupported-status",
@@ -374,4 +377,39 @@ export function browserEvidenceItem(
       ? `Browser verification of ${report.workflowId} passed on ${report.origin}.`
       : `Browser verification of ${report.workflowId} failed (${report.failure?.code}).`,
   };
+}
+
+/**
+ * I4: runs the selected workflows against a candidate or preview build, one
+ * after another in the caller's page, clearing cookies between runs. Each
+ * report names the candidate commit so evaluation can reject stale reports.
+ */
+export async function verifyCandidateWorkflows(
+  workflows: readonly unknown[],
+  options: Omit<WorkflowVerificationOptions, "prepare" | "candidateCommit"> & {
+    candidateCommit: string;
+    /** Workflow IDs to run; default all. */
+    select?: readonly string[];
+    /** Preconditions per workflow ID. */
+    prepare?: Readonly<Record<string, (page: Page) => Promise<void>>>;
+  },
+): Promise<BrowserVerificationReportV2[]> {
+  const { select, prepare, ...shared } = options;
+  const reports: BrowserVerificationReportV2[] = [];
+  for (const workflow of workflows) {
+    const id =
+      workflow && typeof workflow === "object" && "id" in workflow
+        ? String(workflow.id)
+        : undefined;
+    if (select && (!id || !select.includes(id))) continue;
+    await options.page.context().clearCookies();
+    const setup = id ? prepare?.[id] : undefined;
+    reports.push(
+      await verifyWorkflowInBrowser(workflow, {
+        ...shared,
+        ...(setup ? { prepare: setup } : {}),
+      }),
+    );
+  }
+  return reports;
 }

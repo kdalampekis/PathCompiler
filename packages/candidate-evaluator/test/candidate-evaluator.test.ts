@@ -115,8 +115,89 @@ describe("candidate evaluation", () => {
     });
     expect(evaluation.formalResults.checked).toBeGreaterThan(4);
     expect(evaluation.formalResults.violated).toBe(0);
-    expect(evaluation.evidenceGaps).toContain(
-      "Browser verification was not run (phase I4).",
+    expect(evaluation.evidenceGaps[0]).toMatch(
+      /^No browser verification reports were supplied/,
+    );
+    expect(evaluation.browserResults.executed).toBe(false);
+  }, 120_000);
+
+  it("fails a candidate whose workflow breaks in the browser, with a diagnosis (I4)", async () => {
+    const run = (
+      workflowId: string,
+      candidateCommit: string,
+      failure?: {
+        code: string;
+        stage: "resolve" | "terminal";
+        target?: string;
+      },
+    ) => ({
+      schemaVersion: 2,
+      kind: "browser-verification",
+      evidenceClass: "browser",
+      workflowId,
+      workflowVersion: 1,
+      candidateCommit,
+      origin: "http://127.0.0.1:3101",
+      startedAt: "2026-10-24T10:00:00.000Z",
+      finishedAt: "2026-10-24T10:00:01.000Z",
+      valid: failure === undefined,
+      steps: [
+        {
+          stepId: "step.1",
+          target: failure?.target ?? "clients.create",
+          action: "click",
+          status: failure ? "failed" : "passed",
+          expected: failure ? "not-run" : "passed",
+        },
+      ],
+      terminal: failure ? "not-run" : "passed",
+      destructiveAllowed: [],
+      ...(failure
+        ? {
+            failure: {
+              ...failure,
+              message: `${failure.target} not found`,
+              stepId: "step.1",
+            },
+          }
+        : {}),
+    });
+    const candidate = commits.copy as string;
+    const evaluation = await evaluate("base", "copy", {
+      browser: [
+        run("plans.create", candidate),
+        run("clients.create", candidate, {
+          code: "target-not-found",
+          stage: "resolve",
+          target: "clients.create_old",
+        }),
+        run("clients.edit", commits.base as string),
+      ],
+    });
+    expect(evaluation.status).toBe("fail");
+    expect(evaluation.recommendedNextStep).toBe("revise_candidate");
+    expect(evaluation.browserResults).toEqual({
+      executed: true,
+      verified: ["plans.create"],
+      failed: [
+        {
+          workflowId: "clients.create",
+          code: "target-not-found",
+          stage: "resolve",
+          likelyCause: "stale-target",
+        },
+      ],
+      unverifiedAffected: [],
+      stale: ["clients.edit"],
+    });
+    expect(evaluation.risks.map((item) => item.code)).toEqual([
+      "browser-verification-failed",
+    ]);
+    expect(evaluation.warnings.map((item) => item.code)).toContain(
+      "browser-report-stale",
+    );
+    expect(evaluation.evidenceGaps).not.toContainEqual(
+      expect.stringMatching(/browser/),
     );
   }, 120_000);
 

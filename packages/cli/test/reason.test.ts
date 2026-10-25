@@ -703,6 +703,47 @@ describe("pathcompiler reason reachable", () => {
     expect(passing).toContain(
       "Intended change: no declared intent; 0 reachability changes observed.",
     );
+    expect(passing).toContain("Browser: not supplied.");
+    // I4: the same candidate fails when its workflow breaks in the browser.
+    const browserReport = path.join(cwd, "browser.json");
+    await writeFile(
+      browserReport,
+      JSON.stringify({
+        schemaVersion: 2,
+        kind: "browser-verification",
+        evidenceClass: "browser",
+        workflowId: "clients.create",
+        workflowVersion: 1,
+        candidateCommit: copy,
+        origin: "http://127.0.0.1:3000",
+        startedAt: "2026-10-24T10:00:00.000Z",
+        finishedAt: "2026-10-24T10:00:01.000Z",
+        valid: false,
+        steps: [
+          {
+            stepId: "step.1",
+            target: "clients.create",
+            action: "click",
+            status: "failed",
+            expected: "not-run",
+          },
+        ],
+        terminal: "not-run",
+        destructiveAllowed: [],
+        failure: {
+          code: "action-failed",
+          stage: "action",
+          message: "Timeout clicking clients.create",
+          stepId: "step.1",
+          target: "clients.create",
+        },
+      }),
+    );
+    await expect(
+      run(["evaluate", base, copy, "app", "--browser", browserReport]),
+    ).rejects.toThrow(
+      /✗ Browser verification of clients\.create failed on the candidate \(action-failed at action\)/,
+    );
 
     await edit("app/api/clients/route.ts", "    requireEditor(session);\n", "");
     await git("commit", "--quiet", "-am", "Simplify create");
@@ -741,7 +782,7 @@ describe("pathcompiler reason reachable", () => {
       eligibleForExperiment: false,
     });
     await expect(run(["scan", "app", "--criteria", criteria])).rejects.toThrow(
-      /--criteria and --tests are only supported by evaluate/,
+      /--criteria, --tests and --browser are only supported by evaluate/,
     );
   }, 300_000);
 

@@ -1493,6 +1493,22 @@ Each recommendation has:
 Recommendations are for human review. See
 [ADR 0080](docs/decisions/0080-recommendation-model.md).
 
+## Browser candidate verification (`evaluate --browser`)
+
+In a Playwright job against a candidate's preview build, call
+`verifyCandidateWorkflows(workflows, { page, origin, candidateCommit,
+select })` from `@pathcompiler/workflow-validator/browser`, and save the
+reports. Then run:
+
+```bash
+pnpm pathcompiler evaluate <base> <candidate> app --browser browser-reports.json
+```
+
+A workflow that fails in the browser fails the candidate, and the failure
+is reported with its diagnosed likely cause. Reports for another commit
+are ignored. Workflows needing review without a run are flagged. See
+[ADR 0081](docs/decisions/0081-browser-candidate-verification.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1734,7 +1750,7 @@ Analysis packages:
 | `@pathcompiler/evidence` | `collectGraphEvidence`, `sourceProvenance`, evidence bundle/provenance schemas and shared workflow evidence references |
 | `@pathcompiler/capability-engine` | `discoverProductSurfaces`, `discoverCapabilities`, `evaluateCapabilities`, surface/capability/evaluation schemas, `SemanticModel`, classification/summary schemas and output parsers |
 | `@pathcompiler/workflow-discovery` | `discoverWorkflows`, candidate/report schemas, `serializeCandidateYaml`, `parseCandidateYaml` |
-| `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types, `diagnoseBrowserFailure` and `BrowserVerificationReportV2Schema` (P3); `./browser`: `verifyFixtureWorkflow`, `verifyWorkflowInBrowser`, `browserEvidenceItem` |
+| `@pathcompiler/workflow-validator` | `validateWorkflow`, `ValidationContext`, validation issue/check/report schemas and types, `diagnoseBrowserFailure` and `BrowserVerificationReportV2Schema` (P3); `./browser`: `verifyFixtureWorkflow`, `verifyWorkflowInBrowser`, `verifyCandidateWorkflows` (I4), `browserEvidenceItem` |
 | `@pathcompiler/workflow-review` | `approveCandidate`, `rejectCandidate`, `reviewPaths`, approved/rejected/deprecated record schemas, YAML serialize/parse, `ReviewError` |
 | `@pathcompiler/workflow-compiler` | `compileWorkflows`, `workflowRevision`, `describeCondition`, `exportArtifacts`, `renderWorkflowMarkdown`, `renderCatalogMarkdown`, `renderHelpPages`, `escapeMarkdown`, `COMPILER_VERSION`, search/runtime/documentation schemas and types; `./schema`: browser-safe schemas only |
 | `@pathcompiler/resolver` | `createResolver`, `resolveProductHelp`, `normalizeTokens`, `evaluateResolver`, `relatedWorkflows`, `supportedActions`, request/result schemas and types |

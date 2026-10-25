@@ -6,6 +6,7 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 46 | I4 | Gap | The CLI does not run browsers against candidates; a CI Playwright job calls `verifyCandidateWorkflows` and passes the reports to `evaluate --browser`. The GitHub check does not show browser results either (with #7). | Open; add an example CI job and a check section. |
 | 45 | I1 | Gap | Only the FIX, IMPROVE, PROMOTE and INVESTIGATE templates exist. BUILD (repeated workarounds) and DEPRIORITIZE (sustained low demand) need evidence classes that findings do not derive yet. Protected behaviors are limited to the given R8 properties and the approved workflows; no properties are inferred. | Open; add workaround and sustained-low-use findings, then the templates. |
 | 44 | IG | Gap | The gate approximates affected users with guide starts (O7) and eligible users with all sessions. The ADR 0033 compute budget is not implemented, and estimated cost is always null until I1. | Open; count sessions touching the subject's targets (observed graph), and add the compute budget when harness tasks exist. |
 | 43 | I0 | Gap | Findings run on demand (`pathcompiler findings`); analytics-threshold triggers are not automatic. Low adoption comes only from O8 "possible but unobserved" goals, with no reachability-adjusted adoption rate. Findings do not yet use P3 diagnoses or P5 checks. | Open; add a threshold check to `observe` runs, and add diagnosis and model-check reports as inputs. |

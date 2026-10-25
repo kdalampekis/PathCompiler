@@ -24,6 +24,7 @@
     "@pathcompiler/semantic-change": "workspace:*",
     "@pathcompiler/solver-provider": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
+    "@pathcompiler/workflow-validator": "workspace:*",
     "zod": "4.6.7"
   },
   "devDependencies": {

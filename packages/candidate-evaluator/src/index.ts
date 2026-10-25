@@ -18,6 +18,11 @@ import {
 } from "@pathcompiler/semantic-change";
 import type { SolverProvider } from "@pathcompiler/solver-provider";
 import { compareText } from "@pathcompiler/source-model";
+import {
+  BrowserVerificationReportV2Schema,
+  diagnoseBrowserFailure,
+  type FailureCause,
+} from "@pathcompiler/workflow-validator";
 import { z } from "zod";
 
 const contextSchema = z.record(
@@ -153,6 +158,22 @@ export type CandidateEvaluation = {
     coverageDecreased: string[];
     uncoveredAffected: string[];
   };
+  /** E. Browser verification of approved workflows on the candidate (I4, C8). */
+  browserResults: {
+    executed: boolean;
+    verified: string[];
+    failed: {
+      workflowId: string;
+      code: string;
+      stage: string;
+      /** P3 diagnosis on the candidate's model and source; a hypothesis. */
+      likelyCause: FailureCause | null;
+    }[];
+    /** Workflows needing review that no browser run covered. */
+    unverifiedAffected: string[];
+    /** Reports for another commit, which were ignored. */
+    stale: string[];
+  };
   mutationClaim?: { claimedOutcome?: string; contradicted: boolean };
   risks: EvaluationFinding[];
   warnings: EvaluationFinding[];
@@ -187,6 +208,8 @@ export async function evaluateCandidate(
     criteria?: unknown;
     approved?: readonly unknown[];
     tests?: unknown;
+    /** C8 reports from running workflows against the candidate's preview. */
+    browser?: readonly unknown[];
   } = {},
 ): Promise<CandidateEvaluation> {
   const criteria = EvaluationCriteriaSchema.parse(input.criteria ?? {});
@@ -427,6 +450,77 @@ export async function evaluateCandidate(
   const count = (status: TestRun["tests"][number]["status"]) =>
     (tests?.tests ?? []).filter((item) => item.status === status).length;
 
+  // E. Browser verification on the candidate.
+  const reports = (input.browser ?? []).map((item) =>
+    BrowserVerificationReportV2Schema.parse(item),
+  );
+  const candidateCommit = range.delta.head.commit;
+  const stale = reports
+    .filter(
+      (report) =>
+        report.candidateCommit !== null &&
+        report.candidateCommit !== candidateCommit,
+    )
+    .map((report) => report.workflowId ?? "(unknown workflow)")
+    .sort(compareText);
+  const current = reports.filter(
+    (report) =>
+      report.candidateCommit === null ||
+      report.candidateCommit === candidateCommit,
+  );
+  for (const workflowId of stale)
+    warnings.push({
+      code: "browser-report-stale",
+      message: `The browser report for ${workflowId} was made on another commit; it was ignored.`,
+    });
+  const sourceTargets = range.head.mined.graph
+    .nodesByType("UIAction")
+    .flatMap((node) => {
+      const target = node.data?.target;
+      const id =
+        target && typeof target === "object" && "semanticId" in target
+          ? target.semanticId
+          : undefined;
+      return typeof id === "string" ? [id] : [];
+    });
+  const browserFailed = current
+    .filter((report) => !report.valid)
+    .map((report) => ({
+      workflowId: report.workflowId ?? "(unknown workflow)",
+      code: report.failure?.code ?? "failed",
+      stage: report.failure?.stage ?? "terminal",
+      likelyCause: diagnoseBrowserFailure({
+        report,
+        model: models.head.model,
+        sourceTargets,
+      }).top,
+    }))
+    .sort((a, b) => compareText(a.workflowId, b.workflowId));
+  for (const item of browserFailed)
+    risks.push({
+      code: "browser-verification-failed",
+      message: `Browser verification of ${item.workflowId} failed on the candidate (${item.code} at ${item.stage})${item.likelyCause ? `; likely cause: ${item.likelyCause}` : ""}.`,
+    });
+  const verified = current
+    .filter((report) => report.valid && report.workflowId)
+    .map((report) => report.workflowId as string)
+    .sort(compareText);
+  const covered = new Set(
+    current.flatMap((report) => (report.workflowId ? [report.workflowId] : [])),
+  );
+  const unverifiedAffected =
+    current.length === 0
+      ? []
+      : reviewRequired
+          .map((item) => item.workflowId)
+          .filter((id) => !covered.has(id))
+          .sort(compareText);
+  for (const id of unverifiedAffected)
+    warnings.push({
+      code: "affected-workflow-not-browser-verified",
+      message: `${id} needs review but no browser run covered it.`,
+    });
+
   const status: CandidateEvaluation["status"] = risks.length
     ? "fail"
     : inconclusive
@@ -483,10 +577,21 @@ export async function evaluateCandidate(
           },
         }
       : {}),
+    browserResults: {
+      executed: current.length > 0,
+      verified,
+      failed: browserFailed,
+      unverifiedAffected,
+      stale,
+    },
     risks,
     warnings,
     evidenceGaps: [
-      "Browser verification was not run (phase I4).",
+      ...(current.length > 0
+        ? []
+        : [
+            "No browser verification reports were supplied; run the affected workflows against the candidate (verifyCandidateWorkflows).",
+          ]),
       ...(tests ? [] : ["No test results were supplied; coverage is static."]),
     ],
     eligibleForExperiment,

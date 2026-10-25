@@ -288,7 +288,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler analyze [directory] [--model-fixtures <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
-       pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--browser <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason verify [directory] [--property <json-file>] [--context <name=value> ...] [--model <json-file>] [--max-depth <n>] [--timeout-ms <n>] [--json] [--out <directory>]
        pathcompiler reason diff <base> <head> [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler reason dead-features [directory] [--model <json-file>] [--json] [--out <directory>]
@@ -417,8 +417,11 @@ evaluate independently evaluates a candidate commit (a human PR or harness outpu
 base: intended vs. observed semantic change (--criteria: expectedChanges, protectedProperties,
 recommendationId, mutation), invariant and protected-property checks on both commits, approved
 workflow impact, and business-level tests (--tests: Playwright JSON reporter output or
-{ tests: [{ name, status }] }). It writes reports/evaluation/<candidate>.json and exits nonzero
-when the candidate fails. Claims in the criteria never change the outcome.
+{ tests: [{ name, status }] }). --browser takes browser verification reports (one or an array)
+from running workflows against the candidate's preview (verifyCandidateWorkflows): a failed run
+fails the candidate with a diagnosed likely cause, reports for another commit are ignored, and
+workflows needing review without a run are flagged. It writes reports/evaluation/<candidate>.json
+and exits nonzero when the candidate fails. Claims in the criteria never change the outcome.
 reason verify checks the model's invariants and any properties in --property (kinds:
 never, always, invariant, via) by bounded model checking, writing
 reports/reasoning/verification.json. A violation prints a counterexample and exits nonzero (also with --json).
@@ -542,6 +545,7 @@ const CLI_OPTIONS = {
   commits: { type: "string" },
   "model-fixtures": { type: "string" },
   "at-least": { type: "string" },
+  browser: { type: "string" },
   impact: { type: "string" },
   "at-most": { type: "string" },
   baseline: { type: "string" },
@@ -715,10 +719,14 @@ export async function runCli(
 
   if (positionals[0] === "github-app") return runGitHubApp(positionals, values);
   if (
-    (values.criteria !== undefined || values.tests !== undefined) &&
+    (values.criteria !== undefined ||
+      values.tests !== undefined ||
+      values.browser !== undefined) &&
     positionals[0] !== "evaluate"
   )
-    throw new Error("--criteria and --tests are only supported by evaluate.");
+    throw new Error(
+      "--criteria, --tests and --browser are only supported by evaluate.",
+    );
   if (positionals[0] === "evaluate")
     return runEvaluate(positionals, values, cwd);
   if (positionals[0] === "reason" && positionals[1] === "diff")
@@ -2455,6 +2463,16 @@ async function runEvaluate(
       : rawTests && typeof rawTests === "object" && "suites" in rawTests
         ? testRunFromPlaywrightJson(rawTests)
         : TestRunSchema.parse(rawTests);
+  const rawBrowser =
+    values.browser === undefined
+      ? undefined
+      : await readJsonFile(cwd, values.browser, "browser verification reports");
+  const browser =
+    rawBrowser === undefined
+      ? undefined
+      : Array.isArray(rawBrowser)
+        ? rawBrowser
+        : [rawBrowser];
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   const approved = await readApproved(output);
   const range = await analyzeCommitRangeDetailed({
@@ -2469,6 +2487,7 @@ async function runEvaluate(
     evaluation = await evaluateCandidate(range, solver, {
       ...(criteria === undefined ? {} : { criteria }),
       ...(tests === undefined ? {} : { tests }),
+      ...(browser === undefined ? {} : { browser }),
       approved,
     });
   } finally {
@@ -2485,6 +2504,7 @@ async function runEvaluate(
     `Properties: ${formal.holds}/${formal.checked} hold, ${formal.violated} violated, ${formal.unknown} unknown.`,
     `Workflows needing review: ${evaluation.workflowRegression.reviewRequired.map((item) => item.workflowId).join(", ") || "none"}.`,
     `Tests: ${testing.executed ? `${testing.passed} passed, ${testing.failed} failed, ${testing.skipped} skipped` : "not supplied (static coverage only)"}.`,
+    `Browser: ${evaluation.browserResults.executed ? `${evaluation.browserResults.verified.length} verified, ${evaluation.browserResults.failed.length} failed` : "not supplied"}.`,
     ...evaluation.risks.map((item) => `✗ ${item.message}`),
     ...evaluation.warnings.map((item) => `⚠ ${item.message}`),
     ...evaluation.evidenceGaps.map((item) => `· ${item}`),

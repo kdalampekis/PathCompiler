@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after I1)
+## Current state (updated 2026-10-24, after I4)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **I4** (next), I5, I2, C6 (needs repositories) |
+| Unblocked | **I5** (next), I2, C6 (needs repositories) |
 | Blocked | I6–I8 (I5 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I1, I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **I4 — Browser candidate verification** (`MASTER_ROADMAP.md` §7). Parallel candidates: I5, I2. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I1, I3, I4 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **I5 — Experiment Specification** (`MASTER_ROADMAP.md` §7). Parallel candidates: I2. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4529,3 +4529,54 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 ### Scope notes
 
 - Next recommended phase: I4 — Browser candidate verification.
+
+---
+
+## Phase I4 — Browser candidate verification
+
+Complete — verified locally on 2026-10-24.
+
+- **`verifyCandidateWorkflows`** (workflow-validator/browser) runs the
+  selected workflows against a candidate build, clears cookies between
+  runs and applies preconditions per workflow. It stamps the candidate
+  commit on each report.
+- **`verifyWorkflowInBrowser` gains `candidateCommit`:** the build under
+  test, instead of the workflow's approval commit.
+- **`evaluateCandidate` gains section E (`browser`):** reports are
+  validated; stale ones are ignored with a warning; failed runs are risks
+  carrying a P3 diagnosis on the candidate's model; and affected workflows
+  without a run are warned about. The `browserResults` summary is added,
+  and the browser evidence gap closes once reports are supplied.
+- **CLI `evaluate --browser <json>`.**
+- Recorded in ADR 0081.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 507 tests passed across 91 suites (all 91 test files; evaluator browser section, CLI `evaluate --browser`) |
+| workflow-validator browser suite | 12 passed (Chromium), including the new candidate runner test |
+| `git diff --check` | Passed |
+
+The tests cover:
+- **evaluator on real commits:** a candidate with one verified workflow, one
+  failed run (diagnosed as a stale target) and one stale report fails with
+  `revise_candidate`;
+- **CLI:** a browser failure fails an otherwise passing candidate, and the
+  option guard;
+- **browser:** two selected fixture workflows pass against the running app
+  with the candidate commit stamped, and their reports round-trip through
+  the Playwright-free schema.
+
+### Errors found during the phase
+
+- **Wrong candidate commit:** `report.candidateCommit` held the workflow's
+  approval commit, which would have made every approved workflow's report
+  look stale on a candidate. The new option fixes it.
+- **Open (#46):** there is no CLI browser runner and no check section.
+
+### Scope notes
+
+- Next recommended phase: I5 — Experiment Specification.
