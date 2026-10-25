@@ -157,6 +157,11 @@ import {
   createReasoningService,
   serveReasoningStdio,
 } from "@pathcompiler/reasoning-service";
+import {
+  calibrationFromReviews,
+  collectReviewFeedback,
+  prioritizeReviews,
+} from "@pathcompiler/review-priority";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import {
   analyzeSemanticChange,
@@ -261,6 +266,8 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler observe release-diff <base-release> <head-release> [directory] [--commits <base>..<head>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
+       pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler analyze [directory] [--model-fixtures <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
@@ -444,6 +451,11 @@ meaning per capability so that actions with different handlers never share one, 
 reports/semantic-interpretations.json. Capabilities are never changed.
 --model-fixtures replays recorded responses ([{ kind, request | key, response }]) instead
 of calling a provider.
+review queue orders pending candidates and proposals by uncertainty × business impact × usage
+× change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
+usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
+feedback turns the stored decisions (approved, rejected, accepted/edited/rejected/ignored
+proposals) into labeled data and a confidence calibration, in reports/review-calibration.json.
 diagnose ranks the likely causes of a failed browser verification report (C8): stale
 target, permission mismatch, feature flag mismatch, backend changed, formal model wrong or
 network issue. It fuses the failure's stage and code, whether the target is still in the
@@ -494,6 +506,7 @@ const CLI_OPTIONS = {
   commits: { type: "string" },
   "model-fixtures": { type: "string" },
   "at-least": { type: "string" },
+  impact: { type: "string" },
   "at-most": { type: "string" },
   baseline: { type: "string" },
 } as const;
@@ -625,6 +638,9 @@ export async function runCli(
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (values["model-fixtures"] !== undefined && positionals[0] !== "analyze")
     throw new Error("--model-fixtures is only supported by analyze.");
+  if (values.impact !== undefined && positionals[0] !== "review")
+    throw new Error("--impact is only supported by review queue.");
+  if (positionals[0] === "review") return runReview(positionals, values, cwd);
   if (positionals[0] === "diagnose")
     return runDiagnose(positionals, values, cwd);
   if (positionals[0] === "analyze")
@@ -4196,4 +4212,151 @@ async function runDiagnose(
     `Report: ${path.join(output, file)}`,
     "",
   ].join("\n");
+}
+
+/** Parsed `*.yaml` records in a directory under the output; none when it does not exist. */
+async function readRecords<T>(
+  directory: string,
+  parse: (input: string) => T,
+  what: string,
+): Promise<{ name: string; record: T }[]> {
+  let names: string[];
+  try {
+    names = (await readdir(directory, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".yaml"))
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const records: { name: string; record: T }[] = [];
+  for (const name of names) {
+    const file = path.join(directory, name);
+    try {
+      records.push({ name, record: parse(await readFile(file, "utf8")) });
+    } catch (error) {
+      throw new Error(`Cannot read ${file} as ${what}. Fix or move it.`, {
+        cause: error,
+      });
+    }
+  }
+  return records;
+}
+
+async function runReview(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const sub = positionals[1];
+  if (positionals.length !== 2 || (sub !== "queue" && sub !== "feedback"))
+    throw new Error(
+      "Expected: pathcompiler review queue or review feedback. Use --help for options.",
+    );
+  if (values.impact !== undefined && sub !== "queue")
+    throw new Error("--impact is only supported by review queue.");
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const proposals = await readRecords(
+    path.join(output, "proposals"),
+    parseProposalYaml,
+    "a proposal",
+  );
+  if (sub === "feedback") {
+    const feedback = collectReviewFeedback({
+      approved: await readApproved(output),
+      rejected: (
+        await readRecords(
+          path.join(output, "workflows", "rejected"),
+          parseRejectedWorkflowYaml,
+          "a rejected workflow",
+        )
+      ).map((item) => item.record),
+      proposals: proposals.map((item) => item.record),
+    });
+    const calibration = calibrationFromReviews(feedback);
+    const report = {
+      schemaVersion: 1,
+      kind: "review-calibration",
+      feedback,
+      calibration,
+    };
+    const file = "reports/review-calibration.json";
+    await writeArtifacts(output, [
+      [file, `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+    const counts = new Map<string, number>();
+    for (const item of feedback)
+      counts.set(item.decision, (counts.get(item.decision) ?? 0) + 1);
+    return `${[
+      `Review feedback: ${feedback.length} decisions${feedback.length ? ` (${[...counts].map(([decision, count]) => `${count} ${decision}`).join(", ")})` : ""}.`,
+      ...calibration.bands.map(
+        (band) =>
+          `  ${band.band}: ${band.correct}/${band.samples} accepted as proposed${band.samples < calibration.minSamples ? ` (fewer than ${calibration.minSamples}: not yet a calibration)` : ""}`,
+      ),
+      `Report: ${path.join(output, file)}`,
+    ].join("\n")}\n`;
+  }
+  const pending = new Set(
+    (await listWorkflows(output))
+      .filter((item) => item.state === "candidate")
+      .map((item) => item.id),
+  );
+  const candidates = (
+    await readRecords(
+      path.join(output, "workflows", "candidates"),
+      parseCandidateYaml,
+      "a workflow candidate",
+    )
+  )
+    .map((item) => item.record.workflow)
+    .filter((workflow) => pending.has(workflow.id));
+  let businessImpact: Record<string, number> | undefined;
+  if (values.impact !== undefined)
+    try {
+      businessImpact = z
+        .record(z.string(), z.number())
+        .parse(
+          JSON.parse(await readFile(path.resolve(cwd, values.impact), "utf8")),
+        );
+    } catch (error) {
+      throw new Error(
+        `Cannot read ${values.impact}: expected a JSON object of workflow IDs or domains to numbers in (0, 1].`,
+        { cause: error },
+      );
+    }
+  const project = path.basename(path.dirname(output));
+  const events = await readEventDirectory(
+    path.join(output, "events", encodeURIComponent(project)),
+  );
+  const usage =
+    events.length === 0
+      ? undefined
+      : Object.fromEntries(
+          computeWorkflowAnalytics(events).workflows.map((item) => [
+            item.workflowId,
+            item.starts,
+          ]),
+        );
+  const queue = prioritizeReviews({
+    candidates,
+    proposals: proposals.map(({ name, record }) => ({
+      name,
+      proposal: record,
+    })),
+    ...(usage ? { usage } : {}),
+    ...(businessImpact ? { businessImpact } : {}),
+  });
+  const file = "reports/review-queue.json";
+  await writeArtifacts(output, [[file, `${JSON.stringify(queue, null, 2)}\n`]]);
+  if (values.json) return `${JSON.stringify(queue, null, 2)}\n`;
+  return `${[
+    `Review queue: ${queue.items.length} pending items (priority orders review; it is not a probability).`,
+    ...queue.items.map(
+      (item, index) =>
+        `  ${index + 1}. ${item.priority} ${item.kind} ${item.id}: uncertainty ${item.factors.uncertainty.value} × impact ${item.factors.businessImpact.value} × usage ${item.factors.usage.value} × severity ${item.factors.severity.value}`,
+    ),
+    `Report: ${path.join(output, file)}`,
+  ].join("\n")}\n`;
 }

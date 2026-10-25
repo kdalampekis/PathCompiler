@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after P5)
+## Current state (updated 2026-10-24, after P-RV)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **P-RV** (next), I0, I4, C6 (needs repositories) |
-| Blocked | IG (I0), I1 (IG), I2 (I1), I5–I8 (O0, O7 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
+| Unblocked | **I0** (next), I4, I5, C6 (needs repositories) |
+| Blocked | IG (I0), I1 (IG), I2 (I1), I6–I8 (I5 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **P-RV — Review prioritization and feedback** (`MASTER_ROADMAP.md` §7). Parallel candidates: I0, I4. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **I0 — Finding Model** (`MASTER_ROADMAP.md` §7). Parallel candidates: I4, I5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4292,3 +4292,60 @@ No runtime or browser code changed, so the e2e suite was not rerun.
   used (ADR 0076).
 - MDP guided assistance (§60) remains deferred.
 - Next recommended phase: P-RV — Review prioritization and feedback.
+
+---
+
+## Phase P-RV — Review prioritization and feedback
+
+Complete — verified locally on 2026-10-24.
+
+- **New `@pathcompiler/review-priority`:**
+  - `prioritizeReviews` multiplies explained factors (uncertainty, business
+    impact, usage, severity) for pending candidates and proposals. Missing
+    inputs are neutral.
+  - `collectReviewFeedback` turns the stored decisions into labeled data
+    with the reviewed confidence and its band.
+  - `calibrationFromReviews` builds a P0 calibration table.
+- **CLI:**
+  - `review queue [--impact <json>]` writes `reports/review-queue.json`,
+    with usage from stored events;
+  - `review feedback` writes `reports/review-calibration.json`.
+- **Roadmap statuses corrected:** I0, I4 and I5 had all their prerequisites
+  done but were still marked blocked.
+- Recorded in ADR 0077.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 495 tests passed across 88 suites (all 88 test files; prioritization, feedback, calibration, CLI `review`) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- factor products and order, with domain impact, usage relative to the
+  busiest workflow, proposals without a candidate, and decided proposals
+  excluded;
+- neutral factors, and impact validation;
+- feedback from approvals (first versions only), rejections and proposal
+  reviews;
+- calibration with ignored decisions left out;
+- CLI: queue order by impact, a rejected candidate leaving the queue and
+  appearing in feedback, and the option guards.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **A type error:** the `Proposal` union has no `proposed` field on
+  deprecations; the code now narrows on the kind first.
+- **Name collision:** I0's planned human trigger `analyze <workflow>`
+  collides with C9's `analyze`. Recorded in the roadmap.
+- **Open (#42):** merged and renamed decisions are not produced yet.
+
+### Scope notes
+
+- Feedback is derived from the stored records, not from a new log
+  (ADR 0077).
+- Next recommended phase: I0 — Finding Model.

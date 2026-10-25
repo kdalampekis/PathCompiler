@@ -338,6 +338,9 @@ importers:
       "@pathcompiler/reasoning-service":
         specifier: workspace:*
         version: link:../reasoning-service
+      "@pathcompiler/review-priority":
+        specifier: workspace:*
+        version: link:../review-priority
       "@pathcompiler/sdk-js":
         specifier: workspace:*
         version: link:../sdk-js
@@ -1040,6 +1043,37 @@ importers:
       "@pathcompiler/workflow-validator":
         specifier: workspace:*
         version: link:../workflow-validator
+
+  packages/review-priority:
+    dependencies:
+      "@pathcompiler/probabilistic-evidence":
+        specifier: workspace:*
+        version: link:../probabilistic-evidence
+      "@pathcompiler/workflow-ir":
+        specifier: workspace:*
+        version: link:../workflow-ir
+      "@pathcompiler/workflow-proposals":
+        specifier: workspace:*
+        version: link:../workflow-proposals
+      "@pathcompiler/workflow-review":
+        specifier: workspace:*
+        version: link:../workflow-review
+    devDependencies:
+      "@pathcompiler/adapter-nextjs":
+        specifier: workspace:*
+        version: link:../adapter-nextjs
+      "@pathcompiler/capability-engine":
+        specifier: workspace:*
+        version: link:../capability-engine
+      "@pathcompiler/source-model":
+        specifier: workspace:*
+        version: link:../source-model
+      "@pathcompiler/test-miner-playwright":
+        specifier: workspace:*
+        version: link:../test-miner-playwright
+      "@pathcompiler/workflow-discovery":
+        specifier: workspace:*
+        version: link:../workflow-discovery
 
   packages/runtime-core:
     dependencies:

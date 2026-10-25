@@ -637,7 +637,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Prerequisites:** P0; review and proposal decisions (✅); usage factor needs O7.
 - **Acceptance:** review queue ordering with explained components; decisions
   stored as calibration data.
-- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅); **recommended next phase** (§7).
+- **Runtime change:** No. **Status:** ✅ complete (2026-10-24): `@pathcompiler/review-priority`, CLI `review queue` and `review feedback`, ADR 0077.
 
 #### P5 — Probabilistic model checking
 - **Prerequisites:** O11 (meaningful telemetry), R8. **Status:** ✅ complete (2026-10-24): `checkGoal`, `checkReachProperty`, `compareReach` (interval Markov chain bounds), CLI `observe check`, ADR 0076.
@@ -733,7 +733,7 @@ Shared rules:
   <workflow|capability>`), and analytics-triggered (threshold crossings, once
   O7 exists). Scheduled runs are a CLI or CI invocation; hosted scheduling is
   deferred.
-- **Runtime change:** No. **Unblocks:** IG. **Status:** 🔒 blocked.
+- **Runtime change:** No. **Unblocks:** IG. **Status:** 🟢 unblocked (P0 ✅, R4 ✅, R11 ✅, O7 ✅, O9 ✅); **recommended next phase** (§7). The human trigger needs a name other than `analyze`, which C9 took (`pathcompiler findings <workflow|capability>`).
 
 #### IG — Improvement gate, value assessment and policy (ADR 0033)
 - **Objective:** Decide whether a finding should escalate:
@@ -799,7 +799,7 @@ Shared rules:
 - **Status:** ✅ complete (2026-10-23): `@pathcompiler/candidate-evaluator`, `pathcompiler evaluate`, ADR 0042. GitHub check section and dashboard view deferred (need C2 and stored evaluations).
 
 #### I4 — Browser candidate verification
-- **Prerequisites:** I3, C8. **Status:** 🔒 blocked.
+- **Prerequisites:** I3, C8. **Status:** 🟢 unblocked (I3 ✅, C8 ✅).
 
 #### I5 — Experiment Specification · I6 — Outcome Measurement · I7 — Adoption Decision · I8 — Improvement Memory
 - **Prerequisites:** I3 + O0 + O7 (I5); I5 + O7/O11 (I6); I6 (I7); I7 (I8).
@@ -807,7 +807,7 @@ Shared rules:
 - **Acceptance:** success criteria fixed before measurement; outcomes improved,
   neutral, worse or inconclusive; failed-hypothesis demo (§253) yields
   ROLLBACK/ITERATE; human approval required.
-- **Runtime change:** No. **Status:** 🔒 blocked.
+- **Runtime change:** No. **Status:** I5 🟢 unblocked (I3 ✅, O0 ✅, O7 ✅); I6–I8 🔒 blocked on the chain.
 
 #### I9 — External harness integration (mode 6)
 - **Prerequisites:** I2 stable, I3, IG with mode 6 explicitly enabled. File- or API-based (`HarnessTaskSpec.json` in,
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **P-RV** (next), I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **I0** (next), I4, I5, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅ | IG (I0) · I1 (IG) · I2 (I1) · I6 (I5) · I7 (I6) · I8 (I7) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,16 +839,22 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: P-RV — Review prioritization and feedback
+## 7. Next implementation phase: I0 — Finding Model
 
-P5 is complete (ADR 0076). `observe check` bounds the completion and
-abandonment probability on the observed chain, decides properties only when
-the bounds agree, and compares releases beyond sample noise.
+The P track is complete: P0–P5 and P-RV (ADR 0056, 0072–0077). Review
+priority and feedback are in place, and review decisions become calibration
+data.
 
-P-RV comes next. It orders the review queue by uncertainty × business impact
-× usage × change severity, with each component explained (spec §52). It
-stores review decisions (accepted, edited, rejected, merged, renamed) as
-calibration data (§53). After P-RV comes the I track: I0, I4, then IG.
+I0 comes next. It defines the finding model (`ProductFinding`,
+`ImprovementOpportunity`, `PriorityAssessment`) and deterministically
+classifies findings, with lineage, from the outputs that already exist:
+- R11 semantic changes;
+- impact;
+- browser diagnosis (P3);
+- observed friction (O9, O10).
+
+It unblocks IG. The planned order after I0: IG, I1, I4, I5–I8, then I2 and
+I9 (mode 6 only).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 
