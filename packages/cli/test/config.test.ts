@@ -61,6 +61,9 @@ describe("pathcompiler.yaml in the CLI", () => {
     await expect(runCli(["gate", "--out", "out"], cwd)).rejects.toThrow(
       /gate \(mode 4, Recommend\) is disabled .* modes\.recommend to true/,
     );
+    await expect(runCli(["recommend", "--out", "out"], cwd)).rejects.toThrow(
+      /recommend \(mode 4, Recommend\) is disabled/,
+    );
 
     const file = path.join(cwd, "pathcompiler.yaml");
     await writeFile(

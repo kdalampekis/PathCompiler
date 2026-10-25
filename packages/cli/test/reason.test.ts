@@ -567,6 +567,10 @@ describe("pathcompiler reason reachable", () => {
           item.decision === "eligible_for_harness",
       ),
     ).toBe(false);
+    // I1: nothing escalated, so nothing is recommended.
+    expect(await run(["recommend"])).toMatch(
+      /^Recommendations: 0 \(\d+ opportunities not escalated by the gate\)\./,
+    );
     expect(await run(["findings", "plans.archive"])).toContain(
       "0 findings in 0 opportunities",
     );

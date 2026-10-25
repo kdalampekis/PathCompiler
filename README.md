@@ -1472,6 +1472,27 @@ is offered to a harness unless `improvement_policy.autonomous_mutation` and
 needs `modes.recommend`. See
 [ADR 0079](docs/decisions/0079-improvement-gate.md).
 
+## Recommendations (`pathcompiler recommend`)
+
+`recommend` turns the gate's `recommend` decisions into structured
+recommendations from deterministic templates:
+- **FIX** for regressions: restore lost reachability, or remove access a
+  role newly gained;
+- **IMPROVE** for friction;
+- **PROMOTE** for low adoption.
+
+Each recommendation has:
+- a falsifiable hypothesis, whose intervention confidence is a template
+  prior, separate from the finding's confidence;
+- desired outcomes;
+- protected behaviors: the R8 properties given with `--property`, and the
+  other approved workflows;
+- acceptance criteria: required formal, property, validation and browser
+  checks, plus outcome metrics measured after release.
+
+Recommendations are for human review. See
+[ADR 0080](docs/decisions/0080-recommendation-model.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1743,6 +1764,7 @@ Analysis packages:
 | `@pathcompiler/model-provider-anthropic` | `createAnthropicModelProvider`, `DEFAULT_ANTHROPIC_MODEL` (Anthropic SDK; ADR 0071) |
 | `@pathcompiler/findings` | `deriveFindings`, `ProductFinding`, `ImprovementOpportunity`, `PriorityAssessment`, `FindingEvidenceBundle` (I0) |
 | `@pathcompiler/improvement-gate` | `gateFindings`, `GateDecision`, `ImprovementValueAssessment`, `ImprovementPolicy` (IG) |
+| `@pathcompiler/recommendation-engine` | `recommend`, `ImprovementRecommendation`, `ImprovementHypothesis`, `AcceptanceCriteria`, `ProtectedBehavior` (I1) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `interpretCandidates` (P1), `selectInterpretations`, `candidateWeight` (P2), `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
@@ -1753,7 +1775,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after IG)
+## Current state (updated 2026-10-24, after I1)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **I1** (next), I4, I5, C6 (needs repositories) |
-| Blocked | I2 (I1), I6–I8 (I5 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
+| Unblocked | **I4** (next), I5, I2, C6 (needs repositories) |
+| Blocked | I6–I8 (I5 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **I1 — Recommendation Model** (`MASTER_ROADMAP.md` §7). Parallel candidates: I4, I5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I1, I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **I4 — Browser candidate verification** (`MASTER_ROADMAP.md` §7). Parallel candidates: I5, I2. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4472,3 +4472,60 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 - Formal-only regressions are medium confidence in P0, so they need
   corroboration before they become recommendations (ADR 0079).
 - Next recommended phase: I1 — Recommendation Model.
+
+---
+
+## Phase I1 — Recommendation Model
+
+Complete — verified locally on 2026-10-24.
+
+- **New `@pathcompiler/recommendation-engine`.** `recommend` turns only
+  `recommend` and `eligible_for_harness` gate decisions into
+  recommendations, from deterministic templates:
+  - **FIX** for regressions: lost reachability must come back, and access a
+    role newly gained must go, unless it is intended;
+  - **IMPROVE** for friction;
+  - **PROMOTE** for low adoption;
+  - **INVESTIGATE** otherwise.
+- **Each recommendation** has a falsifiable hypothesis with a template-prior
+  intervention confidence, separate from finding confidence. It also has
+  desired outcomes, protected behaviors (R8 properties and the other
+  approved workflows), required and outcome acceptance checks, lineage, and
+  the gate's harness eligibility.
+- **CLI `recommend [--property <json>]`** writes
+  `reports/recommendations.json`; it needs `modes.recommend` with a config.
+- Recorded in ADR 0080.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 506 tests passed across 91 suites (all 91 test files; templates, end-to-end recommend, config gating) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- FIX with reachability, property, validation and browser checks, and
+  protected behaviors that exclude the target;
+- FIX for newly gained access;
+- IMPROVE and PROMOTE outcomes and metric checks;
+- only escalated decisions becoming recommendations;
+- end to end on the role rename: nothing escalates, so nothing is
+  recommended;
+- config gating.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **Friction checks in a mixed opportunity:** friction findings were being
+  treated as lost regressions and given reachability checks. "Lost" is now
+  restricted to regression kinds.
+- **Imports:** a `GateReport` import was lost when the formatter rewrote an
+  import block, and was restored.
+- **Open (#45):** BUILD and DEPRIORITIZE templates are deferred.
+
+### Scope notes
+
+- Next recommended phase: I4 — Browser candidate verification.

@@ -111,6 +111,7 @@ import {
   WorkflowImpactReportSchema,
 } from "@pathcompiler/impact-analysis";
 import {
+  type GateReport,
   gateFindings,
   type SubjectUsage,
 } from "@pathcompiler/improvement-gate";
@@ -158,6 +159,7 @@ import {
   type PlanEvaluation,
   type PlanResult,
   type ProductProperty,
+  ProductPropertySchema,
   type PropertyResult,
   propertiesFromInvariants,
   type ReachabilityQuery,
@@ -168,6 +170,7 @@ import {
   createReasoningService,
   serveReasoningStdio,
 } from "@pathcompiler/reasoning-service";
+import { recommend } from "@pathcompiler/recommendation-engine";
 import {
   calibrationFromReviews,
   collectReviewFeedback,
@@ -279,6 +282,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler findings [workflow|capability|goal] [--json] [--out <directory>]
        pathcompiler gate [--json] [--out <directory>]
+       pathcompiler recommend [--property <json-file>] [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -477,6 +481,12 @@ and its budgets; usage comes from stored events. Each decision has an explained 
 assessment, in reports/gate-decisions.json. Nothing is eligible for a harness unless both
 improvement_policy.autonomous_mutation and modes.self_improvement are true. With
 pathcompiler.yaml, gate needs modes.recommend.
+recommend turns gate decisions recommend and eligible_for_harness into recommendations from
+deterministic templates: FIX for regressions (restore lost reachability; remove access a role
+newly gained), IMPROVE for friction, PROMOTE for low adoption. Each has a falsifiable
+hypothesis whose confidence (a template prior) is separate from the finding's, desired
+outcomes, protected behaviors (--property R8 properties and the other approved workflows) and
+acceptance criteria, in reports/recommendations.json. It needs modes.recommend too.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -607,9 +617,12 @@ export async function runCli(
     );
   if (
     values.property !== undefined &&
-    !(positionals[0] === "reason" && positionals[1] === "verify")
+    !(positionals[0] === "reason" && positionals[1] === "verify") &&
+    positionals[0] !== "recommend"
   )
-    throw new Error("--property is only supported by reason verify.");
+    throw new Error(
+      "--property is only supported by reason verify and recommend.",
+    );
   if (
     values.reasoning &&
     !(
@@ -669,6 +682,8 @@ export async function runCli(
   if (positionals[0] === "review") return runReview(positionals, values, cwd);
   if (positionals[0] === "findings")
     return runFindings(positionals, values, cwd);
+  if (positionals[0] === "recommend")
+    return runRecommend(positionals, values, cwd);
   if (positionals[0] === "gate")
     return runGate(
       positionals,
@@ -3015,8 +3030,11 @@ function applyConfig(
     );
   if (command === "evaluate" && !config.modes.evaluate)
     refuse("evaluate (mode 5)", "modes.evaluate to true");
-  if (command === "gate" && !config.modes.recommend)
-    refuse("gate (mode 4, Recommend)", "modes.recommend to true");
+  if (
+    (command === "gate" || command === "recommend") &&
+    !config.modes.recommend
+  )
+    refuse(`${command} (mode 4, Recommend)`, "modes.recommend to true");
   if (command === "observe") {
     if (!config.modes.observe)
       refuse(`observe ${sub ?? ""}`.trim(), "modes.observe to true");
@@ -4560,5 +4578,85 @@ async function runGate(
         `  ${item.decision} ${item.subject}: ${item.rationale.at(-1) ?? ""}`,
     ),
     `Report: ${path.join(output, target)}`,
+  ].join("\n")}\n`;
+}
+
+async function runRecommend(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length !== 1)
+    throw new Error(
+      "Expected: pathcompiler recommend. Use --help for options.",
+    );
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const read = async (name: string, command: string) => {
+    const file = path.join(output, "reports", name);
+    const content = await readOptional(file);
+    if (content === undefined)
+      throw new Error(`No ${file}. Run pathcompiler ${command} first.`);
+    try {
+      return JSON.parse(content) as unknown;
+    } catch (error) {
+      throw new Error(`Cannot read ${file}. Rerun pathcompiler ${command}.`, {
+        cause: error,
+      });
+    }
+  };
+  const findings = z
+    .looseObject({ kind: z.literal("findings") })
+    .parse(
+      await read("findings.json", "findings"),
+    ) as unknown as FindingsReport;
+  const gate = z
+    .looseObject({ kind: z.literal("gate-decisions") })
+    .parse(await read("gate-decisions.json", "gate")) as unknown as GateReport;
+  let properties: ProductProperty[] = [];
+  if (values.property !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(
+        await readFile(path.resolve(cwd, values.property), "utf8"),
+      );
+      properties = z
+        .array(ProductPropertySchema)
+        .parse(
+          Array.isArray(parsed)
+            ? parsed
+            : (parsed as { properties?: unknown }).properties,
+        );
+    } catch (error) {
+      throw new Error(
+        `Cannot read properties from ${values.property}. Provide a JSON array of properties or { "properties": [...] }.`,
+        { cause: error },
+      );
+    }
+  }
+  const report = recommend({
+    findings,
+    gate,
+    approvedWorkflows: (await readApproved(output)).map(
+      (record) => record.workflow.id,
+    ),
+    properties: properties.map(({ id, kind, description }) => ({
+      id,
+      kind,
+      description,
+    })),
+  });
+  const file = "reports/recommendations.json";
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  return `${[
+    `Recommendations: ${report.recommendations.length} (${report.skipped.length} opportunities not escalated by the gate).`,
+    ...report.recommendations.map(
+      (item) =>
+        `  ${item.category.toUpperCase()} ${item.target.subject}: ${item.hypothesis.statement} (finding confidence ${item.findingConfidence.band}; intervention ${item.hypothesis.confidence.band}, a template prior)`,
+    ),
+    `Report: ${path.join(output, file)}`,
+    "Recommendations are for human review; nothing was changed.",
   ].join("\n")}\n`;
 }

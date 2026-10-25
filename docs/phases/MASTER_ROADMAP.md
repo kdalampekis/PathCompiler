@@ -771,7 +771,7 @@ Shared rules:
   `AcceptanceCriteria`.
 - **Acceptance:** deterministic templates for regression and permission classes;
   categories FIX/IMPROVE/PROMOTE/BUILD/DEPRIORITIZE/INVESTIGATE.
-- **Status:** 🟢 unblocked (IG ✅, R8 ✅); **recommended next phase** (§7).
+- **Status:** ✅ complete (2026-10-24): `@pathcompiler/recommendation-engine`, CLI `recommend`, ADR 0080. BUILD and DEPRIORITIZE templates deferred (ISSUES_LOG #45).
 
 #### I2 — Harness contract (mode 6 only)
 - **Prerequisites:** I1, R11 (`SemanticChangeIntent`), R8. Emitted only for
@@ -799,7 +799,7 @@ Shared rules:
 - **Status:** ✅ complete (2026-10-23): `@pathcompiler/candidate-evaluator`, `pathcompiler evaluate`, ADR 0042. GitHub check section and dashboard view deferred (need C2 and stored evaluations).
 
 #### I4 — Browser candidate verification
-- **Prerequisites:** I3, C8. **Status:** 🟢 unblocked (I3 ✅, C8 ✅).
+- **Prerequisites:** I3, C8. **Status:** 🟢 unblocked (I3 ✅, C8 ✅); **recommended next phase** (§7).
 
 #### I5 — Experiment Specification · I6 — Outcome Measurement · I7 — Adoption Decision · I8 — Improvement Memory
 - **Prerequisites:** I3 + O0 + O7 (I5); I5 + O7/O11 (I6); I6 (I7); I7 (I8).
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **I1** (next), I4, I5, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅, I0 ✅, IG ✅ | I2 (I1) · I6 (I5) · I7 (I6) · I8 (I7) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **I4** (next), I5, I2, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅, I0 ✅, IG ✅, I1 ✅ | · I6 (I5) · I7 (I6) · I8 (I7) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,23 +839,16 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: I1 — Recommendation Model
+## 7. Next implementation phase: I4 — Browser candidate verification
 
-IG is complete (ADR 0079). Every opportunity gets an explained gate
-decision under `improvement_policy`, and nothing reaches a harness unless
-mode 6 is enabled twice.
+I1 is complete (ADR 0080). Escalated opportunities become recommendations
+with hypotheses, protected behaviors and acceptance criteria.
 
-I1 comes next. Only `recommend` (and `eligible_for_harness`) decisions
-become recommendations. Each one gets:
-- an `ImprovementHypothesis`, with intervention confidence separate from
-  finding confidence;
-- desired outcomes;
-- protected behaviors (R8 properties);
-- acceptance criteria.
-
-Deterministic templates cover regressions, friction and low adoption, in
-the categories FIX, IMPROVE, PROMOTE, BUILD, DEPRIORITIZE and INVESTIGATE.
-The planned order after I1: I4, I5–I8, then I2 and I9 (mode 6 only).
+I4 comes next. It adds C8 browser verification of the candidate's affected
+workflows to I3 candidate evaluation, with P3 diagnosis of any failure, so
+a candidate that breaks a workflow in the browser fails its evaluation.
+The planned order after I4: I5–I8 (experiment, outcome, adoption, memory),
+then I2 and I9 (mode 6 only).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

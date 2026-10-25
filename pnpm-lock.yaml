@@ -344,6 +344,9 @@ importers:
       "@pathcompiler/reasoning-service":
         specifier: workspace:*
         version: link:../reasoning-service
+      "@pathcompiler/recommendation-engine":
+        specifier: workspace:*
+        version: link:../recommendation-engine
       "@pathcompiler/review-priority":
         specifier: workspace:*
         version: link:../review-priority
@@ -1055,6 +1058,31 @@ importers:
       "@pathcompiler/test-miner-playwright":
         specifier: workspace:*
         version: link:../test-miner-playwright
+
+  packages/recommendation-engine:
+    dependencies:
+      "@pathcompiler/findings":
+        specifier: workspace:*
+        version: link:../findings
+      "@pathcompiler/improvement-gate":
+        specifier: workspace:*
+        version: link:../improvement-gate
+      "@pathcompiler/reasoner-core":
+        specifier: workspace:*
+        version: link:../reasoner-core
+    devDependencies:
+      "@pathcompiler/behavior-reconciliation":
+        specifier: workspace:*
+        version: link:../behavior-reconciliation
+      "@pathcompiler/config":
+        specifier: workspace:*
+        version: link:../config
+      "@pathcompiler/observed-graph":
+        specifier: workspace:*
+        version: link:../observed-graph
+      "@pathcompiler/semantic-change":
+        specifier: workspace:*
+        version: link:../semantic-change
 
   packages/resolver:
     dependencies:
