@@ -344,6 +344,9 @@ importers:
       "@pathcompiler/observed-graph":
         specifier: workspace:*
         version: link:../observed-graph
+      "@pathcompiler/outcome-analysis":
+        specifier: workspace:*
+        version: link:../outcome-analysis
       "@pathcompiler/reasoner-core":
         specifier: workspace:*
         version: link:../reasoner-core
@@ -402,6 +405,9 @@ importers:
       "@modelcontextprotocol/sdk":
         specifier: 1.32.1
         version: 1.32.1(zod@4.6.7)
+      "@pathcompiler/observability-core":
+        specifier: workspace:*
+        version: link:../observability-core
 
   packages/config:
     dependencies:
@@ -889,6 +895,25 @@ importers:
       "@pathcompiler/observability-core":
         specifier: workspace:*
         version: link:../observability-core
+
+  packages/outcome-analysis:
+    dependencies:
+      "@pathcompiler/experiment-core":
+        specifier: workspace:*
+        version: link:../experiment-core
+      "@pathcompiler/observability-core":
+        specifier: workspace:*
+        version: link:../observability-core
+      "@pathcompiler/observed-graph":
+        specifier: workspace:*
+        version: link:../observed-graph
+    devDependencies:
+      "@pathcompiler/candidate-evaluator":
+        specifier: workspace:*
+        version: link:../candidate-evaluator
+      "@pathcompiler/recommendation-engine":
+        specifier: workspace:*
+        version: link:../recommendation-engine
 
   packages/probabilistic-evidence:
     dependencies:

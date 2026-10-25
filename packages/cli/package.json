@@ -44,6 +44,7 @@
     "@pathcompiler/model-provider-openai": "workspace:*",
     "@pathcompiler/observed-graph": "workspace:*",
     "@pathcompiler/reasoner-core": "workspace:*",
+    "@pathcompiler/outcome-analysis": "workspace:*",
     "@pathcompiler/reasoning-service": "workspace:*",
     "@pathcompiler/recommendation-engine": "workspace:*",
     "@pathcompiler/review-priority": "workspace:*",
@@ -63,6 +64,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "1.32.1"
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@pathcompiler/observability-core": "workspace:*"
   }
 }

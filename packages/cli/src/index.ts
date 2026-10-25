@@ -144,6 +144,7 @@ import {
   type FormalGoalChange,
   readEventDirectory,
 } from "@pathcompiler/observed-graph";
+import { measureOutcome } from "@pathcompiler/outcome-analysis";
 import {
   type CheapestPlanResult,
   type CostWeights,
@@ -291,6 +292,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler gate [--json] [--out <directory>]
        pathcompiler recommend [--property <json-file>] [--json] [--out <directory>]
        pathcompiler experiment create <recommendation-id> <evaluation.json> <control-release> <treatment-release> [--json] [--out <directory>]
+       pathcompiler experiment measure <experiment.json> [evaluation.json] [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -503,6 +505,11 @@ recommendation whose candidate evaluation passed: control and treatment releases
 50/50 session allocation, primary and secondary metrics from the desired outcomes, guardrails
 (held metrics, the other approved workflows, no unexpected observations) and success criteria,
 frozen with a hash before anything is measured, in experiments/<id>.json.
+experiment measure compares the control and treatment releases in stored events against the
+frozen spec (refusing an edited one): goal reach shares or guide completion rates with 95%
+intervals, guardrail breaches and sample thresholds, giving improved, neutral, worse or
+inconclusive. Metrics events cannot measure are listed as gaps; the candidate evaluation's
+formal status is reported separately. It writes reports/outcomes/<experiment>.json.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -4701,6 +4708,7 @@ async function runExperiment(
   values: Values,
   cwd: string,
 ): Promise<string> {
+  if (positionals[1] === "measure") return runMeasure(positionals, values, cwd);
   const [, sub, recommendationId, evaluationFile, control, treatment, ...rest] =
     positionals;
   if (
@@ -4764,5 +4772,64 @@ async function runExperiment(
     `  Primary: ${spec.primaryMetric.metric} ${spec.primaryMetric.direction} on ${spec.primaryMetric.on}, by at least ${spec.successCriteria.minimumRelativeImprovement * 100}% relative, ${spec.successCriteria.minSessionsPerArm}+ sessions per arm.`,
     `  Guardrails: ${spec.guardrails.map((item) => `${item.metric} on ${item.on}`).join("; ")}.`,
     `Criteria frozen at ${spec.frozenAt} (hash ${spec.frozenHash.slice(0, 12)}): ${path.join(output, file)}`,
+  ].join("\n")}\n`;
+}
+
+async function runMeasure(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, , specFile, evaluationFile, ...rest] = positionals;
+  if (!specFile || rest.length > 0)
+    throw new Error(
+      "Expected: pathcompiler experiment measure <experiment.json> [evaluation.json]. Use --help for options.",
+    );
+  const spec = await readJsonFile(cwd, specFile, "experiment spec");
+  const evaluation =
+    evaluationFile === undefined
+      ? undefined
+      : z
+          .looseObject({ status: z.string() })
+          .parse(
+            await readJsonFile(cwd, evaluationFile, "candidate evaluation"),
+          );
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const project = path.basename(path.dirname(output));
+  const events = await readEventDirectory(
+    path.join(output, "events", encodeURIComponent(project)),
+  );
+  let outcome: ReturnType<typeof measureOutcome>;
+  try {
+    outcome = measureOutcome({
+      spec,
+      events,
+      ...(evaluation ? { evaluationStatus: evaluation.status } : {}),
+    });
+  } catch (error) {
+    throw new Error(
+      `Cannot measure ${specFile}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  const file = `reports/outcomes/${encodeURIComponent(outcome.experimentId)}.json`;
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(outcome, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(outcome, null, 2)}\n`;
+  const show = (item: ReturnType<typeof measureOutcome>["primaryMetric"]) =>
+    item.control && item.treatment
+      ? `${item.control.value} (${item.control.sessions} sessions) → ${item.treatment.value} (${item.treatment.sessions})${item.significant ? "" : ", intervals overlap"}`
+      : "not measured";
+  return `${[
+    `Outcome of ${outcome.experimentId}: ${outcome.outcome.toUpperCase()}. ${outcome.rationale}`,
+    `  Primary ${outcome.primaryMetric.metric} on ${outcome.primaryMetric.on}: ${show(outcome.primaryMetric)}`,
+    ...outcome.guardrails.map(
+      (item) =>
+        `  Guardrail ${item.metric} on ${item.on}: ${show(item)}${item.breached ? " — BREACHED" : ""}`,
+    ),
+    `  Formal (candidate evaluation): ${outcome.formal.status ?? "not supplied"}; behavior and formal results are separate.`,
+    ...outcome.evidenceGaps.map((item) => `  · ${item}`),
+    `Report: ${path.join(output, file)}`,
   ].join("\n")}\n`;
 }
