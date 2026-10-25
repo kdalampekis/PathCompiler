@@ -296,6 +296,9 @@ importers:
       "@pathcompiler/evaluation":
         specifier: workspace:*
         version: link:../evaluation
+      "@pathcompiler/findings":
+        specifier: workspace:*
+        version: link:../findings
       "@pathcompiler/formal-abstraction":
         specifier: workspace:*
         version: link:../formal-abstraction
@@ -486,6 +489,24 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/findings:
+    dependencies:
+      "@pathcompiler/behavior-reconciliation":
+        specifier: workspace:*
+        version: link:../behavior-reconciliation
+      "@pathcompiler/impact-analysis":
+        specifier: workspace:*
+        version: link:../impact-analysis
+      "@pathcompiler/observed-graph":
+        specifier: workspace:*
+        version: link:../observed-graph
+      "@pathcompiler/probabilistic-evidence":
+        specifier: workspace:*
+        version: link:../probabilistic-evidence
+      "@pathcompiler/semantic-change":
+        specifier: workspace:*
+        version: link:../semantic-change
 
   packages/formal-abstraction:
     dependencies:

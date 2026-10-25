@@ -733,7 +733,7 @@ Shared rules:
   <workflow|capability>`), and analytics-triggered (threshold crossings, once
   O7 exists). Scheduled runs are a CLI or CI invocation; hosted scheduling is
   deferred.
-- **Runtime change:** No. **Unblocks:** IG. **Status:** 🟢 unblocked (P0 ✅, R4 ✅, R11 ✅, O7 ✅, O9 ✅); **recommended next phase** (§7). The human trigger needs a name other than `analyze`, which C9 took (`pathcompiler findings <workflow|capability>`).
+- **Runtime change:** No. **Unblocks:** IG. **Status:** ✅ complete (2026-10-24): `@pathcompiler/findings`, CLI `findings [subject]` (the human trigger; `analyze` was taken by C9), ADR 0078.
 
 #### IG — Improvement gate, value assessment and policy (ADR 0033)
 - **Objective:** Decide whether a finding should escalate:
@@ -761,7 +761,7 @@ Shared rules:
   - Budgets cap recommendations per period.
   - With `autonomous_mutation: false`, no decision is ever `eligible_for_harness`.
 - **Tests/evals:** decision-table tests; budget tests; explanation snapshots.
-- **Runtime change:** No. **Unblocks:** I1. **Status:** 🔒 blocked on I0, C2.
+- **Runtime change:** No. **Unblocks:** I1. **Status:** 🟢 unblocked (I0 ✅, C2 ✅); **recommended next phase** (§7).
 
 #### I1 — Recommendation Model
 - **Prerequisites:** IG (only `recommend` decisions become recommendations); R8
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **I0** (next), I4, I5, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅ | IG (I0) · I1 (IG) · I2 (I1) · I6 (I5) · I7 (I6) · I8 (I7) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **IG** (next), I4, I5, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅, I0 ✅ | I1 (IG) · I2 (I1) · I6 (I5) · I7 (I6) · I8 (I7) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,22 +839,19 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: I0 — Finding Model
+## 7. Next implementation phase: IG — Improvement gate
 
-The P track is complete: P0–P5 and P-RV (ADR 0056, 0072–0077). Review
-priority and feedback are in place, and review decisions become calibration
-data.
+I0 is complete (ADR 0078). `findings` derives regressions, friction, low
+adoption and discrepancies, with lineage and fused confidence, and groups
+them into prioritized opportunities.
 
-I0 comes next. It defines the finding model (`ProductFinding`,
-`ImprovementOpportunity`, `PriorityAssessment`) and deterministically
-classifies findings, with lineage, from the outputs that already exist:
-- R11 semantic changes;
-- impact;
-- browser diagnosis (P3);
-- observed friction (O9, O10).
-
-It unblocks IG. The planned order after I0: IG, I1, I4, I5–I8, then I2 and
-I9 (mode 6 only).
+IG comes next. It decides per finding or opportunity whether to escalate:
+`collect_more_data`, `log_only`, `surface_finding`, `recommend`,
+`eligible_for_harness` or `no_change`. It applies the `improvement_policy`
+configuration and budgets, with an explained Improvement Value Assessment.
+With `autonomous_mutation: false`, nothing is ever eligible for the
+harness. The planned order after IG: I1, I4, I5–I8, then I2 and I9 (mode 6
+only).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

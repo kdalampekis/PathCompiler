@@ -67,6 +67,7 @@ import {
   loadReasoningCases,
   reasoningStrategy,
 } from "@pathcompiler/evaluation";
+import { deriveFindings, type FindingInputs } from "@pathcompiler/findings";
 import {
   actionCategories,
   buildFormalModel,
@@ -102,6 +103,7 @@ import {
 import {
   analyzeWorkflowImpact,
   scoreCommitRisk,
+  WorkflowImpactReportSchema,
 } from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
@@ -266,6 +268,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler observe release-diff <base-release> <head-release> [directory] [--commits <base>..<head>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler findings [workflow|capability|goal] [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -451,6 +454,12 @@ meaning per capability so that actions with different handlers never share one, 
 reports/semantic-interpretations.json. Capabilities are never changed.
 --model-fixtures replays recorded responses ([{ kind, request | key, response }]) instead
 of calling a provider.
+findings derives product findings from the reports already under the output directory
+(semantic-change, workflow-impact, release-behavior, path-efficiency, drop-offs,
+reconciliation): release and permission regressions, workflow friction, low adoption and
+runtime/formal discrepancies, each with fused confidence and lineage to its report entries,
+grouped into improvement opportunities with explained priority, in reports/findings.json.
+A subject argument keeps only its findings. Findings are not recommendations.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -641,6 +650,8 @@ export async function runCli(
   if (values.impact !== undefined && positionals[0] !== "review")
     throw new Error("--impact is only supported by review queue.");
   if (positionals[0] === "review") return runReview(positionals, values, cwd);
+  if (positionals[0] === "findings")
+    return runFindings(positionals, values, cwd);
   if (positionals[0] === "diagnose")
     return runDiagnose(positionals, values, cwd);
   if (positionals[0] === "analyze")
@@ -4357,6 +4368,101 @@ async function runReview(
       (item, index) =>
         `  ${index + 1}. ${item.priority} ${item.kind} ${item.id}: uncertainty ${item.factors.uncertainty.value} × impact ${item.factors.businessImpact.value} × usage ${item.factors.usage.value} × severity ${item.factors.severity.value}`,
     ),
+    `Report: ${path.join(output, file)}`,
+  ].join("\n")}\n`;
+}
+
+async function runFindings(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length > 2)
+    throw new Error(
+      "Expected: pathcompiler findings [workflow|capability|goal]. Use --help for options.",
+    );
+  const subject = positionals[1];
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  // Reports written by impact, reason diff and observe; each is optional.
+  const sources: [keyof FindingInputs, string, z.ZodType][] = [
+    [
+      "semantic",
+      "semantic-change",
+      z.looseObject({ type: z.literal("semantic_change_report") }),
+    ],
+    ["impact", "workflow-impact", WorkflowImpactReportSchema],
+    [
+      "releaseDiff",
+      "release-behavior",
+      z.looseObject({ baseRelease: z.string(), goals: z.array(z.unknown()) }),
+    ],
+    [
+      "efficiency",
+      "path-efficiency",
+      z.looseObject({ friction: z.array(z.unknown()) }),
+    ],
+    ["dropOffs", "drop-offs", z.looseObject({ items: z.array(z.unknown()) })],
+    [
+      "reconciliation",
+      "reconciliation",
+      z.looseObject({
+        items: z.array(z.unknown()),
+        discrepancies: z.array(z.unknown()),
+      }),
+    ],
+  ];
+  const inputs: Record<string, unknown> = {};
+  const used: string[] = [];
+  for (const [key, name, schema] of sources) {
+    const file = path.join(output, "reports", `${name}.json`);
+    const content = await readOptional(file);
+    if (content === undefined) continue;
+    try {
+      inputs[key] = schema.parse(JSON.parse(content));
+    } catch (error) {
+      throw new Error(
+        `Cannot read ${file}. Regenerate it with the command that writes it.`,
+        { cause: error },
+      );
+    }
+    used.push(name);
+  }
+  if (used.length === 0)
+    throw new Error(
+      `No reports under ${path.join(output, "reports")} to derive findings from. Run impact (--reasoning), reason diff, or observe reconcile, efficiency, drop-offs or release-diff first.`,
+    );
+  const derived = deriveFindings(inputs as FindingInputs);
+  const report = subject
+    ? (() => {
+        const opportunities = derived.opportunities.filter(
+          (item) => item.subject === subject,
+        );
+        const ids = new Set(opportunities.flatMap((item) => item.findingIds));
+        return {
+          ...derived,
+          findings: derived.findings.filter(
+            (item) => ids.has(item.id) || item.target.id === subject,
+          ),
+          opportunities,
+        };
+      })()
+    : derived;
+  const file = "reports/findings.json";
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  return `${[
+    `Findings (hypotheses, not recommendations) from ${used.join(", ")}: ${report.findings.length} findings in ${report.opportunities.length} opportunities.`,
+    ...report.opportunities.flatMap((opportunity) => [
+      `  ${opportunity.subject} (priority ${opportunity.priority.score}): ${opportunity.kinds.join(", ")}`,
+      ...report.findings
+        .filter((finding) => opportunity.findingIds.includes(finding.id))
+        .map(
+          (finding) =>
+            `    ${finding.severity} ${finding.kind} ${finding.target.id}${finding.target.context ? ` [${finding.target.context}]` : ""}, confidence ${finding.confidence.confidence.band}: ${finding.summary}`,
+        ),
+    ]),
     `Report: ${path.join(output, file)}`,
   ].join("\n")}\n`;
 }

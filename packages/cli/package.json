@@ -28,6 +28,7 @@
     "@pathcompiler/config": "workspace:*",
     "@pathcompiler/diagnostics": "workspace:*",
     "@pathcompiler/evaluation": "workspace:*",
+    "@pathcompiler/findings": "workspace:*",
     "@pathcompiler/formal-abstraction": "workspace:*",
     "@pathcompiler/formal-model": "workspace:*",
     "@pathcompiler/git-intelligence": "workspace:*",

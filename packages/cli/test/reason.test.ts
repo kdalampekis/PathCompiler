@@ -516,6 +516,44 @@ describe("pathcompiler reason reachable", () => {
     await expect(run(["scan", "app", "--reasoning"])).rejects.toThrow(
       /--reasoning is only supported by impact and proposals generate/,
     );
+
+    // I0: findings from the reports above, with lineage.
+    const findings = JSON.parse(await run(["findings", "--json"]));
+    const byId = new Map(
+      findings.findings.map((item: { id: string }) => [item.id, item]),
+    );
+    // One finding per goal and role; every flag context is evidence.
+    expect(
+      byId.get(
+        "finding:permission_regression:goal:clients.created@role=editor",
+      ),
+    ).toMatchObject({
+      severity: "high",
+      evidence: {
+        items: [{ class: "formal" }, { class: "formal" }],
+        sources: [
+          { report: expect.stringMatching(/^semantic-change /) },
+          { report: expect.stringMatching(/^semantic-change /) },
+        ],
+      },
+    });
+    expect(
+      byId.get("finding:permission_regression:goal:clients.created@role=owner"),
+    ).toBeDefined();
+    // Observed sessions reaching the goal fell between r1 and r2.
+    expect(
+      byId.get("finding:release_regression:goal:clients.created"),
+    ).toMatchObject({ evidence: { items: [{ class: "observed" }] } });
+    expect(findings.opportunities[0]).toMatchObject({
+      subject: "clients.create",
+      kinds: expect.arrayContaining([
+        "permission_regression",
+        "release_regression",
+      ]),
+    });
+    expect(await run(["findings", "plans.archive"])).toContain(
+      "0 findings in 0 opportunities",
+    );
   }, 300_000);
 
   it("verifies invariants and properties, failing with a counterexample", async () => {

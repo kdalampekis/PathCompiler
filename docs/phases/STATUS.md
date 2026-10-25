@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after P-RV)
+## Current state (updated 2026-10-24, after I0)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **I0** (next), I4, I5, C6 (needs repositories) |
-| Blocked | IG (I0), I1 (IG), I2 (I1), I6–I8 (I5 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
+| Unblocked | **IG** (next), I4, I5, C6 (needs repositories) |
+| Blocked | I1 (IG), I2 (I1), I6–I8 (I5 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **I0 — Finding Model** (`MASTER_ROADMAP.md` §7). Parallel candidates: I4, I5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **IG — Improvement gate** (`MASTER_ROADMAP.md` §7). Parallel candidates: I4, I5. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4349,3 +4349,64 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 - Feedback is derived from the stored records, not from a new log
   (ADR 0077).
 - Next recommended phase: I0 — Finding Model.
+
+---
+
+## Phase I0 — Finding Model
+
+Complete — verified locally on 2026-10-24.
+
+- **New `@pathcompiler/findings`.** `deriveFindings` classifies findings
+  deterministically from existing reports:
+  - release regressions: R11 lost reachability, definite impact breaks, and
+    observed release drops;
+  - permission regressions: role-specific reachability changes, and removed
+    access conditions;
+  - workflow friction: efficiency and drop-offs;
+  - low adoption and runtime/formal discrepancies: reconciliation.
+- **Each finding** has a stable ID, P0 evidence items with lineage to its
+  report entries, a severity, and a fused confidence that it is real.
+- **Opportunities** group findings by capability, with an explained
+  priority (severity × confidence × regression × corroboration).
+- **CLI `findings [subject]`** reads the six reports when present, validates
+  them, and writes `reports/findings.json`.
+- Recorded in ADR 0078.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 498 tests passed across 89 suites (all 89 test files; classifiers, opportunities, end-to-end findings) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- each classifier, with lineage, evidence joining and low-severity reasons
+  ignored;
+- opportunity grouping and priority components;
+- determinism, and empty input;
+- end to end on a real commit pair: the editor check renamed to owner. The
+  findings, derived from the `impact --reasoning`, `reason diff` and
+  `observe release-diff` reports of the fixture copy, show editor and owner
+  permission regressions and an observed release regression, all grouped
+  under Create Client.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **Duplicate findings:** keying permission findings by the full context
+  produced 18 near-duplicates (role × flag values) for one role rename. They
+  are now keyed by role, with flag contexts kept as evidence.
+- **Duplicate sources:** impact sources were listed twice; they are now
+  deduplicated.
+- **A missing import** (`WorkflowImpactReportSchema` in the CLI) was fixed.
+- **Open (#43):** threshold triggers are not automatic, and diagnosis and
+  model-check reports are not inputs yet.
+
+### Scope notes
+
+- **Deviation:** the human trigger is `findings <subject>`, because C9
+  already uses `analyze`.
+- Next recommended phase: IG — Improvement gate.
