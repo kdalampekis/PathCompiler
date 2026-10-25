@@ -1,0 +1,30 @@
+{
+  "name": "@pathcompiler/experiment-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pathcompiler/candidate-evaluator": "workspace:*",
+    "@pathcompiler/recommendation-engine": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@pathcompiler/behavior-reconciliation": "workspace:*",
+    "@pathcompiler/config": "workspace:*",
+    "@pathcompiler/findings": "workspace:*",
+    "@pathcompiler/improvement-gate": "workspace:*"
+  }
+}

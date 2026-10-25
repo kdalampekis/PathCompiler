@@ -1509,6 +1509,25 @@ is reported with its diagnosed likely cause. Reports for another commit
 are ignored. Workflows needing review without a run are flagged. See
 [ADR 0081](docs/decisions/0081-browser-candidate-verification.md).
 
+## Experiment specification (`pathcompiler experiment create`)
+
+```bash
+pnpm pathcompiler experiment create <recommendation-id> evaluation.json r1 r2
+```
+
+For an IMPROVE or PROMOTE recommendation whose candidate passed evaluation,
+this command specifies an experiment. It does not deploy anything. The spec
+covers:
+- control and treatment releases, population, and 50/50 session
+  allocation;
+- primary and secondary metrics, from the desired outcomes;
+- guardrails: other approved workflows keep completing, and nothing
+  unexpected is observed;
+- success criteria and stop conditions.
+
+The criteria are frozen with a hash before anything is measured. See
+[ADR 0082](docs/decisions/0082-experiment-specification.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1781,6 +1800,7 @@ Analysis packages:
 | `@pathcompiler/findings` | `deriveFindings`, `ProductFinding`, `ImprovementOpportunity`, `PriorityAssessment`, `FindingEvidenceBundle` (I0) |
 | `@pathcompiler/improvement-gate` | `gateFindings`, `GateDecision`, `ImprovementValueAssessment`, `ImprovementPolicy` (IG) |
 | `@pathcompiler/recommendation-engine` | `recommend`, `ImprovementRecommendation`, `ImprovementHypothesis`, `AcceptanceCriteria`, `ProtectedBehavior` (I1) |
+| `@pathcompiler/experiment-core` | `createExperimentSpec`, `parseExperimentSpec`, `criteriaHash`, `ExperimentSpecSchema` (I5) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `interpretCandidates` (P1), `selectInterpretations`, `candidateWeight` (P2), `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
@@ -1791,7 +1811,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

@@ -69,6 +69,10 @@ import {
   reasoningStrategy,
 } from "@pathcompiler/evaluation";
 import {
+  createExperimentSpec,
+  ExperimentError,
+} from "@pathcompiler/experiment-core";
+import {
   deriveFindings,
   type FindingInputs,
   type FindingsReport,
@@ -170,7 +174,10 @@ import {
   createReasoningService,
   serveReasoningStdio,
 } from "@pathcompiler/reasoning-service";
-import { recommend } from "@pathcompiler/recommendation-engine";
+import {
+  type ImprovementRecommendation,
+  recommend,
+} from "@pathcompiler/recommendation-engine";
 import {
   calibrationFromReviews,
   collectReviewFeedback,
@@ -283,6 +290,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler findings [workflow|capability|goal] [--json] [--out <directory>]
        pathcompiler gate [--json] [--out <directory>]
        pathcompiler recommend [--property <json-file>] [--json] [--out <directory>]
+       pathcompiler experiment create <recommendation-id> <evaluation.json> <control-release> <treatment-release> [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -490,6 +498,11 @@ newly gained), IMPROVE for friction, PROMOTE for low adoption. Each has a falsif
 hypothesis whose confidence (a template prior) is separate from the finding's, desired
 outcomes, protected behaviors (--property R8 properties and the other approved workflows) and
 acceptance criteria, in reports/recommendations.json. It needs modes.recommend too.
+experiment create specifies (never deploys) an experiment for an IMPROVE or PROMOTE
+recommendation whose candidate evaluation passed: control and treatment releases, population,
+50/50 session allocation, primary and secondary metrics from the desired outcomes, guardrails
+(held metrics, the other approved workflows, no unexpected observations) and success criteria,
+frozen with a hash before anything is measured, in experiments/<id>.json.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -688,6 +701,8 @@ export async function runCli(
     return runFindings(positionals, values, cwd);
   if (positionals[0] === "recommend")
     return runRecommend(positionals, values, cwd);
+  if (positionals[0] === "experiment")
+    return runExperiment(positionals, values, cwd);
   if (positionals[0] === "gate")
     return runGate(
       positionals,
@@ -4678,5 +4693,76 @@ async function runRecommend(
     ),
     `Report: ${path.join(output, file)}`,
     "Recommendations are for human review; nothing was changed.",
+  ].join("\n")}\n`;
+}
+
+async function runExperiment(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, sub, recommendationId, evaluationFile, control, treatment, ...rest] =
+    positionals;
+  if (
+    sub !== "create" ||
+    !recommendationId ||
+    !evaluationFile ||
+    !control ||
+    !treatment ||
+    rest.length > 0
+  )
+    throw new Error(
+      "Expected: pathcompiler experiment create <recommendation-id> <evaluation.json> <control-release> <treatment-release>. Use --help for options.",
+    );
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const recommendations = await readOptional(
+    path.join(output, "reports", "recommendations.json"),
+  );
+  if (recommendations === undefined)
+    throw new Error(
+      `No ${path.join(output, "reports", "recommendations.json")}. Run pathcompiler recommend first.`,
+    );
+  const recommendation = (
+    JSON.parse(recommendations) as {
+      recommendations?: ImprovementRecommendation[];
+    }
+  ).recommendations?.find((item) => item.id === recommendationId);
+  if (!recommendation)
+    throw new Error(
+      `No recommendation ${recommendationId} in reports/recommendations.json.`,
+    );
+  const evaluation = z
+    .looseObject({
+      type: z.literal("candidate_evaluation"),
+      id: z.string(),
+      candidate: z.string(),
+      status: z.string(),
+    })
+    .parse(
+      await readJsonFile(cwd, evaluationFile, "candidate evaluation"),
+    ) as unknown as CandidateEvaluation;
+  let spec: ReturnType<typeof createExperimentSpec>;
+  try {
+    spec = createExperimentSpec({
+      recommendation,
+      evaluation,
+      controlRelease: control,
+      treatmentRelease: treatment,
+    });
+  } catch (error) {
+    if (error instanceof ExperimentError)
+      throw new Error(`Cannot specify an experiment: ${error.message}`, {
+        cause: error,
+      });
+    throw error;
+  }
+  const file = `experiments/${encodeURIComponent(spec.id)}.json`;
+  await writeArtifacts(output, [[file, `${JSON.stringify(spec, null, 2)}\n`]]);
+  if (values.json) return `${JSON.stringify(spec, null, 2)}\n`;
+  return `${[
+    `Experiment ${spec.id} specified (not deployed): ${spec.control.release} (control) vs ${spec.treatment.release} (treatment, ${spec.treatment.commit.slice(0, 12)}).`,
+    `  Primary: ${spec.primaryMetric.metric} ${spec.primaryMetric.direction} on ${spec.primaryMetric.on}, by at least ${spec.successCriteria.minimumRelativeImprovement * 100}% relative, ${spec.successCriteria.minSessionsPerArm}+ sessions per arm.`,
+    `  Guardrails: ${spec.guardrails.map((item) => `${item.metric} on ${item.on}`).join("; ")}.`,
+    `Criteria frozen at ${spec.frozenAt} (hash ${spec.frozenHash.slice(0, 12)}): ${path.join(output, file)}`,
   ].join("\n")}\n`;
 }

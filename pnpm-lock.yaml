@@ -299,6 +299,9 @@ importers:
       "@pathcompiler/evaluation":
         specifier: workspace:*
         version: link:../evaluation
+      "@pathcompiler/experiment-core":
+        specifier: workspace:*
+        version: link:../experiment-core
       "@pathcompiler/findings":
         specifier: workspace:*
         version: link:../findings
@@ -498,6 +501,31 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/experiment-core:
+    dependencies:
+      "@pathcompiler/candidate-evaluator":
+        specifier: workspace:*
+        version: link:../candidate-evaluator
+      "@pathcompiler/recommendation-engine":
+        specifier: workspace:*
+        version: link:../recommendation-engine
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/behavior-reconciliation":
+        specifier: workspace:*
+        version: link:../behavior-reconciliation
+      "@pathcompiler/config":
+        specifier: workspace:*
+        version: link:../config
+      "@pathcompiler/findings":
+        specifier: workspace:*
+        version: link:../findings
+      "@pathcompiler/improvement-gate":
+        specifier: workspace:*
+        version: link:../improvement-gate
 
   packages/findings:
     dependencies:
