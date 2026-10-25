@@ -42,6 +42,7 @@ import {
   defaultConfigYaml,
   loadConfig,
   type PathCompilerConfig,
+  parseConfig,
   reasoningEnabled,
 } from "@pathcompiler/config";
 import {
@@ -67,7 +68,11 @@ import {
   loadReasoningCases,
   reasoningStrategy,
 } from "@pathcompiler/evaluation";
-import { deriveFindings, type FindingInputs } from "@pathcompiler/findings";
+import {
+  deriveFindings,
+  type FindingInputs,
+  type FindingsReport,
+} from "@pathcompiler/findings";
 import {
   actionCategories,
   buildFormalModel,
@@ -105,6 +110,10 @@ import {
   scoreCommitRisk,
   WorkflowImpactReportSchema,
 } from "@pathcompiler/impact-analysis";
+import {
+  gateFindings,
+  type SubjectUsage,
+} from "@pathcompiler/improvement-gate";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
   describeModelRequest,
@@ -269,6 +278,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
        pathcompiler findings [workflow|capability|goal] [--json] [--out <directory>]
+       pathcompiler gate [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -460,6 +470,13 @@ reconciliation): release and permission regressions, workflow friction, low adop
 runtime/formal discrepancies, each with fused confidence and lineage to its report entries,
 grouped into improvement opportunities with explained priority, in reports/findings.json.
 A subject argument keeps only its findings. Findings are not recommendations.
+gate decides per opportunity in reports/findings.json whether to collect more data, log
+only, surface the finding, recommend, offer it to a harness, or make no change, in that
+order of questions (evidence, impact, actionability, autonomy), applying improvement_policy
+and its budgets; usage comes from stored events. Each decision has an explained value
+assessment, in reports/gate-decisions.json. Nothing is eligible for a harness unless both
+improvement_policy.autonomous_mutation and modes.self_improvement are true. With
+pathcompiler.yaml, gate needs modes.recommend.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -652,6 +669,13 @@ export async function runCli(
   if (positionals[0] === "review") return runReview(positionals, values, cwd);
   if (positionals[0] === "findings")
     return runFindings(positionals, values, cwd);
+  if (positionals[0] === "gate")
+    return runGate(
+      positionals,
+      values,
+      cwd,
+      configured?.config ?? parseConfig("version: 1\n"),
+    );
   if (positionals[0] === "diagnose")
     return runDiagnose(positionals, values, cwd);
   if (positionals[0] === "analyze")
@@ -2991,6 +3015,8 @@ function applyConfig(
     );
   if (command === "evaluate" && !config.modes.evaluate)
     refuse("evaluate (mode 5)", "modes.evaluate to true");
+  if (command === "gate" && !config.modes.recommend)
+    refuse("gate (mode 4, Recommend)", "modes.recommend to true");
   if (command === "observe") {
     if (!config.modes.observe)
       refuse(`observe ${sub ?? ""}`.trim(), "modes.observe to true");
@@ -4464,5 +4490,75 @@ async function runFindings(
         ),
     ]),
     `Report: ${path.join(output, file)}`,
+  ].join("\n")}\n`;
+}
+
+async function runGate(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+  config: PathCompilerConfig,
+): Promise<string> {
+  if (positionals.length !== 1)
+    throw new Error("Expected: pathcompiler gate. Use --help for options.");
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = path.join(output, "reports", "findings.json");
+  const content = await readOptional(file);
+  if (content === undefined)
+    throw new Error(`No findings at ${file}. Run pathcompiler findings first.`);
+  let findings: FindingsReport;
+  try {
+    findings = z
+      .looseObject({
+        kind: z.literal("findings"),
+        findings: z.array(z.looseObject({ id: z.string() })),
+        opportunities: z.array(z.looseObject({ id: z.string() })),
+      })
+      .parse(JSON.parse(content)) as unknown as FindingsReport;
+  } catch (error) {
+    throw new Error(`Cannot read ${file}. Rerun pathcompiler findings.`, {
+      cause: error,
+    });
+  }
+  const project = path.basename(path.dirname(output));
+  const events = await readEventDirectory(
+    path.join(output, "events", encodeURIComponent(project)),
+  );
+  let usage: Record<string, SubjectUsage> | undefined;
+  if (events.length > 0) {
+    const sessions = new Set(
+      events.map((event) => `${event.projectId}\u0000${event.sessionId}`),
+    ).size;
+    usage = Object.fromEntries(
+      computeWorkflowAnalytics(events).workflows.map((item) => [
+        item.workflowId,
+        {
+          affected: item.starts,
+          eligible: sessions,
+          completionRate: item.completionRate,
+        },
+      ]),
+    );
+  }
+  // Mode 6 is opt-in twice: the policy and the operating mode.
+  const policy = {
+    ...config.improvement_policy,
+    autonomous_mutation:
+      config.improvement_policy.autonomous_mutation &&
+      config.modes.self_improvement,
+  };
+  const report = gateFindings(findings, policy, usage ? { usage } : {});
+  const target = "reports/gate-decisions.json";
+  await writeArtifacts(output, [
+    [target, `${JSON.stringify(report, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+  return `${[
+    `Gate decisions for ${report.decisions.length} opportunities (recommendations ${report.budgets.recommendations.used}/${report.budgets.recommendations.max} this run):`,
+    ...report.decisions.map(
+      (item) =>
+        `  ${item.decision} ${item.subject}: ${item.rationale.at(-1) ?? ""}`,
+    ),
+    `Report: ${path.join(output, target)}`,
   ].join("\n")}\n`;
 }

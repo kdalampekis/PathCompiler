@@ -551,6 +551,22 @@ describe("pathcompiler reason reachable", () => {
         "release_regression",
       ]),
     });
+    // IG: formal-only and observed-only evidence is not enough to recommend.
+    const gate = JSON.parse(await run(["gate", "--json"]));
+    expect(
+      gate.decisions.find(
+        (item: { subject: string }) => item.subject === "clients.create",
+      ),
+    ).toMatchObject({
+      decision: "collect_more_data",
+      rationale: [expect.stringContaining("browser verification")],
+    });
+    expect(
+      gate.decisions.some(
+        (item: { decision: string }) =>
+          item.decision === "eligible_for_harness",
+      ),
+    ).toBe(false);
     expect(await run(["findings", "plans.archive"])).toContain(
       "0 findings in 0 opportunities",
     );

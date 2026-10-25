@@ -58,6 +58,9 @@ describe("pathcompiler.yaml in the CLI", () => {
     await expect(
       runCli(["impact", "a", "b", "--reasoning"], cwd),
     ).rejects.toThrow(/--reasoning is disabled .* reasoning\.impact/);
+    await expect(runCli(["gate", "--out", "out"], cwd)).rejects.toThrow(
+      /gate \(mode 4, Recommend\) is disabled .* modes\.recommend to true/,
+    );
 
     const file = path.join(cwd, "pathcompiler.yaml");
     await writeFile(

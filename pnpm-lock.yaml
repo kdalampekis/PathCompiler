@@ -320,6 +320,9 @@ importers:
       "@pathcompiler/impact-analysis":
         specifier: workspace:*
         version: link:../impact-analysis
+      "@pathcompiler/improvement-gate":
+        specifier: workspace:*
+        version: link:../improvement-gate
       "@pathcompiler/mcp-server":
         specifier: workspace:*
         version: link:../mcp-server
@@ -732,6 +735,25 @@ importers:
       "@pathcompiler/workflow-validator":
         specifier: workspace:*
         version: link:../workflow-validator
+
+  packages/improvement-gate:
+    dependencies:
+      "@pathcompiler/config":
+        specifier: workspace:*
+        version: link:../config
+      "@pathcompiler/findings":
+        specifier: workspace:*
+        version: link:../findings
+    devDependencies:
+      "@pathcompiler/behavior-reconciliation":
+        specifier: workspace:*
+        version: link:../behavior-reconciliation
+      "@pathcompiler/observed-graph":
+        specifier: workspace:*
+        version: link:../observed-graph
+      "@pathcompiler/semantic-change":
+        specifier: workspace:*
+        version: link:../semantic-change
 
   packages/mcp-server:
     dependencies:

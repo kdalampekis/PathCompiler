@@ -1,0 +1,28 @@
+{
+  "name": "@pathcompiler/improvement-gate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pathcompiler/config": "workspace:*",
+    "@pathcompiler/findings": "workspace:*"
+  },
+  "devDependencies": {
+    "@pathcompiler/behavior-reconciliation": "workspace:*",
+    "@pathcompiler/observed-graph": "workspace:*",
+    "@pathcompiler/semantic-change": "workspace:*"
+  }
+}

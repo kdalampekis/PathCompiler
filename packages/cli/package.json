@@ -36,6 +36,7 @@
     "@pathcompiler/graph-delta": "workspace:*",
     "@pathcompiler/http-service": "workspace:*",
     "@pathcompiler/impact-analysis": "workspace:*",
+    "@pathcompiler/improvement-gate": "workspace:*",
     "@pathcompiler/mcp-server": "workspace:*",
     "@pathcompiler/model-provider": "workspace:*",
     "@pathcompiler/model-provider-anthropic": "workspace:*",
