@@ -5,7 +5,13 @@ import {
   WorkflowV1Schema,
 } from "@pathcompiler/workflow-ir";
 import { expect, type Page } from "@playwright/test";
-import { z } from "zod";
+import {
+  type BrowserVerificationReportV2,
+  BrowserVerificationReportV2Schema,
+  type BrowserVerificationStage,
+} from "./browser-report.js";
+
+export * from "./browser-report.js";
 
 /**
  * Generalized browser verification (C8). It replays any linear approved or
@@ -14,76 +20,6 @@ import { z } from "zod";
  * destructive-looking control unless the policy names it. Everything is
  * checked before the first action, so a refused workflow touches nothing.
  */
-const status = z.enum(["not-run", "passed", "failed"]);
-const stage = z.enum([
-  "preflight",
-  "prepare",
-  "open",
-  "resolve",
-  "action",
-  "expected",
-  "terminal",
-]);
-export const BrowserVerificationReportV2Schema = z
-  .strictObject({
-    schemaVersion: z.literal(2),
-    kind: z.literal("browser-verification"),
-    /** A distinct evidence class (`browser`) for evidence fusion. */
-    evidenceClass: z.literal("browser"),
-    workflowId: z.string().nullable(),
-    workflowVersion: z.number().int().positive().nullable(),
-    candidateCommit: z.string().nullable(),
-    origin: z.string().nullable(),
-    startedAt: z.iso.datetime(),
-    finishedAt: z.iso.datetime(),
-    valid: z.boolean(),
-    steps: z.array(
-      z.strictObject({
-        stepId: z.string(),
-        target: z.string().nullable(),
-        action: z.enum([
-          "click",
-          "input",
-          "select",
-          "navigate",
-          "explain",
-          "wait",
-        ]),
-        status,
-        expected: status,
-      }),
-    ),
-    terminal: status,
-    /** Destructive-looking targets the policy allowed for this run. */
-    destructiveAllowed: z.array(z.string()),
-    failure: z
-      .strictObject({
-        code: z.string(),
-        stage,
-        message: z.string(),
-        stepId: z.string().optional(),
-        target: z.string().optional(),
-      })
-      .optional(),
-  })
-  .superRefine((report, context) => {
-    const valid =
-      !report.failure &&
-      report.terminal === "passed" &&
-      report.steps.length > 0 &&
-      report.steps.every(
-        (step) => step.status === "passed" && step.expected !== "failed",
-      );
-    if (report.valid !== valid)
-      context.addIssue({
-        code: "custom",
-        message: "Browser result must agree with observed steps and terminal",
-      });
-  });
-export type BrowserVerificationReportV2 = z.infer<
-  typeof BrowserVerificationReportV2Schema
->;
-
 const SAFE_ACTIONS = ["click", "input", "select", "navigate"] as const;
 export type BrowserVerificationPolicy = {
   /** Action kinds the runner may perform. Default: click, input, select, navigate. */
@@ -139,7 +75,7 @@ export async function verifyWorkflowInBrowser(
     destructiveAllowed: [],
   };
   let current: BrowserVerificationReportV2["steps"][number] | undefined;
-  let at: z.infer<typeof stage> = "preflight";
+  let at: BrowserVerificationStage = "preflight";
   const policy = options.policy ?? {};
   const timeout = policy.timeoutMs ?? 5_000;
   try {

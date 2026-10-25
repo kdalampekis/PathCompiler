@@ -20,6 +20,8 @@ import {
   ValidationReportSchema,
 } from "./schema.js";
 
+export * from "./browser-report.js";
+export * from "./diagnosis.js";
 export * from "./schema.js";
 export type ValidationContext = {
   graph: ProductGraph;

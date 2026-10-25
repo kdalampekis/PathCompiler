@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@pathcompiler/evidence": "workspace:*",
+    "@pathcompiler/formal-model": "workspace:*",
     "@pathcompiler/graph-core": "workspace:*",
     "@pathcompiler/probabilistic-evidence": "workspace:*",
     "@pathcompiler/source-model": "workspace:*",
@@ -42,6 +43,7 @@
     "@playwright/test": "1.64.1",
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
+    "@pathcompiler/formal-abstraction": "workspace:*",
     "@pathcompiler/workflow-discovery": "workspace:*"
   }
 }

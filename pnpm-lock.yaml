@@ -1431,6 +1431,9 @@ importers:
       "@pathcompiler/evidence":
         specifier: workspace:*
         version: link:../evidence
+      "@pathcompiler/formal-model":
+        specifier: workspace:*
+        version: link:../formal-model
       "@pathcompiler/graph-core":
         specifier: workspace:*
         version: link:../graph-core
@@ -1456,6 +1459,9 @@ importers:
       "@pathcompiler/capability-engine":
         specifier: workspace:*
         version: link:../capability-engine
+      "@pathcompiler/formal-abstraction":
+        specifier: workspace:*
+        version: link:../formal-abstraction
       "@pathcompiler/workflow-discovery":
         specifier: workspace:*
         version: link:../workflow-discovery

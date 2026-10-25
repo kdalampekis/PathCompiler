@@ -626,12 +626,12 @@ change to default discovery or runtime until R-WI's evaluation passes.
 #### P3 — Browser failure diagnosis
 - **Prerequisites:** P0, C8, R2. **Acceptance:** seeded failures rank the true
   cause first (stale target, permission or flag mismatch, model wrong).
-- **Runtime change:** No. **Unblocks:** I4 diagnostics. **Status:** 🟢 unblocked (P0 ✅, C8 ✅, R2 ✅); **recommended next phase** (§7).
+- **Runtime change:** No. **Unblocks:** I4 diagnostics. **Status:** ✅ complete (2026-10-24): `diagnoseBrowserFailure`, CLI `diagnose`, seeded browser failures ranked correctly, ADR 0074. Formal guards are read from the R1 model directly; R2 is not needed per failure.
 
 #### P4 — Commit risk scoring
 - **Prerequisites:** P0, R11. **Acceptance:** definite, probable and uncertain
   impacts are separated, with no uncalibrated probability claims.
-- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅, R11 ✅).
+- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅, R11 ✅); **recommended next phase** (§7).
 
 #### P-RV — Review prioritization and feedback (spec §52–53, unnumbered)
 - **Prerequisites:** P0; review and proposal decisions (✅); usage factor needs O7.
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **P3** (next), P4, P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **P4** (next), P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,18 +839,17 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: P3 — Browser failure diagnosis
+## 7. Next implementation phase: P4 — Commit risk scoring
 
-C9, P1 and P2 are complete (ADR 0071–0073). Model hypotheses for ambiguous
-capabilities are validated and filtered by hard constraints. They are then
-selected jointly with weighted soft constraints (`SolverProvider.optimize`,
-Z3 MaxSAT).
+P3 is complete (ADR 0074). A failed browser verification gets ranked causes
+(stale target, permission or flag mismatch, backend changed, formal model
+wrong, network) from P0 evidence fusion. Seeded failures on the fixture
+rank the true cause first.
 
-P3 comes next. When browser verification (C8) fails, it ranks the candidate
-causes with P0 evidence fusion: stale target, permission or flag mismatch,
-or a wrong formal model. It unblocks I4 diagnostics. The planned order
-after P3:
-1. P4, P5 and P-RV;
+P4 comes next. It combines definite formal impacts (R11), probable semantic
+impacts and uncertain dependencies into a change-risk summary, and presents
+no uncalibrated score as a probability. The planned order after P4:
+1. P5 and P-RV;
 2. the I track.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)

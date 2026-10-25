@@ -208,7 +208,10 @@ import {
   serializeReviewedYaml,
   WorkflowIdSchema,
 } from "@pathcompiler/workflow-review";
-import { validateWorkflow } from "@pathcompiler/workflow-validator";
+import {
+  diagnoseBrowserFailure,
+  validateWorkflow,
+} from "@pathcompiler/workflow-validator";
 import { z } from "zod";
 
 export const HELP = `PathCompiler — local Next.js source analysis
@@ -251,6 +254,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler observe release-diff <base-release> <head-release> [directory] [--commits <base>..<head>] [--json] [--out <directory>]
        pathcompiler git inspect [directory] --node <node-id> [--limit <1-100>] [--out <directory>]
        pathcompiler github inspect [directory] --repo <owner/name> (--pr <number> | --commit <sha>) [--out <directory>]
+       pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler analyze [directory] [--model-fixtures <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -427,6 +431,12 @@ meaning per capability so that actions with different handlers never share one, 
 reports/semantic-interpretations.json. Capabilities are never changed.
 --model-fixtures replays recorded responses ([{ kind, request | key, response }]) instead
 of calling a provider.
+diagnose ranks the likely causes of a failed browser verification report (C8): stale
+target, permission mismatch, feature flag mismatch, backend changed, formal model wrong or
+network issue. It fuses the failure's stage and code, whether the target is still in the
+directory's source, and the formal model's role and flag guards on the failing target
+evaluated against --context (the run's role and flags), in reports/diagnosis.json.
+Rankings are hypotheses for a developer, never verdicts.
 No repository code is executed. Only analyze with a configured model_provider sends anything
 to a model, and never file contents; nothing else is sent to a network service.
 `;
@@ -529,10 +539,16 @@ export async function runCli(
       positionals[0] === "observe" &&
       ["reconcile", "efficiency", "drop-offs"].includes(positionals[1] ?? "") &&
       values.context === undefined
+    ) &&
+    !(
+      positionals[0] === "diagnose" &&
+      values.model === undefined &&
+      values["max-depth"] === undefined &&
+      values["timeout-ms"] === undefined
     )
   )
     throw new Error(
-      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable, plan, why-not and verify (and --model, --max-depth, --timeout-ms by observe reconcile).",
+      "--context, --max-depth, --timeout-ms and --model are only supported by reason reachable, plan, why-not and verify (and --model, --max-depth, --timeout-ms by observe reconcile; --context by diagnose).",
     );
   if (
     values.property !== undefined &&
@@ -584,6 +600,8 @@ export async function runCli(
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (values["model-fixtures"] !== undefined && positionals[0] !== "analyze")
     throw new Error("--model-fixtures is only supported by analyze.");
+  if (positionals[0] === "diagnose")
+    return runDiagnose(positionals, values, cwd);
   if (positionals[0] === "analyze")
     return runAnalyze(
       positionals,
@@ -3996,4 +4014,74 @@ async function runAnalyze(
     "",
   );
   return lines.join("\n");
+}
+
+async function runDiagnose(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, reportFile, directory, ...rest] = positionals;
+  if (!reportFile || rest.length > 0)
+    throw new Error(
+      "Expected: pathcompiler diagnose <browser-report.json> [directory]. Use --help for options.",
+    );
+  let report: unknown;
+  try {
+    report = JSON.parse(await readFile(path.resolve(cwd, reportFile), "utf8"));
+  } catch (error) {
+    throw new Error(
+      `Cannot read the browser verification report ${reportFile}. Provide the JSON verifyWorkflowInBrowser returned (schemaVersion 2).`,
+      { cause: error },
+    );
+  }
+  const project = await readSourceProject(path.resolve(cwd, directory ?? "."), {
+    exclude: values.exclude ?? [],
+  });
+  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const capabilities = discoverCapabilities(mined.graph);
+  const { model } = buildFormalModel(
+    capabilities.graph,
+    capabilities.report,
+    mined.report,
+  );
+  const sourceTargets = mined.graph.nodesByType("UIAction").flatMap((node) => {
+    const id = z
+      .object({ semanticId: z.string().optional() })
+      .parse(node.data?.target ?? {}).semanticId;
+    return id ? [id] : [];
+  });
+  const context = Object.fromEntries(
+    Object.entries(parseContext(values.context, model)).filter(
+      (entry): entry is [string, string | boolean] =>
+        typeof entry[1] === "string" || typeof entry[1] === "boolean",
+    ),
+  );
+  const diagnosis = diagnoseBrowserFailure({
+    report: report as Parameters<typeof diagnoseBrowserFailure>[0]["report"],
+    model,
+    sourceTargets,
+    ...(values.context ? { context } : {}),
+  });
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = "reports/diagnosis.json";
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(diagnosis, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(diagnosis, null, 2)}\n`;
+  if (!diagnosis.failure)
+    return `The report shows a passing run; nothing to diagnose.\nReport: ${path.join(output, file)}\n`;
+  return [
+    `Failure: ${diagnosis.failure.code} at ${diagnosis.failure.stage}${diagnosis.failure.target ? ` (${diagnosis.failure.target})` : ""}.`,
+    `Likely cause: ${diagnosis.top ?? "none supported by the evidence"} (a hypothesis).`,
+    ...diagnosis.causes.map(
+      (item) =>
+        `  ${item.rank}. ${item.cause}: ${item.assessment.status}, ${item.assessment.confidence.band}${item.evidence
+          .filter((evidence) => evidence.stance === "supports")
+          .map((evidence) => `\n     + ${evidence.summary}`)
+          .join("")}`,
+    ),
+    `Report: ${path.join(output, file)}`,
+    "",
+  ].join("\n");
 }
