@@ -1381,6 +1381,21 @@ P0 fusion assesses each claim. A policy refusal supports no cause. The
 result (`reports/diagnosis.json`) is a hypothesis for a developer. See
 [ADR 0074](docs/decisions/0074-browser-failure-diagnosis.md).
 
+## Commit risk (`pathcompiler impact`)
+
+`impact` also writes `reports/commit-risk.json` and prints a change-risk
+line, for example "Change risk: HIGH (definite 2, probable 1, uncertain 3)".
+Each impact is classified by how it is known:
+- **definite:** removed targets, routes, endpoints or access conditions, and
+  R11 reachability changes with `--reasoning`;
+- **probable:** content changes to what a step uses;
+- **uncertain:** moved targets, copy changes, shared files, unanalyzed
+  history and unknown solver results.
+
+The level is a rule over those classes, not an incident probability. A
+probability appears only with a calibration of reviewed outcomes. See
+[ADR 0075](docs/decisions/0075-commit-risk-scoring.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1633,7 +1648,7 @@ Analysis packages:
 | `@pathcompiler/mcp-server` | `createPathCompilerMcpServer`, `serveStdio`, `MCP_TOOL_NAMES` |
 | `@pathcompiler/http-service` | `createHttpService`, `createRequestHandler`, `HttpServiceOptions`, `EventSink`, `InMemoryEventSink`, `createFileEventSink` (`POST /v1/events/batch`) |
 | `@pathcompiler/graph-delta` | `computeGraphDelta`, `analyzeCommitRange`, `analyzeCommitRangeDetailed`, `GraphDeltaSchema`, `GraphNodeChangeSchema` and types |
-| `@pathcompiler/impact-analysis` | `analyzeWorkflowImpact`, impact reason/impact/report schemas and types |
+| `@pathcompiler/impact-analysis` | `analyzeWorkflowImpact`, impact reason/impact/report schemas and types, `scoreCommitRisk`, `RISK_CLASS`, `CommitRiskReport` (P4) |
 | `@pathcompiler/workflow-proposals` | `generateProposals`, `acceptProposal`, `acceptDeprecation`, `decideProposal`, `detectNewWorkflows`, `workflowDiff`, `proposalFileName`, proposal/detection schemas and YAML serialize/parse, `ProposalError` |
 | `@pathcompiler/github-app` | `verifyWebhookSignature`, `parseWebhookEvent`, `createWebhookHandler`, `createJobQueue`, `createAppAuth`, `publishCheckRun`, `summarizeWorkflowCheck`, `createWorkflowCheckWorker`, `createLocalRepositoryProvider`, `githubAppManifest`, `APP_PERMISSIONS` |
 | `@pathcompiler/assistant-tools` | `resolveProductHelp`, `parseToolInput`, `toolResultText`, `jsonSchemaTool`, `anthropicTool`, `openAITool`, `langChainTool`, `INPUT_SCHEMA`, `STRICT_INPUT_SCHEMA`, `ToolInputError` |

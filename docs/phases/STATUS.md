@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after P3)
+## Current state (updated 2026-10-24, after P4)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **P4** (next), P5, P-RV, I0, I4, C6 (needs repositories) |
+| Unblocked | **P5** (next), P-RV, I0, I4, C6 (needs repositories) |
 | Blocked | IG (I0), I1 (IG), I2 (I1), I5–I8 (O0, O7 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0, P1, P2, P3; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **P4 — Commit risk scoring** (`MASTER_ROADMAP.md` §7). Parallel candidates: P5, P-RV, I0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P4; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **P5 — Probabilistic model checking** (`MASTER_ROADMAP.md` §7). Parallel candidates: P-RV, I0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4179,3 +4179,54 @@ The tests cover:
   R2 solver call per failure (ADR 0074).
 - Information-gain diagnostics (§55) remain deferred.
 - Next recommended phase: P4 — Commit risk scoring.
+
+---
+
+## Phase P4 — Commit risk scoring
+
+Complete — verified locally on 2026-10-24.
+
+- **`scoreCommitRisk`** (impact-analysis): every impact reason is classified
+  as definite, probable or uncertain, by an exhaustive code table. R11
+  findings are `formal`, and R11 uncertainty entries are uncertain.
+- **The level is a rule:**
+  - high: a definite high-severity impact;
+  - medium: another definite impact, or a medium or high probable one;
+  - low: anything else found;
+  - none: nothing found.
+
+  It is labeled `rule-level-not-probability`.
+- **The incident probability** comes only from a sufficient calibration of
+  reviewed outcomes; otherwise it is `null`, with the reason.
+- **`impact`** writes `reports/commit-risk.json` and prints
+  "Change risk: … (definite n, probable n, uncertain n; a rule level, not an
+  incident probability)".
+- Recorded in ADR 0075.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 488 tests passed across 85 suites (risk classification, levels, calibration, CLI `impact`) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- classification, order and counts, with R11 uncertainty;
+- each level rule;
+- a calibrated probability, and an insufficient calibration;
+- the CLI `impact` risk line and report on a real renamed-target commit.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- One test expectation had the wrong order within a class. Sorting is by
+  severity, then workflow or goal, then code; the expectation was fixed.
+- **Open (#40):** risk is not yet in the GitHub check or proposals, and no
+  calibration data exists.
+
+### Scope notes
+
+- Next recommended phase: P5 — Probabilistic model checking.

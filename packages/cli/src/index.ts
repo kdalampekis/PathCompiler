@@ -99,7 +99,10 @@ import {
   createFileEventSink,
   createHttpService,
 } from "@pathcompiler/http-service";
-import { analyzeWorkflowImpact } from "@pathcompiler/impact-analysis";
+import {
+  analyzeWorkflowImpact,
+  scoreCommitRisk,
+} from "@pathcompiler/impact-analysis";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
   describeModelRequest,
@@ -1143,9 +1146,14 @@ export async function runCli(
       approved,
       semantic ? { semantic: semantic.affectedWorkflows } : {},
     );
+    const risk = scoreCommitRisk(
+      report,
+      semantic ? { uncertainty: semantic.uncertainty } : {},
+    );
     await writeArtifacts(output, [
       ["reports/graph-delta.json", `${JSON.stringify(delta, null, 2)}\n`],
       ["reports/workflow-impact.json", `${JSON.stringify(report, null, 2)}\n`],
+      ["reports/commit-risk.json", `${JSON.stringify(risk, null, 2)}\n`],
       ...(semantic
         ? ([
             [
@@ -1159,7 +1167,7 @@ export async function runCli(
       (item) =>
         `${item.severity.padEnd(6)} ${item.workflowId}${item.reasons.length ? `  ${item.reasons.map((reason) => reason.code).join(", ")}` : ""}`,
     );
-    return `Impact of ${delta.base.commit.slice(0, 12)}..${delta.head.commit.slice(0, 12)} on ${report.impacts.length} approved workflows:\n${lines.join("\n")}\nReport: ${path.join(output, "reports/workflow-impact.json")}\nApproved workflows were not changed. Medium/high impact needs a reviewed update.\n`;
+    return `Impact of ${delta.base.commit.slice(0, 12)}..${delta.head.commit.slice(0, 12)} on ${report.impacts.length} approved workflows:\n${lines.join("\n")}\nChange risk: ${risk.level.toUpperCase()} (definite ${risk.counts.definite}, probable ${risk.counts.probable}, uncertain ${risk.counts.uncertain}; a rule level, not an incident probability).\nReport: ${path.join(output, "reports/workflow-impact.json")}, ${path.join(output, "reports/commit-risk.json")}\nApproved workflows were not changed. Medium/high impact needs a reviewed update.\n`;
   }
   if (
     positionals[0] === "diff" &&

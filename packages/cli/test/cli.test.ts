@@ -545,6 +545,14 @@ describe("pathcompiler CLI", () => {
     await git("commit", "--quiet", "-am", "rename target");
     const output = await run(["impact", base, "HEAD", "app"]);
     expect(output).toContain("high   plans.change_structure  target-removed");
+    expect(output).toMatch(
+      /Change risk: HIGH \(definite [1-9]\d*, probable \d+, uncertain \d+; a rule level, not an incident probability\)\./,
+    );
+    expect(
+      JSON.parse(
+        await readFile(path.join(cwd, "out/reports/commit-risk.json"), "utf8"),
+      ),
+    ).toMatchObject({ kind: "commit-risk", level: "high" });
     const report = JSON.parse(
       await readFile(
         path.join(cwd, "out/reports/workflow-impact.json"),

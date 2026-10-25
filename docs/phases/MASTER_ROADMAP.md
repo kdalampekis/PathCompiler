@@ -631,7 +631,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 #### P4 — Commit risk scoring
 - **Prerequisites:** P0, R11. **Acceptance:** definite, probable and uncertain
   impacts are separated, with no uncalibrated probability claims.
-- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅, R11 ✅); **recommended next phase** (§7).
+- **Runtime change:** No. **Status:** ✅ complete (2026-10-24): `scoreCommitRisk` (impact-analysis), `impact` writes `reports/commit-risk.json`, ADR 0075.
 
 #### P-RV — Review prioritization and feedback (spec §52–53, unnumbered)
 - **Prerequisites:** P0; review and proposal decisions (✅); usage factor needs O7.
@@ -640,7 +640,7 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅).
 
 #### P5 — Probabilistic model checking
-- **Prerequisites:** O11 (meaningful telemetry), R8. **Status:** 🟢 unblocked (O11 ✅, R8 ✅).
+- **Prerequisites:** O11 (meaningful telemetry), R8. **Status:** 🟢 unblocked (O11 ✅, R8 ✅); **recommended next phase** (§7).
 
 ### 4.4 O track: observability (optional, privacy-first, never replaces tests or formal reasoning)
 
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **P4** (next), P5, P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **P5** (next), P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,17 +839,16 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: P4 — Commit risk scoring
+## 7. Next implementation phase: P5 — Probabilistic model checking
 
-P3 is complete (ADR 0074). A failed browser verification gets ranked causes
-(stale target, permission or flag mismatch, backend changed, formal model
-wrong, network) from P0 evidence fusion. Seeded failures on the fixture
-rank the true cause first.
+P4 is complete (ADR 0075). `impact` classifies every impact as definite,
+probable or uncertain, and reports a rule-level change risk that is never
+presented as an incident probability.
 
-P4 comes next. It combines definite formal impacts (R11), probable semantic
-impacts and uncertain dependencies into a change-risk summary, and presents
-no uncalibrated score as a probability. The planned order after P4:
-1. P5 and P-RV;
+P5 comes next. It checks probabilistic properties ("a session reaches goal X
+with probability at least p") on O11's observed transition model, with R8's
+property vocabulary. The planned order after P5:
+1. P-RV;
 2. the I track.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)

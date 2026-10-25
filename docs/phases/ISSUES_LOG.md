@@ -6,6 +6,7 @@ commit instead of deleting them.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 40 | P4 | Gap | Commit risk is written by `impact` only; the GitHub check, proposals and the dashboard do not show it, and no calibration data exists (review decisions from P-RV would provide it). | Open; add the risk line to the check summary and proposal reports. |
 | 39 | P3 | Tooling | A full `pnpm test` run once exited 2 with "received cleanupThread command from terminated worker" (Vitest 5.0.5) and silently dropped two suites from the totals, though the summary said "passed". A rerun was clean. | Open; watch for recurrence. Check that the suite count matches the expected number, not just "passed". |
 | 38 | P3 | Gap | `pathcompiler diagnose` does not compute changed endpoints (it would need the approved commit), so outcome failures (expected/terminal stage) stay undecided between "backend changed" and "formal model wrong" from the CLI. The library takes `changedEndpoints`. | Open; add `--base <commit>` and diff the endpoints of the two analyses, as `diff` does. |
 | 37 | P1 | Limitation | The API hard constraint uses only endpoints a handler calls directly. Every fixture action reaches its endpoint through component context, so on the fixture the constraint never fires; it is exercised only by synthetic tests. | Open; strengthen handler association (C7 association rules) or add a direct-handler action to the fixture. |

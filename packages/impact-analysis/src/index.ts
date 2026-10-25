@@ -455,3 +455,5 @@ function impactFor(
     affectedSteps: [...new Set(reasons.flatMap((item) => item.stepIds))].sort(),
   };
 }
+
+export * from "./risk.js";
