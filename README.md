@@ -1396,6 +1396,26 @@ The level is a rule over those classes, not an incident probability. A
 probability appears only with a calibration of reviewed outcomes. See
 [ADR 0075](docs/decisions/0075-commit-risk-scoring.md).
 
+## Probabilistic model checking (`pathcompiler observe check`)
+
+```bash
+pnpm pathcompiler observe check clients.created --at-least 0.6 --baseline r1 --release r2
+```
+
+On the observed Markov chain (O11), `observe check` reports for a goal:
+- the probability of completion and of abandonment, with 95% bounds;
+- the expected transitions to completion.
+
+The bounds treat each state's Wilson intervals, including a small mass for
+never-observed transitions, as an interval Markov chain. Small samples
+therefore give wide bounds, not false certainty.
+
+`--at-least` and `--at-most` decide a property only when the whole interval
+agrees; otherwise the verdict is inconclusive. `--baseline` reports
+whether completion increased only when the bounds do not overlap. The
+results are estimates about observed users, not about what the product
+allows. See [ADR 0076](docs/decisions/0076-probabilistic-model-checking.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1661,7 +1681,7 @@ Analysis packages:
 | `@pathcompiler/semantic-change` | `analyzeSemanticChange`, `buildCommitModel`, `summarizeSemanticChange`, `collapseContexts`, `describeContext`, `SemanticChangeReport`, `SemanticWorkflowImpact` |
 | `@pathcompiler/observability-core` | `ProductRuntimeEventSchema` (nine semantic event types, including `domain.event`), `RuntimeEventBaseSchema`, `PrivacyPolicySchema`, `DEFAULT_PRIVACY_POLICY`, `validateEvent`, `hashUserId`, `serializeEvent`, `parseEvents`, `createEventFactory`, `EventPolicyError` |
 | `@pathcompiler/analytics-sdk` | `createAnalytics` (`track`, lifecycle helpers, `setContext`, `flush`, `shutdown`, `stats`), `instrumentGuide`, `FetchTransport`, `AnalyticsTransport`, `InMemoryTransport`, `ConsoleTransport` |
-| `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END` |
+| `@pathcompiler/observed-graph` | `buildObservedGraph`, `computeWorkflowAnalytics`, `observedState`, `readEventDirectory`, `ObservedGraph`, `SESSION_START`, `SESSION_END`, `checkGoal`, `checkReachProperty`, `compareReach` (P5) |
 | `@pathcompiler/behavior-reconciliation` | `reconcileBehavior`, `ReconciliationReport`, `ReconciliationItem`, `BehaviorDiscrepancy` |
 | `@pathcompiler/model-provider` | `PathCompilerModelProvider`, `NoopModelProvider`, `FixtureModelProvider`, `fixtureKey`, `guardModelProvider`, `semanticModelFromProvider`, `redactSecrets`, `redactValue`, `describeModelRequest`, `ModelProviderError`, `createStructuredModelProvider`, `structuredTask`, `findAmbiguousClusters`, `interpretAmbiguities`, `SemanticHypothesis` |
 | `@pathcompiler/model-provider-anthropic` | `createAnthropicModelProvider`, `DEFAULT_ANTHROPIC_MODEL` (Anthropic SDK; ADR 0071) |

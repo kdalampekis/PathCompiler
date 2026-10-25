@@ -120,6 +120,9 @@ import {
 import {
   buildObservedGraph,
   buildTransitionModel,
+  checkGoal,
+  checkReachProperty,
+  compareReach,
   compareReleaseBehavior,
   computeWorkflowAnalytics,
   type FormalGoalChange,
@@ -251,6 +254,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler mcp-reasoning [directory] [--model <json-file>]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
        pathcompiler observe graph|workflows|transitions [--release <id>] [--json] [--out <directory>]
+       pathcompiler observe check <goal> [--at-least <p> | --at-most <p>] [--baseline <release>] [--release <id>] [--json] [--out <directory>]
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler observe efficiency [directory] [--model <json-file>] [--json] [--out <directory>]
        pathcompiler observe drop-offs [directory] [--model <json-file>] [--json] [--out <directory>]
@@ -329,6 +333,12 @@ observe efficiency divides the median observed path cost (navigations plus targe
 per completion) by the cheapest formal path for each goal and observed role (Path Efficiency
 Ratio; 30+ completions), lists friction at 1.5x or more, and writes reports/path-efficiency.json.
 It is a friction signal, not proof that the shortest path is the best experience.
+observe check <goal> model-checks the observed Markov chain: completion and abandonment
+probability with 95% bounds (every state's Wilson intervals as an interval Markov chain, so
+small samples give wide bounds), and expected transitions to completion. --at-least/--at-most
+<p> decides P(completion) only when the whole interval agrees (otherwise inconclusive), and
+--baseline <release> compares with another release (a change only when the bounds do not
+overlap). Estimates describe observed users, not what the product allows.
 observe transitions estimates a Markov chain from the observed graph: per-state transition
 probabilities with 95% Wilson intervals (30+ outgoing transitions to count as sufficient) and the
 probability of eventually reaching each goal from session start, written to
@@ -483,6 +493,9 @@ const CLI_OPTIONS = {
   setup: { type: "string" },
   commits: { type: "string" },
   "model-fixtures": { type: "string" },
+  "at-least": { type: "string" },
+  "at-most": { type: "string" },
+  baseline: { type: "string" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -570,6 +583,15 @@ export async function runCli(
     );
   if (values.events && positionals[0] !== "serve")
     throw new Error("--events is only supported by serve.");
+  if (
+    (values["at-least"] !== undefined ||
+      values["at-most"] !== undefined ||
+      values.baseline !== undefined) &&
+    positionals[0] !== "observe"
+  )
+    throw new Error(
+      "--at-least, --at-most and --baseline are only supported by observe check.",
+    );
   if (values.release !== undefined && positionals[0] !== "observe")
     throw new Error(
       "--release is only supported by observe graph and observe workflows.",
@@ -2416,8 +2438,19 @@ async function runObserve(
   const efficiency = positionals[1] === "efficiency";
   const dropOffs = positionals[1] === "drop-offs";
   const releaseDiff = positionals[1] === "release-diff";
+  const check = positionals[1] === "check";
+  if (
+    (values["at-least"] !== undefined ||
+      values["at-most"] !== undefined ||
+      values.baseline !== undefined) &&
+    !check
+  )
+    throw new Error(
+      "--at-least, --at-most and --baseline are only supported by observe check.",
+    );
   if (
     !(
+      (check && positionals.length === 3) ||
       (["graph", "workflows", "transitions"].includes(positionals[1] ?? "") &&
         positionals.length === 2) ||
       ((reconcile || efficiency || dropOffs) && positionals.length <= 3) ||
@@ -2425,7 +2458,7 @@ async function runObserve(
     )
   )
     throw new Error(
-      "Expected: pathcompiler observe graph|workflows|transitions, observe reconcile|efficiency|drop-offs [directory], or observe release-diff <base-release> <head-release> [directory]. Use --help for options.",
+      "Expected: pathcompiler observe graph|workflows|transitions, observe check <goal>, observe reconcile|efficiency|drop-offs [directory], or observe release-diff <base-release> <head-release> [directory]. Use --help for options.",
     );
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   // Same project name `serve` uses for ingestion.
@@ -2619,6 +2652,77 @@ async function runObserve(
     projectId: project,
     ...(values.release === undefined ? {} : { release: values.release }),
   });
+  if (check) {
+    const goal = positionals[2] as string;
+    if (values["at-least"] !== undefined && values["at-most"] !== undefined)
+      throw new Error("Pass --at-least or --at-most, not both.");
+    const model = buildTransitionModel(graph);
+    const raw = values["at-least"] ?? values["at-most"];
+    const bound = raw === undefined ? undefined : Number(raw);
+    if (bound !== undefined && !(bound >= 0 && bound <= 1))
+      throw new Error(
+        `--at-least and --at-most take a probability between 0 and 1, got "${raw}".`,
+      );
+    const result = {
+      schemaVersion: 1,
+      kind: "probabilistic-check",
+      release: values.release ?? null,
+      check: checkGoal(model, goal),
+      property:
+        bound === undefined
+          ? null
+          : checkReachProperty(model, {
+              goal,
+              op: values["at-least"] !== undefined ? "at-least" : "at-most",
+              bound,
+            }),
+      comparison:
+        values.baseline === undefined
+          ? null
+          : {
+              baseline: values.baseline,
+              ...compareReach(
+                buildTransitionModel(
+                  buildObservedGraph(events, {
+                    projectId: project,
+                    release: values.baseline,
+                  }),
+                ),
+                model,
+                goal,
+              ),
+            },
+    };
+    const target = "reports/probabilistic-check.json";
+    await writeArtifacts(output, [
+      [target, `${JSON.stringify(result, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(result, null, 2)}\n`;
+    const range = (value: { point: number; lower: number; upper: number }) =>
+      `${value.point} (95% bounds ${value.lower}–${value.upper})`;
+    return `${[
+      `Observed behavior of ${goal}${values.release ? ` in release ${values.release}` : ""} (estimates from ${model.sessions} sessions):`,
+      `  P(completion) = ${range(result.check.reach)}`,
+      `  P(abandonment) = ${range(result.check.abandonment)}`,
+      `  Expected transitions to completion: ${result.check.expectedTransitions ?? "n/a"}`,
+      ...(result.check.sufficient
+        ? []
+        : [
+            "  Some states on the way have fewer than 30 transitions; bounds are wide.",
+          ]),
+      ...(result.property
+        ? [
+            `  Property P(completion) ${result.property.property.op} ${result.property.property.bound}: ${result.property.verdict}`,
+          ]
+        : []),
+      ...(result.comparison
+        ? [
+            `  Against ${result.comparison.baseline}: ${result.comparison.direction} (${range(result.comparison.base)} → ${range(result.comparison.head)})`,
+          ]
+        : []),
+      `Report: ${path.join(output, target)}`,
+    ].join("\n")}\n`;
+  }
   if (positionals[1] === "transitions") {
     const model = buildTransitionModel(graph);
     const target = "reports/transition-model.json";

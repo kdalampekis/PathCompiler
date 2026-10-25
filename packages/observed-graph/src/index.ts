@@ -288,5 +288,6 @@ export async function readEventDirectory(
   return events;
 }
 export * from "./analytics.js";
+export * from "./model-checking.js";
 export * from "./release-diff.js";
 export * from "./transition-model.js";

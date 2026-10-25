@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after P4)
+## Current state (updated 2026-10-24, after P5)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **P5** (next), P-RV, I0, I4, C6 (needs repositories) |
+| Unblocked | **P-RV** (next), I0, I4, C6 (needs repositories) |
 | Blocked | IG (I0), I1 (IG), I2 (I1), I5–I8 (O0, O7 chain), I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P4; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **P5 — Probabilistic model checking** (`MASTER_ROADMAP.md` §7). Parallel candidates: P-RV, I0. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5; I3 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **P-RV — Review prioritization and feedback** (`MASTER_ROADMAP.md` §7). Parallel candidates: I0, I4. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4230,3 +4230,65 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 ### Scope notes
 
 - Next recommended phase: P5 — Probabilistic model checking.
+
+---
+
+## Phase P5 — Probabilistic model checking
+
+Complete — verified locally on 2026-10-24.
+
+- **`checkGoal`** (observed-graph): completion and abandonment probability,
+  as a point with lower and upper bounds, and expected transitions to
+  completion (conditioned chain). The bounds come from robust value
+  iteration over the interval Markov chain defined by the O11 Wilson
+  intervals.
+- **Unobserved transitions** get a mass of at most the zero-observation
+  Wilson bound, worth 0 to the lower bound and 1 to the upper.
+- **`checkReachProperty`** returns satisfied or violated only when the whole
+  interval agrees, and inconclusive otherwise. **`compareReach`** reports a
+  direction only when the bounds do not overlap.
+- **CLI `observe check <goal> [--at-least|--at-most p] [--baseline
+  <release>]`** writes `reports/probabilistic-check.json`.
+- Recorded in ADR 0076.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 491 tests passed across 86 suites (all 86 test files; interval bounds, properties, release comparison, CLI `observe check`) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- bounds that contain the point and narrow with more sessions, and one
+  session deciding nothing;
+- abandonment as the complement;
+- expected transitions;
+- property verdicts on both sides and inconclusive;
+- release comparison: up, down and noise;
+- unknown goals;
+- the CLI `observe check` output, its bound validation and the option
+  guard.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **Overconfident bounds:** with unobserved transitions assumed impossible,
+  a state with one observed successor gave bounds of exactly 1 after a
+  single session. The CLI test caught it. A zero-observation Wilson mass
+  for unobserved outcomes fixes it, and the unit tests were rescaled to
+  sample sizes that can decide.
+- **#39 recurred:** a full `pnpm test` again exited 2 with one suite missing
+  from the totals and no error printed. A rerun with the JSON reporter ran
+  every file (exit 0).
+- **Open (#41):** the bounds use per-transition intervals, not a joint
+  confidence level.
+
+### Scope notes
+
+- Value iteration is native; no external probabilistic model checker is
+  used (ADR 0076).
+- MDP guided assistance (§60) remains deferred.
+- Next recommended phase: P-RV — Review prioritization and feedback.

@@ -421,6 +421,26 @@ describe("pathcompiler CLI", () => {
       expect(await run(["observe", "transitions"])).toContain(
         "  P(reach clients.created from session start) = 1 (insufficient data on some path)",
       );
+      const checked = await run([
+        "observe",
+        "check",
+        "clients.created",
+        "--at-least",
+        "0.5",
+      ]);
+      expect(checked).toMatch(
+        / {2}P\(completion\) = 1 \(95% bounds 0\.\d+–1\)/,
+      );
+      // One session cannot decide anything.
+      expect(checked).toContain(
+        "  Property P(completion) at-least 0.5: inconclusive",
+      );
+      await expect(
+        run(["observe", "check", "clients.created", "--at-least", "2"]),
+      ).rejects.toThrow("between 0 and 1");
+      await expect(run(["build", "--baseline", "r1"])).rejects.toThrow(
+        "only supported by observe check",
+      );
       expect(await run(["observe", "release-diff", "r1", "r2"])).toContain(
         "no formal diff: pass --commits",
       );

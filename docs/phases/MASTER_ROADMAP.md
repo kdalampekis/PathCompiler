@@ -637,10 +637,10 @@ change to default discovery or runtime until R-WI's evaluation passes.
 - **Prerequisites:** P0; review and proposal decisions (✅); usage factor needs O7.
 - **Acceptance:** review queue ordering with explained components; decisions
   stored as calibration data.
-- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅).
+- **Runtime change:** No. **Status:** 🟢 unblocked (P0 ✅); **recommended next phase** (§7).
 
 #### P5 — Probabilistic model checking
-- **Prerequisites:** O11 (meaningful telemetry), R8. **Status:** 🟢 unblocked (O11 ✅, R8 ✅); **recommended next phase** (§7).
+- **Prerequisites:** O11 (meaningful telemetry), R8. **Status:** ✅ complete (2026-10-24): `checkGoal`, `checkReachProperty`, `compareReach` (interval Markov chain bounds), CLI `observe check`, ADR 0076.
 
 ### 4.4 O track: observability (optional, privacy-first, never replaces tests or formal reasoning)
 
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **P5** (next), P-RV, I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **P-RV** (next), I0, I4, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅ | IG (I0) · I1 (IG) · I2 (I1) · I5–I8 (O0, O7 chain) · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,17 +839,16 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: P5 — Probabilistic model checking
+## 7. Next implementation phase: P-RV — Review prioritization and feedback
 
-P4 is complete (ADR 0075). `impact` classifies every impact as definite,
-probable or uncertain, and reports a rule-level change risk that is never
-presented as an incident probability.
+P5 is complete (ADR 0076). `observe check` bounds the completion and
+abandonment probability on the observed chain, decides properties only when
+the bounds agree, and compares releases beyond sample noise.
 
-P5 comes next. It checks probabilistic properties ("a session reaches goal X
-with probability at least p") on O11's observed transition model, with R8's
-property vocabulary. The planned order after P5:
-1. P-RV;
-2. the I track.
+P-RV comes next. It orders the review queue by uncertainty × business impact
+× usage × change severity, with each component explained (spec §52). It
+stores review decisions (accepted, edited, rejected, merged, renamed) as
+calibration data (§53). After P-RV comes the I track: I0, I4, then IG.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 
