@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-24, after I6)
+## Current state (updated 2026-10-25, after I7)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **I7** (next), I2, C6 (needs repositories) |
-| Blocked | I8 (I7), I9 (I2, mode 6 enabled); see the roadmap §5 |
+| Unblocked | **I8** (next), I2, C6 (needs repositories) |
+| Blocked | I9 (I2, mode 6 enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I1, I3–I6 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **I7 — Adoption Decision** (`MASTER_ROADMAP.md` §7). Parallel candidates: I2. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I1, I3–I7 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **I8 — Improvement Memory** (`MASTER_ROADMAP.md` §7). Parallel candidates: I2. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4687,3 +4687,61 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 ### Scope notes
 
 - Next recommended phase: I7 — Adoption Decision.
+
+---
+
+## Phase I7 — Adoption Decision
+
+Complete — verified locally on 2026-10-25.
+
+- **`decideAdoption`** (outcome-analysis) applies ordered rules:
+  - reject: the candidate failed;
+  - rollback: worse, with iterate as the alternative and the hypothesis
+    rejected;
+  - adopt: improved and the candidate passed (inconclusive without a
+    passing evaluation);
+  - iterate: neutral;
+  - extend_experiment: under-sampled or overlapping intervals;
+  - inconclusive: otherwise.
+
+  Each decision carries its lineage and requires human approval.
+- **`recordApproval`** records one approval or refusal, with reviewer, time
+  and note.
+- **CLI:** `experiment decide` writes `decisions/<id>.json`, pending, and
+  never overwrites one; `experiment approve|decline --by` records the human
+  decision.
+- Recorded in ADR 0084.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 517 tests passed across 94 suites (all 94 test files; adoption rules, the failed-hypothesis demo, CLI decide/approve) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- **the failed-hypothesis demo (§253):** with a passing candidate,
+  completion 51% → 43% gives extend_experiment at 400 sessions per arm
+  (overlapping intervals) and rollback at 1000 (hypothesis rejected);
+- **the other choices:** adopt, inconclusive without an evaluation,
+  reject, iterate and extend;
+- **approval:** recorded once;
+- **CLI:** decide, approve, and refusals to decline a decided record or
+  overwrite a decision.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **A demo expectation:** the §253 demo first used 400 sessions per arm, at
+  which 51% vs 43% is not significant. The test now covers both sample
+  sizes, documenting why the smaller one extends the experiment.
+- **A docs-update script** failed partway through, after the README and
+  roadmap edits but before STATUS. The phase commit went through without
+  STATUS and was amended before pushing.
+
+### Scope notes
+
+- Next recommended phase: I8 — Improvement Memory.

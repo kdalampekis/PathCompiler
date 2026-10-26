@@ -1537,6 +1537,19 @@ are listed as gaps, and the candidate's formal evaluation is reported
 separately from behavior. See
 [ADR 0083](docs/decisions/0083-outcome-measurement.md).
 
+`experiment decide <outcome.json>` turns the outcome into an adoption
+decision:
+- **adopt:** improved, and the candidate passed;
+- **rollback:** worse; the hypothesis is rejected;
+- **iterate:** neutral;
+- **reject:** the candidate failed;
+- **extend_experiment:** not enough data;
+- **inconclusive:** otherwise.
+
+Every decision waits for `experiment approve|decline <decision.json> --by
+<name>`. PathCompiler never deploys or rolls back. See
+[ADR 0084](docs/decisions/0084-adoption-decision.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1810,7 +1823,7 @@ Analysis packages:
 | `@pathcompiler/improvement-gate` | `gateFindings`, `GateDecision`, `ImprovementValueAssessment`, `ImprovementPolicy` (IG) |
 | `@pathcompiler/recommendation-engine` | `recommend`, `ImprovementRecommendation`, `ImprovementHypothesis`, `AcceptanceCriteria`, `ProtectedBehavior` (I1) |
 | `@pathcompiler/experiment-core` | `createExperimentSpec`, `parseExperimentSpec`, `criteriaHash`, `ExperimentSpecSchema` (I5) |
-| `@pathcompiler/outcome-analysis` | `measureOutcome`, `OutcomeAssessment`, `MetricComparison`, `GuardrailAssessment` (I6) |
+| `@pathcompiler/outcome-analysis` | `measureOutcome`, `OutcomeAssessment`, `MetricComparison`, `GuardrailAssessment` (I6); `decideAdoption`, `recordApproval`, `AdoptionDecision` (I7) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `interpretCandidates` (P1), `selectInterpretations`, `candidateWeight` (P2), `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
@@ -1821,7 +1834,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

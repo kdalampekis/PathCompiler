@@ -6,7 +6,11 @@ import {
 } from "@pathcompiler/observability-core";
 import type { ImprovementRecommendation } from "@pathcompiler/recommendation-engine";
 import { describe, expect, it } from "vitest";
-import { measureOutcome } from "../src/index.js";
+import {
+  decideAdoption,
+  measureOutcome,
+  recordApproval,
+} from "../src/index.js";
 
 const recommendation = {
   id: "recommendation:plans.create:improve",
@@ -157,5 +161,82 @@ describe("outcome measurement", () => {
         events: [],
       }),
     ).toThrow("edited after its criteria were frozen");
+  });
+});
+
+describe("adoption decision", () => {
+  const decide = (events: ProductRuntimeEvent[], evaluationStatus?: string) =>
+    decideAdoption(
+      measureOutcome({
+        spec,
+        events,
+        ...(evaluationStatus ? { evaluationStatus } : {}),
+      }),
+    );
+
+  it("rejects its own recommendation when behavior gets worse (failed-hypothesis demo)", () => {
+    // Formal candidate valid, but completion falls from 51% to 43%. With 400
+    // sessions per arm the intervals still overlap (extend the experiment);
+    // with 1000 the drop is beyond them.
+    expect(
+      decide([...arm("r1", 400, 204), ...arm("r2", 400, 172)], "pass").decision,
+    ).toBe("extend_experiment");
+    const decision = decide(
+      [...arm("r1", 1000, 510), ...arm("r2", 1000, 430)],
+      "pass",
+    );
+    expect(decision).toMatchObject({
+      decision: "rollback",
+      hypothesis: "rejected",
+      alternatives: ["iterate"],
+      humanApprovalRequired: true,
+      approval: { status: "pending" },
+    });
+  });
+
+  it("adopts only an improvement with a passing candidate, and iterates on a neutral one", () => {
+    const improved = [...arm("r1", 200, 100), ...arm("r2", 200, 150)];
+    expect(decide(improved, "pass")).toMatchObject({
+      decision: "adopt",
+      hypothesis: "supported",
+    });
+    expect(decide(improved)).toMatchObject({
+      decision: "inconclusive",
+      alternatives: ["adopt"],
+    });
+    expect(decide(improved, "fail").decision).toBe("reject");
+    expect(
+      decide([...arm("r1", 400, 200), ...arm("r2", 400, 210)], "pass"),
+    ).toMatchObject({
+      decision: "iterate",
+      hypothesis: "not-supported",
+    });
+    expect(
+      decide([...arm("r1", 10, 5), ...arm("r2", 10, 9)], "pass").decision,
+    ).toBe("extend_experiment");
+  });
+
+  it("records a human approval once", () => {
+    const decision = decide(
+      [...arm("r1", 200, 100), ...arm("r2", 200, 150)],
+      "pass",
+    );
+    const approved = recordApproval(decision, {
+      approved: true,
+      decidedBy: "reviewer",
+      decidedAt: "2026-10-25T09:00:00.000Z",
+    });
+    expect(approved.approval).toEqual({
+      status: "approved",
+      decidedBy: "reviewer",
+      decidedAt: "2026-10-25T09:00:00.000Z",
+    });
+    expect(() =>
+      recordApproval(approved, {
+        approved: false,
+        decidedBy: "other",
+        decidedAt: "2026-10-25T10:00:00.000Z",
+      }),
+    ).toThrow("already approved by reviewer");
   });
 });

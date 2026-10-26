@@ -258,3 +258,153 @@ export function measureOutcome(input: {
     evidenceGaps: gaps,
   };
 }
+
+/**
+ * Adoption decision, I7 (reasoning spec §211–§213, §248, §253). The
+ * decision is a recommendation to a human, never an action: it stays
+ * `pending` until someone approves or declines it.
+ */
+export type AdoptionChoice =
+  | "adopt"
+  | "reject"
+  | "rollback"
+  | "iterate"
+  | "extend_experiment"
+  | "inconclusive";
+export type AdoptionDecision = {
+  schemaVersion: 1;
+  kind: "adoption-decision";
+  id: string;
+  recommendationId: string;
+  experimentId: string;
+  evaluationId: string;
+  outcomeId: string;
+  mutationId?: string;
+  decision: AdoptionChoice;
+  /** What the evidence says about the recommendation's hypothesis. */
+  hypothesis: "supported" | "rejected" | "not-supported" | "untested";
+  /** Other reasonable choices a reviewer may prefer. */
+  alternatives: AdoptionChoice[];
+  reasons: string[];
+  humanApprovalRequired: true;
+  approval:
+    | { status: "pending" }
+    | {
+        status: "approved" | "declined";
+        decidedBy: string;
+        decidedAt: string;
+        note?: string;
+      };
+};
+
+export function decideAdoption(outcome: OutcomeAssessment): AdoptionDecision {
+  const formal = outcome.formal.status;
+  const breached = outcome.guardrails.filter((item) => item.breached);
+  const reasons: string[] = [];
+  let decision: AdoptionChoice;
+  let hypothesis: AdoptionDecision["hypothesis"];
+  let alternatives: AdoptionChoice[] = [];
+  if (formal === "fail") {
+    decision = "reject";
+    hypothesis = "untested";
+    reasons.push(
+      "The candidate failed its independent evaluation; behavior does not matter for an invalid candidate.",
+    );
+  } else if (outcome.outcome === "worse") {
+    // The treatment was exposed to users and made things worse (§253).
+    decision = "rollback";
+    hypothesis = "rejected";
+    alternatives = ["iterate"];
+    reasons.push(
+      breached.length
+        ? `Guardrails breached: ${breached.map((item) => `${item.metric} on ${item.on}`).join(", ")}.`
+        : `${outcome.primaryMetric.metric} on ${outcome.primaryMetric.on} got worse beyond the intervals.`,
+      "The hypothesis is rejected by observed behavior, whatever the formal result.",
+    );
+  } else if (outcome.outcome === "improved") {
+    if (formal === "pass" || formal === "pass_with_warnings") {
+      decision = "adopt";
+      hypothesis = "supported";
+      reasons.push(
+        outcome.rationale,
+        `The candidate evaluation passed${formal === "pass_with_warnings" ? " with warnings; review them before adopting" : ""}.`,
+      );
+    } else {
+      decision = "inconclusive";
+      hypothesis = "supported";
+      alternatives = ["adopt"];
+      reasons.push(
+        outcome.rationale,
+        "The candidate evaluation is missing or not passing; adopt only after it passes.",
+      );
+    }
+  } else if (outcome.outcome === "neutral") {
+    decision = "iterate";
+    hypothesis = "not-supported";
+    alternatives = ["reject"];
+    reasons.push(
+      outcome.rationale,
+      "The change does not help enough; try a different intervention or drop it.",
+    );
+  } else if (
+    outcome.primaryMetric.method !== "not-measured" &&
+    !outcome.primaryMetric.sufficient
+  ) {
+    decision = "extend_experiment";
+    hypothesis = "untested";
+    reasons.push(
+      outcome.rationale,
+      "Keep the experiment running until both arms have enough sessions.",
+    );
+  } else if (outcome.primaryMetric.method !== "not-measured") {
+    decision = "extend_experiment";
+    hypothesis = "untested";
+    alternatives = ["inconclusive"];
+    reasons.push(outcome.rationale);
+  } else {
+    decision = "inconclusive";
+    hypothesis = "untested";
+    reasons.push(outcome.rationale, ...outcome.evidenceGaps);
+  }
+  return {
+    schemaVersion: 1,
+    kind: "adoption-decision",
+    id: `decision:${outcome.experimentId}`,
+    recommendationId: outcome.recommendationId,
+    experimentId: outcome.experimentId,
+    evaluationId: outcome.formal.evaluationId,
+    outcomeId: outcome.id,
+    ...(outcome.mutationId ? { mutationId: outcome.mutationId } : {}),
+    decision,
+    hypothesis,
+    alternatives,
+    reasons,
+    humanApprovalRequired: true,
+    approval: { status: "pending" },
+  };
+}
+
+/** Records a human's approval or refusal; a decided record is never re-decided. */
+export function recordApproval(
+  decision: AdoptionDecision,
+  input: {
+    approved: boolean;
+    decidedBy: string;
+    decidedAt: string;
+    note?: string;
+  },
+): AdoptionDecision {
+  if (decision.approval.status !== "pending")
+    throw new Error(
+      `${decision.id} was already ${decision.approval.status} by ${decision.approval.decidedBy}.`,
+    );
+  return {
+    ...decision,
+    approval: {
+      status: input.approved ? "approved" : "declined",
+      decidedBy: input.decidedBy,
+      decidedAt: input.decidedAt,
+      ...(input.note ? { note: input.note } : {}),
+    },
+  };
+}

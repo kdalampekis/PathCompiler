@@ -144,7 +144,13 @@ import {
   type FormalGoalChange,
   readEventDirectory,
 } from "@pathcompiler/observed-graph";
-import { measureOutcome } from "@pathcompiler/outcome-analysis";
+import {
+  type AdoptionDecision,
+  decideAdoption,
+  measureOutcome,
+  type OutcomeAssessment,
+  recordApproval,
+} from "@pathcompiler/outcome-analysis";
 import {
   type CheapestPlanResult,
   type CostWeights,
@@ -293,6 +299,8 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler recommend [--property <json-file>] [--json] [--out <directory>]
        pathcompiler experiment create <recommendation-id> <evaluation.json> <control-release> <treatment-release> [--json] [--out <directory>]
        pathcompiler experiment measure <experiment.json> [evaluation.json] [--json] [--out <directory>]
+       pathcompiler experiment decide <outcome.json> [--json] [--out <directory>]
+       pathcompiler experiment approve|decline <decision.json> [--by <name>] [--reason <text>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -510,6 +518,11 @@ frozen spec (refusing an edited one): goal reach shares or guide completion rate
 intervals, guardrail breaches and sample thresholds, giving improved, neutral, worse or
 inconclusive. Metrics events cannot measure are listed as gaps; the candidate evaluation's
 formal status is reported separately. It writes reports/outcomes/<experiment>.json.
+experiment decide turns an outcome into an adoption decision for a human: adopt (improved and
+the candidate passed), rollback (worse; the hypothesis is rejected), iterate (neutral), reject
+(the candidate failed), extend_experiment (too few sessions or overlapping intervals) or
+inconclusive, in decisions/<experiment>.json, pending approval. experiment approve and decline
+record the human decision (--by, --reason) once; nothing is deployed or rolled back.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -4709,6 +4722,9 @@ async function runExperiment(
   cwd: string,
 ): Promise<string> {
   if (positionals[1] === "measure") return runMeasure(positionals, values, cwd);
+  if (positionals[1] === "decide") return runDecide(positionals, values, cwd);
+  if (positionals[1] === "approve" || positionals[1] === "decline")
+    return runApproveDecision(positionals, values, cwd);
   const [, sub, recommendationId, evaluationFile, control, treatment, ...rest] =
     positionals;
   if (
@@ -4832,4 +4848,63 @@ async function runMeasure(
     ...outcome.evidenceGaps.map((item) => `  · ${item}`),
     `Report: ${path.join(output, file)}`,
   ].join("\n")}\n`;
+}
+
+async function runDecide(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, , outcomeFile, ...rest] = positionals;
+  if (!outcomeFile || rest.length > 0)
+    throw new Error(
+      "Expected: pathcompiler experiment decide <outcome.json>. Use --help for options.",
+    );
+  const outcome = z
+    .looseObject({ kind: z.literal("outcome-assessment") })
+    .parse(
+      await readJsonFile(cwd, outcomeFile, "outcome assessment"),
+    ) as unknown as OutcomeAssessment;
+  const decision = decideAdoption(outcome);
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const file = `decisions/${encodeURIComponent(decision.experimentId)}.json`;
+  if (await readOptional(path.join(output, file)))
+    throw new Error(
+      `A decision for ${decision.experimentId} already exists at ${path.join(output, file)}; decisions are not overwritten.`,
+    );
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(decision, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(decision, null, 2)}\n`;
+  return `${[
+    `Recommended decision for ${decision.experimentId}: ${decision.decision.toUpperCase()} (hypothesis ${decision.hypothesis})${decision.alternatives.length ? `; alternatives: ${decision.alternatives.join(", ")}` : ""}.`,
+    ...decision.reasons.map((item) => `  - ${item}`),
+    `Pending human approval: pathcompiler experiment approve|decline ${path.join(path.relative(cwd, output), file)} --by <name>`,
+  ].join("\n")}\n`;
+}
+
+async function runApproveDecision(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, verb, decisionFile, ...rest] = positionals;
+  if (!decisionFile || rest.length > 0)
+    throw new Error(
+      `Expected: pathcompiler experiment ${verb} <decision.json> [--by <name>]. Use --help for options.`,
+    );
+  const file = path.resolve(cwd, decisionFile);
+  const decision = z
+    .looseObject({ kind: z.literal("adoption-decision") })
+    .parse(
+      await readJsonFile(cwd, decisionFile, "adoption decision"),
+    ) as unknown as AdoptionDecision;
+  const decided = recordApproval(decision, {
+    approved: verb === "approve",
+    decidedBy: reviewer(values.by),
+    decidedAt: new Date().toISOString(),
+    ...(values.reason ? { note: values.reason } : {}),
+  });
+  await writeFile(file, `${JSON.stringify(decided, null, 2)}\n`);
+  return `${verb === "approve" ? "Approved" : "Declined"} ${decided.decision} for ${decided.experimentId} by ${decided.approval.status === "pending" ? "" : decided.approval.decidedBy}. Carry it out in your deployment or experiment platform; PathCompiler does not.\n`;
 }

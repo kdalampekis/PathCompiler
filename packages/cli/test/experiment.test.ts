@@ -153,5 +153,36 @@ describe("experiment create", () => {
       "Primary workflow_completion_rate on plans.created: 0.3333 (60 sessions) → 0.8333 (60)",
     );
     expect(measured).toContain("Formal (candidate evaluation): pass");
+
+    // I7: a recommended decision, pending until a human approves it once.
+    const [outcome] = await readdir(
+      path.join(cwd, "out", "reports", "outcomes"),
+    );
+    const decided = await run([
+      "experiment",
+      "decide",
+      path.join("out", "reports", "outcomes", outcome as string),
+    ]);
+    expect(decided).toMatch(
+      /^Recommended decision for .*: ADOPT \(hypothesis supported\)\./,
+    );
+    const [decisionFile] = await readdir(path.join(cwd, "out", "decisions"));
+    const decision = path.join("out", "decisions", decisionFile as string);
+    expect(
+      await runCli(
+        ["experiment", "approve", decision, "--by", "reviewer"],
+        cwd,
+      ),
+    ).toContain("Approved adopt");
+    await expect(
+      runCli(["experiment", "decline", decision, "--by", "other"], cwd),
+    ).rejects.toThrow("already approved by reviewer");
+    await expect(
+      run([
+        "experiment",
+        "decide",
+        path.join("out", "reports", "outcomes", outcome as string),
+      ]),
+    ).rejects.toThrow("decisions are not overwritten");
   });
 });
