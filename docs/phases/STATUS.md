@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-25, after I2)
+## Current state (updated 2026-10-25, after I9)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **I9** (next), C6 (needs repositories) |
+| Unblocked | C6 (needs the user's repositories) |
 | Blocked | None (mode 6 phases run only when enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I1, I2, I3–I8 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **I9 — External harness integration** (mode 6; `MASTER_ROADMAP.md` §7). Then C6 on real repositories. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0–I9 and IG (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | All planned phases except C6 are complete. Next: fix the open issues, review the documentation, then C6 on real repositories (`MASTER_ROADMAP.md` §7). Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4847,3 +4847,53 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 - **Deviation:** the contracts are camelCase JSON, not the handoff's
   snake-case YAML sketches, which the handoff calls conceptual (ADR 0086).
 - Next recommended phase: I9 — External harness integration.
+
+---
+
+## Phase I9 — External harness integration (Integration V0)
+
+Complete — verified locally on 2026-10-25.
+
+- **CLI `harness import <MutationResult.json> [directory]`:**
+  - finds the exported task, validates the result against it, and stores
+    it;
+  - when the result names a candidate, evaluates it with criteria frozen
+    from the task, checking the harness's claim (never trusting it);
+  - records a blocked or failed result with its questions.
+
+  Tests and browser reports apply as in `evaluate`.
+- **`reportEvaluation`** is shared with `evaluate`.
+- **PathCompiler never runs the harness.**
+- Recorded in ADR 0087.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 525 tests passed across 97 suites (all 97 test files; Integration V0 end to end) |
+| `git diff --check` | Passed |
+
+The Integration V0 end-to-end test runs on a git copy of the fixture:
+1. a regression drops `requireEditor` from the create-client API;
+2. `reason diff`, `findings`, `gate` (mode 6 enabled in `pathcompiler.yaml`)
+   gives `eligible_for_harness`;
+3. `recommend` gives a FIX, and `harness task` gives a remove-reachability
+   intent;
+4. a candidate branch restores the guard;
+5. `harness import` evaluates PASS, with every expected change met and the
+   claim not contradicted;
+6. a blocked result is recorded with its question.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **Open (#48):** a design limitation surfaced while choosing the scenario.
+  Per-capability opportunities split one root cause into several tasks; a
+  renamed role check would fail each narrower evaluation.
+
+### Scope notes
+
+- All planned phases except C6 are complete.

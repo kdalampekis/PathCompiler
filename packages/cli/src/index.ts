@@ -108,7 +108,11 @@ import {
 } from "@pathcompiler/graph-delta";
 import {
   createHarnessTask,
+  evaluationCriteria,
   HarnessContractError,
+  type HarnessTaskSpec,
+  parseHarnessTask,
+  parseMutationResult,
 } from "@pathcompiler/harness-contracts";
 import {
   createFileEventSink,
@@ -314,6 +318,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler memory record <recommendation-id> [--json] [--out <directory>]
        pathcompiler memory list [--json] [--out <directory>]
        pathcompiler harness task <recommendation-id> <base-commit> [--json] [--out <directory>]
+       pathcompiler harness import <mutation-result.json> [directory] [--tests <json-file>] [--browser <json-file>] [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -545,7 +550,12 @@ harness task (mode 6 only) writes a provider-neutral HarnessTaskSpec for a recom
 gate made eligible_for_harness, which needs improvement_policy.autonomous_mutation and
 modes.self_improvement: objective, intended semantic changes, protected behaviors, acceptance
 criteria and lineage, in harness/tasks/<id>.json. See examples/harness-contract/ for the task
-and MutationResult schemas.
+and MutationResult schemas. harness import reads a harness's MutationResult, checks that it
+answers an exported task (task, recommendation, base commit), stores it in harness/results/, and,
+when it names a candidate commit, evaluates that candidate against the task's base in
+[directory] with criteria frozen from the task; the harness's claimed outcome is checked against
+the independent evaluation, never trusted. A blocked or failed result is recorded with its
+questions. It exits nonzero when the candidate fails.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -785,7 +795,7 @@ export async function runCli(
     positionals[0] !== "evaluate"
   )
     throw new Error(
-      "--criteria, --tests and --browser are only supported by evaluate.",
+      "--criteria, --tests and --browser are only supported by evaluate (and --tests, --browser by harness import).",
     );
   if (positionals[0] === "evaluate")
     return runEvaluate(positionals, values, cwd);
@@ -2553,6 +2563,15 @@ async function runEvaluate(
   } finally {
     await solver.close();
   }
+  return reportEvaluation(evaluation, output, values);
+}
+
+/** Writes an evaluation report, and fails (nonzero exit) when the candidate fails. */
+async function reportEvaluation(
+  evaluation: CandidateEvaluation,
+  output: string,
+  values: Values,
+): Promise<string> {
   const file = `reports/evaluation/${evaluation.candidate}.json`;
   await writeArtifacts(output, [
     [file, `${JSON.stringify(evaluation, null, 2)}\n`],
@@ -5072,6 +5091,8 @@ async function runHarness(
   values: Values,
   cwd: string,
 ): Promise<string> {
+  if (positionals[1] === "import")
+    return runHarnessImport(positionals, values, cwd);
   const [, sub, recommendationId, baseCommit, ...rest] = positionals;
   if (sub !== "task" || !recommendationId || !baseCommit || rest.length > 0)
     throw new Error(
@@ -5129,4 +5150,91 @@ async function runHarness(
     `Task: ${path.join(output, file)}`,
     "The harness's result is evaluated independently (pathcompiler evaluate); its claims are never trusted.",
   ].join("\n")}\n`;
+}
+
+async function runHarnessImport(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, , resultFile, directory, ...rest] = positionals;
+  if (!resultFile || rest.length > 0)
+    throw new Error(
+      "Expected: pathcompiler harness import <mutation-result.json> [directory]. Use --help for options.",
+    );
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const raw = await readJsonFile(cwd, resultFile, "mutation result");
+  const taskId = z
+    .looseObject({ harnessTaskId: z.string() })
+    .parse(raw).harnessTaskId;
+  const tasks = await readJsonRecords(
+    path.join(output, "harness", "tasks"),
+    (value) => parseHarnessTask(value),
+  );
+  const task: HarnessTaskSpec | undefined = tasks.find(
+    (item) => item.record.id === taskId,
+  )?.record;
+  if (!task)
+    throw new Error(
+      `No exported task ${taskId} under ${path.join(output, "harness", "tasks")}. Import results only for tasks created with pathcompiler harness task.`,
+    );
+  let result: ReturnType<typeof parseMutationResult>;
+  try {
+    result = parseMutationResult(raw, task);
+  } catch (error) {
+    throw new Error(
+      `Invalid MutationResult ${resultFile}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  await writeArtifacts(output, [
+    [
+      `harness/results/${encodeURIComponent(result.id)}.json`,
+      `${JSON.stringify(result, null, 2)}\n`,
+    ],
+  ]);
+  const candidate = result.repository.candidateCommit;
+  if (!candidate)
+    return `${[
+      `Mutation ${result.id} is ${result.status}; there is no candidate to evaluate.`,
+      `  ${result.implementationSummary}`,
+      ...result.unresolvedQuestions.map((item) => `  ? ${item}`),
+      "A blocked harness is a valid outcome: review the questions before changing the recommendation.",
+    ].join("\n")}\n`;
+  const tests =
+    values.tests === undefined
+      ? undefined
+      : await readJsonFile(cwd, values.tests, "test results");
+  const browser =
+    values.browser === undefined
+      ? undefined
+      : await readJsonFile(cwd, values.browser, "browser verification reports");
+  const range = await analyzeCommitRangeDetailed({
+    directory: path.resolve(cwd, directory ?? "."),
+    base: task.repository.baseCommit,
+    head: candidate,
+    exclude: values.exclude ?? [],
+  });
+  const solver = await createZ3SolverProvider();
+  let evaluation: CandidateEvaluation;
+  try {
+    evaluation = await evaluateCandidate(range, solver, {
+      criteria: evaluationCriteria(task, result),
+      approved: await readApproved(output),
+      ...(tests === undefined
+        ? {}
+        : {
+            tests:
+              tests && typeof tests === "object" && "suites" in tests
+                ? testRunFromPlaywrightJson(tests)
+                : tests,
+          }),
+      ...(browser === undefined
+        ? {}
+        : { browser: Array.isArray(browser) ? browser : [browser] }),
+    });
+  } finally {
+    await solver.close();
+  }
+  return reportEvaluation(evaluation, output, values);
 }

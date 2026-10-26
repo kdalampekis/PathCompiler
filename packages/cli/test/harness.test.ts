@@ -84,3 +84,151 @@ describe("harness task", () => {
     }
   });
 });
+
+describe("external harness integration (Integration V0)", () => {
+  it("goes from recommendation to task to harness candidate to evaluation without manual conversion", async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { cp, readFile } = await import("node:fs/promises");
+    const { fileURLToPath } = await import("node:url");
+    const { runFixtureHarness, parseHarnessTask } = await import(
+      "@pathcompiler/harness-contracts"
+    );
+    const exec = promisify(execFile);
+    const fixture = fileURLToPath(
+      new URL("../../../fixtures/next-demo", import.meta.url),
+    );
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-v0-"));
+    temporary.push(cwd);
+    const app = path.join(cwd, "app");
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.test",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.test",
+    };
+    const git = async (...args: string[]) =>
+      (await exec("git", ["-C", app, ...args], { env })).stdout.trim();
+    const tracked = (
+      await exec("git", ["-C", fixture, "ls-files", "-z", "--", "."])
+    ).stdout
+      .split("\0")
+      .filter(Boolean);
+    for (const file of tracked) {
+      await mkdir(path.dirname(path.join(app, file)), { recursive: true });
+      await cp(path.join(fixture, file), path.join(app, file));
+    }
+    await git("init", "--quiet", "--initial-branch=main");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "base");
+    const base = await git("rev-parse", "HEAD");
+    const route = path.join(app, "app/api/clients/route.ts");
+    const original = await readFile(route, "utf8");
+    // The regression: creating a client no longer checks the editor role.
+    await writeFile(
+      route,
+      original.replace("    requireEditor(session);\n", ""),
+    );
+    await git("commit", "--quiet", "-am", "Simplify create");
+    const regressed = await git("rev-parse", "HEAD");
+    await writeFile(
+      path.join(cwd, "pathcompiler.yaml"),
+      [
+        "version: 1",
+        "modes:",
+        "  recommend: true",
+        "  self_improvement: true",
+        "reasoning:",
+        "  enabled: true",
+        "  semantic_diff: true",
+        "improvement_policy:",
+        "  autonomous_mutation: true",
+        "  max_autonomous_mutations: 1",
+        "  min_confidence: 0.5",
+        "",
+      ].join("\n"),
+    );
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["reason", "diff", base, regressed, "app"]);
+    await run(["findings"]);
+    const gate = JSON.parse(await run(["gate", "--json"]));
+    expect(
+      gate.decisions.find(
+        (item: { subject: string }) => item.subject === "clients.create",
+      )?.decision,
+    ).toBe("eligible_for_harness");
+    const recommendations = JSON.parse(await run(["recommend", "--json"]));
+    const fix = recommendations.recommendations.find(
+      (item: { id: string }) => item.id === "recommendation:clients.create:fix",
+    );
+    expect(fix?.harnessEligible).toBe(true);
+    await run(["harness", "task", fix.id, regressed]);
+    const [taskFile] = await readdir(path.join(cwd, "out", "harness", "tasks"));
+    const task = parseHarnessTask(
+      JSON.parse(
+        await readFile(
+          path.join(cwd, "out", "harness", "tasks", taskFile as string),
+          "utf8",
+        ),
+      ),
+    );
+    expect(task.objective.desiredSemanticChange[0]).toMatchObject({
+      kind: "remove-reachability",
+      goal: "clients.created",
+    });
+
+    // The "harness": restore the guard on a branch, report the candidate.
+    await git("checkout", "--quiet", "-b", "pathcompiler/fix");
+    await writeFile(route, original);
+    await git("commit", "--quiet", "-am", "Restore the editor check");
+    const candidate = await git("rev-parse", "HEAD");
+    await writeFile(
+      path.join(cwd, "result.json"),
+      JSON.stringify(
+        runFixtureHarness(task, {
+          outcome: "complete",
+          candidateCommit: candidate,
+        }),
+      ),
+    );
+    const evaluation = await run(["harness", "import", "result.json", "app"]);
+    expect(evaluation).toContain(
+      `Candidate ${candidate.slice(0, 12)} against ${regressed.slice(0, 12)}: PASS`,
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(cwd, "out", "reports", "evaluation", `${candidate}.json`),
+        "utf8",
+      ),
+    );
+    expect(report).toMatchObject({
+      recommendationId: fix.id,
+      mutationClaim: { claimedOutcome: "success", contradicted: false },
+      intendedChange: { declared: true },
+    });
+    expect(
+      report.intendedChange.expected.every(
+        (item: { met: boolean }) => item.met,
+      ),
+    ).toBe(true);
+
+    // A blocked harness is recorded with its question; nothing is evaluated.
+    await writeFile(
+      path.join(cwd, "blocked.json"),
+      JSON.stringify(
+        runFixtureHarness(
+          task,
+          { outcome: "block", reason: "Is open client creation intended?" },
+          "run-2",
+        ),
+      ),
+    );
+    expect(await run(["harness", "import", "blocked.json", "app"])).toContain(
+      "? Is open client creation intended?",
+    );
+    expect(
+      await readdir(path.join(cwd, "out", "harness", "results")),
+    ).toHaveLength(2);
+  }, 300_000);
+});

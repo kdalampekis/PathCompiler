@@ -1576,6 +1576,14 @@ The harness returns a `MutationResult`. The schemas and examples are in
 claims are never trusted: the candidate is evaluated independently. See
 [ADR 0086](docs/decisions/0086-harness-contract.md).
 
+`harness import <MutationResult.json> [directory]` brings a harness's
+result back. It checks the result against the exported task, stores it,
+and evaluates the candidate commit against the task's base, with criteria
+frozen from the task. The harness's claim is checked, never trusted. A
+blocked result is recorded with its questions. PathCompiler never runs the
+harness itself. See
+[ADR 0087](docs/decisions/0087-external-harness-integration.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1862,7 +1870,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
