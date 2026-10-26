@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "1.0",
+  "id": "task:recommendation:clients.create:fix:aaaaaaaaaaaa",
+  "recommendationId": "recommendation:clients.create:fix",
+  "findingIds": [
+    "finding:permission_regression:goal:clients.created@role=editor"
+  ],
+  "repository": {
+    "projectId": "next-demo",
+    "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "targetBranch": "pathcompiler/clients.create-fix"
+  },
+  "objective": {
+    "summary": "Restoring the behavior clients.create had before the change resolves the regression.",
+    "target": {
+      "subject": "clients.create",
+      "goals": ["clients.created"]
+    },
+    "desiredSemanticChange": [
+      {
+        "kind": "restore-reachability",
+        "goal": "clients.created",
+        "context": "role=editor"
+      }
+    ]
+  },
+  "rationale": {
+    "findingSummary": "clients.created is no longer reachable for role=editor.",
+    "evidence": [
+      {
+        "findingId": "finding:permission_regression:goal:clients.created@role=editor",
+        "sources": [
+          {
+            "report": "semantic-change aaaaaaaaaaaa..bbbbbbbbbbbb",
+            "entry": "removedReachability[0]"
+          }
+        ]
+      }
+    ],
+    "hypothesis": {
+      "statement": "Restoring the behavior clients.create had before the change resolves the regression.",
+      "confidence": "medium"
+    }
+  },
+  "constraints": {
+    "hard": ["approved workflow plans.create must stay valid"],
+    "protectedBehaviors": [
+      {
+        "id": "viewer-never-creates",
+        "kind": "never",
+        "description": "Viewers never create clients"
+      }
+    ],
+    "prohibitedSemanticChanges": []
+  },
+  "acceptanceCriteria": {
+    "required": [
+      {
+        "kind": "formal-reachable",
+        "goal": "clients.created",
+        "context": "role=editor"
+      },
+      {
+        "kind": "property-holds",
+        "propertyId": "viewer-never-creates"
+      },
+      {
+        "kind": "workflow-valid",
+        "workflowId": "clients.create"
+      },
+      {
+        "kind": "workflow-valid",
+        "workflowId": "plans.create"
+      },
+      {
+        "kind": "browser-verified",
+        "workflowId": "clients.create"
+      }
+    ],
+    "outcome": []
+  },
+  "relevantContext": {
+    "workflowIds": ["clients.create", "plans.create"],
+    "capabilityIds": ["clients.create"],
+    "semanticTargets": []
+  },
+  "requestedArtifacts": [
+    "candidate_commit",
+    "implementation_summary",
+    "changed_files",
+    "claimed_semantic_changes",
+    "tests_added_or_changed",
+    "assumptions",
+    "unresolved_questions",
+    "preview_instructions"
+  ],
+  "outputContract": {
+    "artifact": "MutationResult",
+    "schemaVersion": "1.0"
+  }
+}

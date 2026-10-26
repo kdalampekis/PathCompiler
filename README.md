@@ -1560,6 +1560,22 @@ experiment rejected the same kind of change for the same capability,
 one observation, never a rule, and nothing is trained. See
 [ADR 0085](docs/decisions/0085-improvement-memory.md).
 
+## Harness contract (mode 6 only; `pathcompiler harness task`)
+
+When mode 6 is enabled twice (`improvement_policy.autonomous_mutation` and
+`modes.self_improvement`), `harness task <recommendation-id> <base-commit>`
+writes a provider-neutral `HarnessTaskSpec` for an external coding harness.
+The task carries:
+- the objective and the intended semantic changes;
+- the protected behaviors;
+- the acceptance criteria;
+- lineage back to the findings.
+
+The harness returns a `MutationResult`. The schemas and examples are in
+[examples/harness-contract/](examples/harness-contract/). The harness's
+claims are never trusted: the candidate is evaluated independently. See
+[ADR 0086](docs/decisions/0086-harness-contract.md).
+
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
 `fuseEvidence(claim, items)` combines supporting and contradicting evidence
@@ -1835,6 +1851,7 @@ Analysis packages:
 | `@pathcompiler/experiment-core` | `createExperimentSpec`, `parseExperimentSpec`, `criteriaHash`, `ExperimentSpecSchema` (I5) |
 | `@pathcompiler/outcome-analysis` | `measureOutcome`, `OutcomeAssessment`, `MetricComparison`, `GuardrailAssessment` (I6); `decideAdoption`, `recordApproval`, `AdoptionDecision` (I7) |
 | `@pathcompiler/improvement-memory` | `buildMemoryRecord`, `historyFactor`, `rankWithMemory`, `ImprovementMemoryRecordSchema` (I8) |
+| `@pathcompiler/harness-contracts` | `HarnessTaskSpecSchema`, `MutationResultSchema`, `createHarnessTask`, `parseMutationResult`, `evaluationCriteria`, `runFixtureHarness`, `contractJsonSchemas` (I2) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `interpretCandidates` (P1), `selectInterpretations`, `candidateWeight` (P2), `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
@@ -1845,7 +1862,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recommendationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "findingIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{7,64}$"
+        },
+        "targetBranch": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["projectId", "baseCommit"],
+      "additionalProperties": false
+    },
+    "objective": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "subject": {
+              "type": "string",
+              "minLength": 1
+            },
+            "goals": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": ["subject", "goals"],
+          "additionalProperties": false
+        },
+        "desiredSemanticChange": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restore-reachability",
+                  "remove-reachability",
+                  "reduce-workflow-cost",
+                  "increase-discoverability"
+                ]
+              },
+              "goal": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workflow": {
+                "type": "string",
+                "minLength": 1
+              },
+              "context": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["summary", "target", "desiredSemanticChange"],
+      "additionalProperties": false
+    },
+    "rationale": {
+      "type": "object",
+      "properties": {
+        "findingSummary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "findingId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "report": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "entry": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["report", "entry"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["findingId", "sources"],
+            "additionalProperties": false
+          }
+        },
+        "hypothesis": {
+          "type": "object",
+          "properties": {
+            "statement": {
+              "type": "string",
+              "minLength": 1
+            },
+            "confidence": {
+              "type": "string",
+              "enum": ["high", "medium", "low"]
+            }
+          },
+          "required": ["statement", "confidence"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["findingSummary", "evidence", "hypothesis"],
+      "additionalProperties": false
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "hard": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "protectedBehaviors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "kind"],
+            "additionalProperties": false
+          }
+        },
+        "prohibitedSemanticChanges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restore-reachability",
+                  "remove-reachability",
+                  "reduce-workflow-cost",
+                  "increase-discoverability"
+                ]
+              },
+              "goal": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workflow": {
+                "type": "string",
+                "minLength": 1
+              },
+              "context": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["hard", "protectedBehaviors", "prohibitedSemanticChanges"],
+      "additionalProperties": false
+    },
+    "acceptanceCriteria": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": {}
+          }
+        },
+        "outcome": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["required", "outcome"],
+      "additionalProperties": false
+    },
+    "relevantContext": {
+      "type": "object",
+      "properties": {
+        "workflowIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "capabilityIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "semanticTargets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": ["workflowIds", "capabilityIds", "semanticTargets"],
+      "additionalProperties": false
+    },
+    "requestedArtifacts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "candidate_commit",
+          "implementation_summary",
+          "changed_files",
+          "claimed_semantic_changes",
+          "tests_added_or_changed",
+          "assumptions",
+          "unresolved_questions",
+          "preview_instructions"
+        ]
+      }
+    },
+    "outputContract": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "const": "MutationResult"
+        },
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+$"
+        }
+      },
+      "required": ["artifact", "schemaVersion"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "recommendationId",
+    "findingIds",
+    "repository",
+    "objective",
+    "rationale",
+    "constraints",
+    "acceptanceCriteria",
+    "relevantContext",
+    "requestedArtifacts",
+    "outputContract"
+  ],
+  "additionalProperties": false
+}

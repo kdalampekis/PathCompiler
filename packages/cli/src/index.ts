@@ -107,6 +107,10 @@ import {
   analyzeCommitRangeDetailed,
 } from "@pathcompiler/graph-delta";
 import {
+  createHarnessTask,
+  HarnessContractError,
+} from "@pathcompiler/harness-contracts";
+import {
   createFileEventSink,
   createHttpService,
 } from "@pathcompiler/http-service";
@@ -309,6 +313,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler experiment approve|decline <decision.json> [--by <name>] [--reason <text>]
        pathcompiler memory record <recommendation-id> [--json] [--out <directory>]
        pathcompiler memory list [--json] [--out <directory>]
+       pathcompiler harness task <recommendation-id> <base-commit> [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -536,6 +541,11 @@ the output directory) into memory/<recommendation>.json, with lessons only from 
 decisions. recommend then weighs those lessons: an earlier rejected hypothesis for the same
 subject and category halves the priority (one observation, never a rule). memory list shows
 the records. Nothing is trained.
+harness task (mode 6 only) writes a provider-neutral HarnessTaskSpec for a recommendation the
+gate made eligible_for_harness, which needs improvement_policy.autonomous_mutation and
+modes.self_improvement: objective, intended semantic changes, protected behaviors, acceptance
+criteria and lineage, in harness/tasks/<id>.json. See examples/harness-contract/ for the task
+and MutationResult schemas.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -737,6 +747,7 @@ export async function runCli(
   if (positionals[0] === "experiment")
     return runExperiment(positionals, values, cwd);
   if (positionals[0] === "memory") return runMemory(positionals, values, cwd);
+  if (positionals[0] === "harness") return runHarness(positionals, values, cwd);
   if (positionals[0] === "gate")
     return runGate(
       positionals,
@@ -5053,5 +5064,69 @@ async function runMemory(
         .join(", ") || "recommendation only"
     }; ${record.reusableLessons.length} lesson(s).`,
     `Memory: ${path.join(output, file)}`,
+  ].join("\n")}\n`;
+}
+
+async function runHarness(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, sub, recommendationId, baseCommit, ...rest] = positionals;
+  if (sub !== "task" || !recommendationId || !baseCommit || rest.length > 0)
+    throw new Error(
+      "Expected: pathcompiler harness task <recommendation-id> <base-commit>. Use --help for options.",
+    );
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const read = async (name: string, command: string) => {
+    const content = await readOptional(path.join(output, "reports", name));
+    if (content === undefined)
+      throw new Error(
+        `No ${path.join(output, "reports", name)}. Run pathcompiler ${command} first.`,
+      );
+    return JSON.parse(content) as unknown;
+  };
+  const recommendation = (
+    (await read("recommendations.json", "recommend")) as {
+      recommendations?: ImprovementRecommendation[];
+    }
+  ).recommendations?.find((item) => item.id === recommendationId);
+  if (!recommendation)
+    throw new Error(
+      `No recommendation ${recommendationId} in reports/recommendations.json.`,
+    );
+  const decision = (
+    (await read("gate-decisions.json", "gate")) as GateReport
+  ).decisions.find(
+    (item) => item.opportunityId === recommendation.opportunityId,
+  );
+  if (!decision)
+    throw new Error(
+      `No gate decision for ${recommendation.opportunityId}. Rerun pathcompiler gate.`,
+    );
+  let task: ReturnType<typeof createHarnessTask>;
+  try {
+    task = createHarnessTask({
+      recommendation,
+      gate: decision,
+      projectId: path.basename(path.dirname(output)),
+      baseCommit,
+    });
+  } catch (error) {
+    if (error instanceof HarnessContractError || error instanceof z.ZodError)
+      throw new Error(`Cannot create a harness task: ${error.message}`, {
+        cause: error,
+      });
+    throw error;
+  }
+  const file = `harness/tasks/${encodeURIComponent(task.id)}.json`;
+  await writeArtifacts(output, [[file, `${JSON.stringify(task, null, 2)}\n`]]);
+  if (values.json) return `${JSON.stringify(task, null, 2)}\n`;
+  return `${[
+    `Harness task ${task.id} (schema ${task.schemaVersion}) for ${recommendation.id}:`,
+    `  ${task.objective.summary}`,
+    `  Intended: ${task.objective.desiredSemanticChange.map((item) => `${item.kind}${item.goal ? ` ${item.goal}` : ""}${item.context ? ` [${item.context}]` : ""}`).join("; ")}`,
+    `Task: ${path.join(output, file)}`,
+    "The harness's result is evaluated independently (pathcompiler evaluate); its claims are never trusted.",
   ].join("\n")}\n`;
 }

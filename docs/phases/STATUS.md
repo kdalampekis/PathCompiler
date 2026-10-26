@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-25, after I8)
+## Current state (updated 2026-10-25, after I2)
 
 | Item | State |
 | --- | --- |
@@ -9,11 +9,11 @@
 | New architecture tracks | C (original-spec conformance), R (formal reasoning), P (probabilistic), O (observability), I (improvement loop incl. IG gate) |
 | Product shape | Three planes (Product Intelligence, Experience, Improvement); six operating modes (Understand, Guide, Observe, Recommend, Evaluate, Self-improvement), each usable on its own. Self-improvement is opt-in. See ADR 0033. |
 | AI channels | A: internal model providers on targeted evidence (optional; deterministic by default). B: PathCompiler MCP for external agents. C: external harness for mutation (mode 6 only). See ADR 0034. |
-| Unblocked | **I2** (next), C6 (needs repositories) |
-| Blocked | I9 (I2, mode 6 enabled); see the roadmap §5 |
+| Unblocked | **I9** (next), C6 (needs repositories) |
+| Blocked | None (mode 6 phases run only when enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
-| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I1, I3–I8 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | **I2 — Harness contract** (mode 6 only; `MASTER_ROADMAP.md` §7). Then I9, and C6 on real repositories. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0, IG, I1, I2, I3–I8 (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
+| Next recommended phase | **I9 — External harness integration** (mode 6; `MASTER_ROADMAP.md` §7). Then C6 on real repositories. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -4791,3 +4791,59 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 ### Scope notes
 
 - Next recommended phase: I2 — Harness contract (mode 6 only).
+
+---
+
+## Phase I2 — Harness contract (mode 6 only)
+
+Complete — verified locally on 2026-10-25.
+
+- **New `@pathcompiler/harness-contracts`:**
+  - strict, versioned Zod schemas for `HarnessTaskSpec` and
+    `MutationResult` (major 1 only; unknown fields rejected), with
+    generated JSON Schemas;
+  - `createHarnessTask`, only for `eligible_for_harness`, with intents,
+    constraints, acceptance criteria and lineage;
+  - `parseMutationResult`, which checks the task, base commit and candidate;
+  - `evaluationCriteria` for I3;
+  - `runFixtureHarness`, which completes or blocks.
+- **Files:** `examples/harness-contract/` (schemas, task, completed and
+  blocked results, README) and `fixtures/harness/` (ISSUES_LOG #27
+  resolved).
+- **CLI `harness task <recommendation-id> <base-commit>`.**
+- Recorded in ADR 0086.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 524 tests passed across 97 suites (all 97 test files; contracts, examples, fixture harness, CLI harness task) |
+| `git diff --check` | Passed |
+
+The tests cover:
+- tasks only from eligible gate decisions, with lineage, intents,
+  constraints and I3 criteria;
+- round-trips of completed and blocked results;
+- rejection of major version 2, unknown fields, foreign results, and
+  completed results without a candidate;
+- example and fixture files that match the contract and the generated
+  schemas;
+- CLI refusal without mode 6, and creation with it.
+
+No runtime or browser code changed, so the e2e suite was not rerun.
+
+### Errors found during the phase
+
+- **A test type error:** a test passed `reconciliation: undefined` under
+  `exactOptionalPropertyTypes`. Typecheck stopped the commit, and the test
+  was fixed.
+- **#39 again:** in the same run, `pnpm test` exited 2 with 95 of 97 suites
+  and no error. The rerun ran all 97.
+
+### Scope notes
+
+- **Deviation:** the contracts are camelCase JSON, not the handoff's
+  snake-case YAML sketches, which the handoff calls conceptual (ADR 0086).
+- Next recommended phase: I9 — External harness integration.

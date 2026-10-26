@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "1.0",
+  "id": "mutation:task:recommendation:clients.create:fix:aaaaaaaaaaaa:example-blocked",
+  "harnessTaskId": "task:recommendation:clients.create:fix:aaaaaaaaaaaa",
+  "recommendationId": "recommendation:clients.create:fix",
+  "repository": {
+    "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "status": "blocked",
+  "changedFiles": [],
+  "implementationSummary": "Blocked: A compliance test requires the editor check to stay owner-only; restoring editor access needs a product decision.",
+  "claimedSemanticChanges": [],
+  "testsAddedOrChanged": [],
+  "assumptions": [],
+  "unresolvedQuestions": [
+    "A compliance test requires the editor check to stay owner-only; restoring editor access needs a product decision."
+  ],
+  "artifacts": [],
+  "harnessMetadata": {
+    "provider": "pathcompiler-fixture",
+    "version": "1.0.0",
+    "runId": "example-blocked"
+  }
+}

@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "harnessTaskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recommendationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "baseCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{7,64}$"
+        },
+        "candidateCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{7,64}$"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pullRequest": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["baseCommit"],
+      "additionalProperties": false
+    },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "partial", "blocked", "failed"]
+    },
+    "changedFiles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "implementationSummary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "claimedSemanticChanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "workflow": {
+            "type": "string",
+            "minLength": 1
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "property": {
+            "type": "string",
+            "minLength": 1
+          },
+          "claimedStatus": {
+            "type": "string",
+            "enum": ["preserved", "changed", "added", "removed"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "testsAddedOrChanged": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unresolvedQuestions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["preview_instructions", "preview_url", "log"]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      }
+    },
+    "harnessMetadata": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        }
+      },
+      "required": ["runId"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "harnessTaskId",
+    "recommendationId",
+    "repository",
+    "status",
+    "changedFiles",
+    "implementationSummary",
+    "claimedSemanticChanges",
+    "testsAddedOrChanged",
+    "assumptions",
+    "unresolvedQuestions",
+    "artifacts",
+    "harnessMetadata"
+  ],
+  "additionalProperties": false
+}

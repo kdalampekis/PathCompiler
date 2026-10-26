@@ -781,7 +781,7 @@ Shared rules:
   versioned), and a fixture harness returning synthetic results.
 - **Acceptance:** round-trip serialization; lineage IDs preserved; unsupported
   major versions rejected; provider-neutral.
-- **Runtime change:** No. **Status:** 🟢 unblocked (I1 ✅, R11 ✅, R8 ✅); **recommended next phase** (§7). Mode 6 only: the contract exists, but nothing emits a task unless the gate allows it.
+- **Runtime change:** No. **Status:** ✅ complete (2026-10-25): `@pathcompiler/harness-contracts`, `examples/harness-contract/`, `fixtures/harness/`, CLI `harness task`, ADR 0086. Tasks are emitted only for `eligible_for_harness`.
 
 #### I3 — Candidate Evaluation (delivers mode 5)
 - **Objective:** Evaluate any candidate commit, whether a human PR or harness
@@ -814,7 +814,7 @@ Shared rules:
   `MutationResult.json` out).
 - **Acceptance:** handoff Integration V0 (handoff §79) works without manual
   format conversion.
-- **Status:** 🔒 blocked.
+- **Status:** 🟢 unblocked (I2 ✅, I3 ✅, IG ✅); **recommended next phase** (§7).
 
 #### I10 — Deployment and experiment adapters
 - ⏸ Deferred (read-only coordination only, after the loop works manually).
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **I2** (next), C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅, I0 ✅, IG ✅, I1 ✅, I4 ✅, I5 ✅, I6 ✅, I7 ✅, I8 ✅ | I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **I9** (next), C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅, I0 ✅, IG ✅, I1 ✅, I4 ✅, I5 ✅, I6 ✅, I7 ✅, I8 ✅, I2 ✅ | — | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,20 +839,22 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: I2 — Harness contract (mode 6 only)
+## 7. Next implementation phase: I9 — External harness integration (mode 6)
 
-I8 is complete (ADR 0085). The improvement loop for modes 4 and 5 runs end
-to end:
+I2 is complete (ADR 0086). Provider-neutral `HarnessTaskSpec` and
+`MutationResult` contracts exist, with schemas, examples, fixtures and a
+fixture harness.
 
-findings → gate → recommend → evaluate (with browser) → experiment →
-outcome → decision → memory.
+I9 comes next. It is the file-based Integration V0 (handoff §79):
+1. export a task;
+2. an external harness runs it;
+3. import its `MutationResult`;
+4. run candidate evaluation on the result's candidate commit, with
+   criteria frozen from the task and the claim checked, never trusted;
+5. link the result into improvement memory.
 
-I2 comes next. It defines the provider-neutral `HarnessTaskSpec` and
-`MutationResult` contracts (JSON Schema plus Zod, versioned, with lineage),
-a fixture harness and `examples/harness-contract/`. Tasks are emitted only
-for gate decisions `eligible_for_harness`, which need mode 6 enabled twice.
-Then I9 (file-based external harness integration), and C6 (alpha
-validation on real repositories).
+After I9, every planned phase except C6 is done. C6 (alpha validation)
+needs real repositories, which is the user's next step.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

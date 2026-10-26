@@ -320,6 +320,9 @@ importers:
       "@pathcompiler/graph-delta":
         specifier: workspace:*
         version: link:../graph-delta
+      "@pathcompiler/harness-contracts":
+        specifier: workspace:*
+        version: link:../harness-contracts
       "@pathcompiler/http-service":
         specifier: workspace:*
         version: link:../http-service
@@ -704,6 +707,28 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/harness-contracts:
+    dependencies:
+      "@pathcompiler/improvement-gate":
+        specifier: workspace:*
+        version: link:../improvement-gate
+      "@pathcompiler/recommendation-engine":
+        specifier: workspace:*
+        version: link:../recommendation-engine
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/config":
+        specifier: workspace:*
+        version: link:../config
+      "@pathcompiler/findings":
+        specifier: workspace:*
+        version: link:../findings
+      "@pathcompiler/semantic-change":
+        specifier: workspace:*
+        version: link:../semantic-change
 
   packages/http-service:
     dependencies:
