@@ -184,5 +184,11 @@ describe("experiment create", () => {
         path.join("out", "reports", "outcomes", outcome as string),
       ]),
     ).rejects.toThrow("decisions are not overwritten");
+
+    // I8: the lifecycle becomes memory with a lesson from the approved decision.
+    expect(
+      await run(["memory", "record", "recommendation:plans.create:improve"]),
+    ).toContain("experiment, outcome, decision adopt (approved); 1 lesson(s).");
+    expect(await run(["memory", "list"])).toContain("lesson (supported)");
   });
 });

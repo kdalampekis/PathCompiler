@@ -781,7 +781,7 @@ Shared rules:
   versioned), and a fixture harness returning synthetic results.
 - **Acceptance:** round-trip serialization; lineage IDs preserved; unsupported
   major versions rejected; provider-neutral.
-- **Runtime change:** No. **Status:** 🔒 blocked.
+- **Runtime change:** No. **Status:** 🟢 unblocked (I1 ✅, R11 ✅, R8 ✅); **recommended next phase** (§7). Mode 6 only: the contract exists, but nothing emits a task unless the gate allows it.
 
 #### I3 — Candidate Evaluation (delivers mode 5)
 - **Objective:** Evaluate any candidate commit, whether a human PR or harness
@@ -807,7 +807,7 @@ Shared rules:
 - **Acceptance:** success criteria fixed before measurement; outcomes improved,
   neutral, worse or inconclusive; failed-hypothesis demo (§253) yields
   ROLLBACK/ITERATE; human approval required.
-- **Runtime change:** No. **Status:** I5 ✅ complete (2026-10-24): `@pathcompiler/experiment-core`, CLI `experiment create`, ADR 0082. I6 ✅ complete (2026-10-24): `@pathcompiler/outcome-analysis`, CLI `experiment measure`, ADR 0083. I7 ✅ complete (2026-10-24): `decideAdoption`, `recordApproval`, CLI `experiment decide/approve/decline`, failed-hypothesis demo yields ROLLBACK, ADR 0084. I8 🟢 unblocked, **recommended next phase** (§7).
+- **Runtime change:** No. **Status:** I5 ✅ complete (2026-10-24): `@pathcompiler/experiment-core`, CLI `experiment create`, ADR 0082. I6 ✅ complete (2026-10-24): `@pathcompiler/outcome-analysis`, CLI `experiment measure`, ADR 0083. I7 ✅ complete (2026-10-24): `decideAdoption`, `recordApproval`, CLI `experiment decide/approve/decline`, failed-hypothesis demo yields ROLLBACK, ADR 0084. I8 ✅ complete (2026-10-25): `@pathcompiler/improvement-memory`, CLI `memory record/list`, history factor in `recommend`, ADR 0085.
 
 #### I9 — External harness integration (mode 6)
 - **Prerequisites:** I2 stable, I3, IG with mode 6 explicitly enabled. File- or API-based (`HarnessTaskSpec.json` in,
@@ -825,7 +825,7 @@ Shared rules:
 
 | Unblocked 🟢 | Blocked 🔒 (first missing prerequisite) | Deferred ⏸ |
 | --- | --- | --- |
-| **I8** (next), I2, C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅, I0 ✅, IG ✅, I1 ✅, I4 ✅, I5 ✅, I6 ✅, I7 ✅ | · I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
+| **I2** (next), C6 (needs repositories). Complete: R0 ✅, R1 ✅, R2 ✅, R3 ✅, R4 ✅, R11 ✅ (reasoning MVP), R8 ✅, I3 ✅ (mode 5), C1 ✅, O0 ✅, O1 ✅, O2 ✅, O3 ✅, O4 ✅, O5 ✅, O6 ✅, O7 ✅, O8 ✅ (mode 3 core), C2 ✅, C3 ✅, R-WI ✅, P0 ✅, C5 ✅, C7 ✅, R5 ✅, R6 ✅, R7 ✅, R9 ✅, R10 ✅, R12 ✅, C8 ✅, O9 ✅, O10 ✅, O11 ✅, O12 ✅, C4 ✅, C9 ✅, P1 ✅, P2 ✅, P3 ✅, P4 ✅, P5 ✅, P-RV ✅, I0 ✅, IG ✅, I1 ✅, I4 ✅, I5 ✅, I6 ✅, I7 ✅, I8 ✅ | I9 (I2, mode 6 enabled) | O13, I10, MDP assistance (§60), information-gain diagnostics (§55), review editor/graph UI (spec §74), hosted multi-tenant control plane, billing, SSO, graph or vector database, CI/CD platform, multiple-candidate harness search, `analysis_backend: external_harness` (enterprise channel-A alternative), autonomous mutation by default (never), hosted scheduled triggers |
 
 ## 6. Parallel lanes
 
@@ -839,17 +839,20 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next implementation phase: I8 — Improvement Memory
+## 7. Next implementation phase: I2 — Harness contract (mode 6 only)
 
-I7 is complete (ADR 0084). Outcomes become adoption decisions that wait for
-human approval. The failed-hypothesis demo yields ROLLBACK.
+I8 is complete (ADR 0085). The improvement loop for modes 4 and 5 runs end
+to end:
 
-I8 comes next. It persists each improvement lifecycle as an
-`ImprovementMemoryRecord`, with lineage from finding to decision and
-reusable lessons. Past outcomes become evidence for future recommendation
-ranking, but one failed experiment is never treated as a universal law, and
-nothing is trained or fine-tuned automatically. Then I2 and I9 (mode 6
-only).
+findings → gate → recommend → evaluate (with browser) → experiment →
+outcome → decision → memory.
+
+I2 comes next. It defines the provider-neutral `HarnessTaskSpec` and
+`MutationResult` contracts (JSON Schema plus Zod, versioned, with lineage),
+a fixture harness and `examples/harness-contract/`. Tasks are emitted only
+for gate decisions `eligible_for_harness`, which need mode 6 enabled twice.
+Then I9 (file-based external harness integration), and C6 (alpha
+validation on real repositories).
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

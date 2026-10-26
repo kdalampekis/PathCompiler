@@ -71,6 +71,7 @@ import {
 import {
   createExperimentSpec,
   ExperimentError,
+  parseExperimentSpec,
 } from "@pathcompiler/experiment-core";
 import {
   deriveFindings,
@@ -119,6 +120,11 @@ import {
   gateFindings,
   type SubjectUsage,
 } from "@pathcompiler/improvement-gate";
+import {
+  buildMemoryRecord,
+  ImprovementMemoryRecordSchema,
+  rankWithMemory,
+} from "@pathcompiler/improvement-memory";
 import { serveStdio } from "@pathcompiler/mcp-server";
 import {
   describeModelRequest,
@@ -301,6 +307,8 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler experiment measure <experiment.json> [evaluation.json] [--json] [--out <directory>]
        pathcompiler experiment decide <outcome.json> [--json] [--out <directory>]
        pathcompiler experiment approve|decline <decision.json> [--by <name>] [--reason <text>]
+       pathcompiler memory record <recommendation-id> [--json] [--out <directory>]
+       pathcompiler memory list [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
        pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -523,6 +531,11 @@ the candidate passed), rollback (worse; the hypothesis is rejected), iterate (ne
 (the candidate failed), extend_experiment (too few sessions or overlapping intervals) or
 inconclusive, in decisions/<experiment>.json, pending approval. experiment approve and decline
 record the human decision (--by, --reason) once; nothing is deployed or rolled back.
+memory record links a recommendation's lifecycle (its experiment, outcome and decision under
+the output directory) into memory/<recommendation>.json, with lessons only from approved
+decisions. recommend then weighs those lessons: an earlier rejected hypothesis for the same
+subject and category halves the priority (one observation, never a rule). memory list shows
+the records. Nothing is trained.
 review queue orders pending candidates and proposals by uncertainty × business impact × usage
 × change severity, each factor explained; --impact maps workflow IDs or domains to (0, 1], and
 usage comes from stored events (guide runs) when present. Missing inputs are neutral. review
@@ -723,6 +736,7 @@ export async function runCli(
     return runRecommend(positionals, values, cwd);
   if (positionals[0] === "experiment")
     return runExperiment(positionals, values, cwd);
+  if (positionals[0] === "memory") return runMemory(positionals, values, cwd);
   if (positionals[0] === "gate")
     return runGate(
       positionals,
@@ -4688,7 +4702,7 @@ async function runRecommend(
       );
     }
   }
-  const report = recommend({
+  const generated = recommend({
     findings,
     gate,
     approvedWorkflows: (await readApproved(output)).map(
@@ -4700,6 +4714,16 @@ async function runRecommend(
       description,
     })),
   });
+  // I8: earlier lessons for the same subject and category weigh on priority.
+  const memory = (
+    await readJsonRecords(path.join(output, "memory"), (value) =>
+      ImprovementMemoryRecordSchema.parse(value),
+    )
+  ).map((item) => item.record);
+  const report = {
+    ...generated,
+    recommendations: rankWithMemory(generated.recommendations, memory),
+  };
   const file = "reports/recommendations.json";
   await writeArtifacts(output, [
     [file, `${JSON.stringify(report, null, 2)}\n`],
@@ -4907,4 +4931,127 @@ async function runApproveDecision(
   });
   await writeFile(file, `${JSON.stringify(decided, null, 2)}\n`);
   return `${verb === "approve" ? "Approved" : "Declined"} ${decided.decision} for ${decided.experimentId} by ${decided.approval.status === "pending" ? "" : decided.approval.decidedBy}. Carry it out in your deployment or experiment platform; PathCompiler does not.\n`;
+}
+
+/** Parsed `*.json` records in a directory; none when it does not exist. */
+async function readJsonRecords<T>(
+  directory: string,
+  parse: (value: unknown) => T,
+): Promise<{ name: string; record: T }[]> {
+  let names: string[];
+  try {
+    names = (await readdir(directory, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const records: { name: string; record: T }[] = [];
+  for (const name of names) {
+    const file = path.join(directory, name);
+    try {
+      records.push({
+        name,
+        record: parse(JSON.parse(await readFile(file, "utf8"))),
+      });
+    } catch (error) {
+      throw new Error(`Cannot read ${file}. Fix or move it.`, { cause: error });
+    }
+  }
+  return records;
+}
+
+async function runMemory(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const directory = path.join(output, "memory");
+  if (positionals[1] === "list" && positionals.length === 2) {
+    const records = (
+      await readJsonRecords(directory, (value) =>
+        ImprovementMemoryRecordSchema.parse(value),
+      )
+    ).map((item) => item.record);
+    if (values.json) return `${JSON.stringify(records, null, 2)}\n`;
+    return `${[
+      `Improvement memory: ${records.length} records.`,
+      ...records.map(
+        (record) =>
+          `  ${record.recommendationId}: ${record.decision ?? "no decision"} (${record.approval ?? "open"})${record.reusableLessons.map((lesson) => `\n    lesson (${lesson.verdict}): ${lesson.statement}`).join("")}`,
+      ),
+    ].join("\n")}\n`;
+  }
+  const recommendationId = positionals[2];
+  if (
+    positionals[1] !== "record" ||
+    !recommendationId ||
+    positionals.length !== 3
+  )
+    throw new Error(
+      "Expected: pathcompiler memory record <recommendation-id> or memory list. Use --help for options.",
+    );
+  const recommendations = await readOptional(
+    path.join(output, "reports", "recommendations.json"),
+  );
+  const recommendation = recommendations
+    ? (
+        JSON.parse(recommendations) as {
+          recommendations?: ImprovementRecommendation[];
+        }
+      ).recommendations?.find((item) => item.id === recommendationId)
+    : undefined;
+  if (!recommendation)
+    throw new Error(
+      `No recommendation ${recommendationId} in ${path.join(output, "reports", "recommendations.json")}. Run pathcompiler recommend first.`,
+    );
+  const experiments = (
+    await readJsonRecords(path.join(output, "experiments"), (value) =>
+      parseExperimentSpec(value),
+    )
+  )
+    .map((item) => item.record)
+    .filter((item) => item.recommendationId === recommendationId)
+    .sort((a, b) => (a.frozenAt < b.frozenAt ? 1 : -1));
+  const experiment = experiments[0];
+  const forExperiment = async (folder: string) =>
+    experiment
+      ? await readOptional(
+          path.join(
+            output,
+            folder,
+            `${encodeURIComponent(experiment.id)}.json`,
+          ),
+        )
+      : undefined;
+  const outcome = await forExperiment(path.join("reports", "outcomes"));
+  const decision = await forExperiment("decisions");
+  const record = buildMemoryRecord({
+    recommendation,
+    ...(experiment ? { experiment } : {}),
+    ...(outcome ? { outcome: JSON.parse(outcome) as OutcomeAssessment } : {}),
+    ...(decision ? { decision: JSON.parse(decision) as AdoptionDecision } : {}),
+  });
+  const file = `memory/${encodeURIComponent(recommendationId)}.json`;
+  await writeArtifacts(output, [
+    [file, `${JSON.stringify(record, null, 2)}\n`],
+  ]);
+  if (values.json) return `${JSON.stringify(record, null, 2)}\n`;
+  return `${[
+    `Recorded ${recommendationId}: ${
+      [
+        experiment ? "experiment" : undefined,
+        outcome ? "outcome" : undefined,
+        decision
+          ? `decision ${record.decision} (${record.approval})`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join(", ") || "recommendation only"
+    }; ${record.reusableLessons.length} lesson(s).`,
+    `Memory: ${path.join(output, file)}`,
+  ].join("\n")}\n`;
 }

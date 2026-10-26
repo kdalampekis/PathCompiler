@@ -38,6 +38,7 @@
     "@pathcompiler/http-service": "workspace:*",
     "@pathcompiler/impact-analysis": "workspace:*",
     "@pathcompiler/improvement-gate": "workspace:*",
+    "@pathcompiler/improvement-memory": "workspace:*",
     "@pathcompiler/mcp-server": "workspace:*",
     "@pathcompiler/model-provider": "workspace:*",
     "@pathcompiler/model-provider-anthropic": "workspace:*",

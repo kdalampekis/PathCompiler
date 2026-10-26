@@ -329,6 +329,9 @@ importers:
       "@pathcompiler/improvement-gate":
         specifier: workspace:*
         version: link:../improvement-gate
+      "@pathcompiler/improvement-memory":
+        specifier: workspace:*
+        version: link:../improvement-memory
       "@pathcompiler/mcp-server":
         specifier: workspace:*
         version: link:../mcp-server
@@ -794,6 +797,28 @@ importers:
       "@pathcompiler/semantic-change":
         specifier: workspace:*
         version: link:../semantic-change
+
+  packages/improvement-memory:
+    dependencies:
+      "@pathcompiler/experiment-core":
+        specifier: workspace:*
+        version: link:../experiment-core
+      "@pathcompiler/outcome-analysis":
+        specifier: workspace:*
+        version: link:../outcome-analysis
+      "@pathcompiler/recommendation-engine":
+        specifier: workspace:*
+        version: link:../recommendation-engine
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/candidate-evaluator":
+        specifier: workspace:*
+        version: link:../candidate-evaluator
+      "@pathcompiler/observability-core":
+        specifier: workspace:*
+        version: link:../observability-core
 
   packages/mcp-server:
     dependencies:

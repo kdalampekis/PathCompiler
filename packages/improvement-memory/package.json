@@ -1,0 +1,29 @@
+{
+  "name": "@pathcompiler/improvement-memory",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pathcompiler/experiment-core": "workspace:*",
+    "@pathcompiler/outcome-analysis": "workspace:*",
+    "@pathcompiler/recommendation-engine": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@pathcompiler/candidate-evaluator": "workspace:*",
+    "@pathcompiler/observability-core": "workspace:*"
+  }
+}
