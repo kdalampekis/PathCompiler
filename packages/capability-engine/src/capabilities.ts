@@ -357,18 +357,47 @@ export function discoverCapabilities(
       for (const nodeId of item.path) roots.add(nodeId);
     }
     for (const handler of directHandlers) roots.add(handler);
-    const roleIds: string[] = [];
-    for (const edge of snapshot.edges)
-      if (edge.type === "REQUIRES_PERMISSION" && roots.has(edge.source)) {
-        const role = nodes.get(edge.target);
+    // Roles from the server handlers of the capability's endpoints (the
+    // guard that decides) win over role checks anywhere in the component,
+    // which also cover the component's other actions (ISSUES_LOG #22).
+    const isRole = (id: string) => {
+      const role = nodes.get(id);
+      return role?.type === "Permission" && typeof role.data?.role === "string";
+    };
+    const handlerRoles = new Set<string>();
+    for (const api of apiEvidence.keys()) {
+      const handlers = snapshot.edges
+        .filter((edge) => edge.type === "HANDLES" && edge.target === api)
+        .map((edge) => edge.source);
+      const reached = new Set(handlers);
+      for (let hop = 0; hop < 2; hop += 1)
+        for (const edge of snapshot.edges)
+          if (edge.type === "CALLS" && reached.has(edge.source))
+            reached.add(edge.target);
+      for (const edge of snapshot.edges)
         if (
-          role?.type === "Permission" &&
-          typeof role.data?.role === "string"
-        ) {
-          roots.add(role.id);
-          roleIds.push(role.id);
-        }
+          edge.type === "REQUIRES_PERMISSION" &&
+          reached.has(edge.source) &&
+          isRole(edge.target)
+        )
+          handlerRoles.add(edge.target);
+    }
+    const roleIds: string[] = [];
+    if (handlerRoles.size > 0)
+      for (const id of handlerRoles) {
+        roots.add(id);
+        roleIds.push(id);
       }
+    else
+      for (const edge of snapshot.edges)
+        if (
+          edge.type === "REQUIRES_PERMISSION" &&
+          roots.has(edge.source) &&
+          isRole(edge.target)
+        ) {
+          roots.add(edge.target);
+          roleIds.push(edge.target);
+        }
     const sourceNodeIds = unique(roots);
     const packet = collectGraphEvidence(source, sourceNodeIds);
     const inferences = seeds

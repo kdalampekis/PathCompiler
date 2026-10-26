@@ -122,7 +122,20 @@ describe("workflow candidate discovery", () => {
         testComparison: "not-run",
         browser: "not-run",
       });
-      expect(candidate.workflow.roles).toBeUndefined();
+      // Applicability (#21): roles from the endpoint's server guard, and the
+      // feature flags the handler checks.
+      expect(candidate.workflow.roles).toEqual(
+        candidate.workflow.id === "plans.archive"
+          ? ["admin"]
+          : ["admin", "editor"],
+      );
+      expect(candidate.workflow.preconditions ?? []).toEqual(
+        candidate.workflow.id === "plans.archive"
+          ? [{ type: "feature_flag", flag: "planArchive", enabled: true }]
+          : candidate.workflow.id === "plans.change_structure"
+            ? [{ type: "feature_flag", flag: "planStructure", enabled: true }]
+            : [],
+      );
       expect(candidate.workflow.repository.commit).toBe(
         project.repository.commit,
       );

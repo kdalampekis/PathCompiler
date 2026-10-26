@@ -525,6 +525,32 @@ export function discoverWorkflows(
         eventRef(trace, finish.event, commit),
       ];
       const packet = collectGraphEvidence(inputGraph, [...roots]);
+      // Applicability (#21): the capability's roles, and flags the server
+      // handlers of its endpoints check.
+      const snapshotEdges = inputGraph.toJSON().edges;
+      const handlers = new Set(
+        snapshotEdges
+          .filter(
+            (edge) =>
+              edge.type === "HANDLES" &&
+              capability.apiEvidence.some(
+                (item) => item.nodeId === edge.target,
+              ),
+          )
+          .map((edge) => edge.source),
+      );
+      const flags = [
+        ...new Set(
+          snapshotEdges
+            .filter(
+              (edge) =>
+                edge.type === "GUARDED_BY_FLAG" &&
+                handlers.has(edge.source) &&
+                edge.target.startsWith("flag:"),
+            )
+            .map((edge) => edge.target.slice("flag:".length)),
+        ),
+      ].sort();
       const workflow = WorkflowV1Schema.parse({
         schemaVersion: 1,
         id: capability.id,
@@ -537,7 +563,17 @@ export function discoverWorkflows(
             ? { qualifiers: [capability.qualifier] }
             : {}),
         },
+        ...(capability.roles.length > 0 ? { roles: capability.roles } : {}),
         entrypoints: [{ route }],
+        ...(flags.length > 0
+          ? {
+              preconditions: flags.map((flag) => ({
+                type: "feature_flag" as const,
+                flag,
+                enabled: true,
+              })),
+            }
+          : {}),
         steps,
         terminal: finish.condition,
         provenance: {

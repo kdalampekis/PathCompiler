@@ -703,6 +703,10 @@ The context is the full `RuntimeContext`: `route`, `locale`, `role`,
 change resolution yet. See ADR 0043 for the migration from the earlier shapes.
 Role, permission and feature-flag requirements exclude workflows only when the
 caller supplies that context. The current route breaks ties but never excludes.
+Discovered workflows carry the roles and feature flags their server handlers
+check. A guide checks flag preconditions strictly: pass the app's
+`featureFlags` in the guide runtime's `context`, or a flag-guarded guide
+stops with `precondition-unmet`.
 `confidence` is the share of action/entity/qualifier signals found, not a
 probability. No embedding adapter is included.
 
@@ -1377,7 +1381,10 @@ Each cause is a claim with evidence for and against it:
 - **from the failure:** its stage and code;
 - **from the source:** whether the target still exists;
 - **from the formal model:** the failing target's role and flag guards,
-  evaluated against the run's context.
+  evaluated against the run's context. With `--base <approved-commit>`, it
+also diffs the API endpoints up to the candidate, which separates "backend
+changed" from "formal model wrong" when the expected outcome never
+appears.
 
 P0 fusion assesses each claim. A policy refusal supports no cause. The
 result (`reports/diagnosis.json`) is a hypothesis for a developer. See

@@ -16,15 +16,51 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import { parseCandidateYaml } from "@pathcompiler/workflow-discovery";
 import { parseApprovedWorkflowYaml } from "@pathcompiler/workflow-review";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { runCli } from "../src/index.js";
 
 const exec = promisify(execFile);
 const temporary: string[] = [];
 const binary = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
-const fixture = fileURLToPath(
+const source = fileURLToPath(
   new URL("../../../fixtures/next-demo/", import.meta.url),
 );
+// Approval needs a clean, committed repository; a committed copy of the
+// fixture keeps these tests independent of uncommitted fixture edits (#19).
+let fixture: string;
+let fixtureRoot: string;
+beforeAll(async () => {
+  fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-fixture-"));
+  fixture = path.join(fixtureRoot, "next-demo");
+  const tracked = (
+    await exec("git", ["-C", source, "ls-files", "-z", "--", "."])
+  ).stdout
+    .split("\0")
+    .filter(Boolean);
+  for (const file of tracked) {
+    await mkdir(path.dirname(path.join(fixture, file)), { recursive: true });
+    await writeFile(
+      path.join(fixture, file),
+      await readFile(path.join(source, file)),
+    );
+  }
+  const git = (...args: string[]) =>
+    exec("git", ["-C", fixture, ...args], {
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Test",
+        GIT_AUTHOR_EMAIL: "test@example.test",
+        GIT_COMMITTER_NAME: "Test",
+        GIT_COMMITTER_EMAIL: "test@example.test",
+      },
+    });
+  await git("init", "--quiet");
+  await git("add", ".");
+  await git("commit", "--quiet", "-m", "fixture");
+});
+afterAll(async () => {
+  if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
+});
 afterEach(async () => {
   await Promise.all(
     temporary

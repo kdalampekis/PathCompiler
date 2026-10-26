@@ -247,7 +247,10 @@ export function createHarnessTask(input: {
     },
     objective: {
       summary: recommendation.hypothesis.statement,
-      target: recommendation.target,
+      target: {
+        subject: recommendation.target.subject,
+        goals: recommendation.target.goals,
+      },
       desiredSemanticChange: intents,
     },
     rationale: {
@@ -271,9 +274,16 @@ export function createHarnessTask(input: {
     acceptanceCriteria: recommendation.acceptanceCriteria,
     relevantContext: {
       workflowIds: [
-        ...new Set([recommendation.target.subject, ...protectedWorkflows]),
+        ...new Set([
+          ...(recommendation.target.capabilities ?? [
+            recommendation.target.subject,
+          ]),
+          ...protectedWorkflows,
+        ]),
       ].sort(),
-      capabilityIds: [recommendation.target.subject],
+      capabilityIds: recommendation.target.capabilities ?? [
+        recommendation.target.subject,
+      ],
       semanticTargets: [],
     },
     requestedArtifacts: [

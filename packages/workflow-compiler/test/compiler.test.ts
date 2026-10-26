@@ -79,7 +79,7 @@ describe("workflow compiler", () => {
       aliases: [],
       action: "create",
       entity: "client",
-      roles: [],
+      roles: ["admin", "editor"],
       routes: ["/clients"],
     });
     const runtime = output.runtimeManifest.workflows[0];

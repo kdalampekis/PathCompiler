@@ -194,3 +194,57 @@ describe("finding model", () => {
     });
   });
 });
+
+describe("shared root causes (#48)", () => {
+  it("merges capabilities whose regressions trace to the same changed file", () => {
+    const change = (
+      goal: string,
+      capabilityId: string,
+      changedAt: string[],
+    ) => ({
+      goal,
+      capabilityId,
+      context: { role: "editor" },
+      changedAt,
+    });
+    const report = deriveFindings(
+      {
+        semantic: {
+          type: "semantic_change_report",
+          commitRange: { base: "a".repeat(40), head: "b".repeat(40) },
+          removedReachability: [
+            change("clients.created", "clients.create", ["lib/session.ts"]),
+            change("plans.created", "plans.create", ["lib/session.ts"]),
+            change("plans.archived", "plans.archive", ["components/plans.tsx"]),
+          ],
+          newReachability: [],
+          affectedWorkflows: [],
+        } as unknown as NonNullable<
+          Parameters<typeof deriveFindings>[0]["semantic"]
+        >,
+      },
+      { detectedAt },
+    );
+    expect(
+      report.opportunities.map((item) => [
+        item.id,
+        item.subject,
+        item.subjects,
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        [
+          "opportunity:clients.create+plans.create",
+          "clients.create",
+          ["clients.create", "plans.create"],
+        ],
+        ["opportunity:plans.archive", "plans.archive", ["plans.archive"]],
+      ]),
+    );
+    expect(report.findings[0]?.rootCause).toBeDefined();
+    const merged = report.opportunities.find(
+      (item) => item.subjects.length > 1,
+    );
+    expect(merged?.priority.rationale).toContain("one shared root cause");
+  });
+});

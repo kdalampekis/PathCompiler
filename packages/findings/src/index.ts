@@ -51,6 +51,8 @@ export type ProductFinding = {
   /** Commit or model the evidence was computed at. */
   modelVersion: string;
   release?: string;
+  /** Files the R11 root cause traces to; findings sharing one share a cause. */
+  rootCause?: string[];
 };
 export type PriorityComponent = { name: string; value: number; reason: string };
 export type PriorityAssessment = {
@@ -61,8 +63,10 @@ export type PriorityAssessment = {
 };
 export type ImprovementOpportunity = {
   id: string;
-  /** The workflow, capability or goal the findings share. */
+  /** The workflow, capability or goal the findings share (the first of `subjects`). */
   subject: string;
+  /** Every capability the opportunity covers; several when one root cause affects them all. */
+  subjects: string[];
   findingIds: string[];
   kinds: FindingKind[];
   priority: PriorityAssessment;
@@ -143,6 +147,7 @@ export function deriveFindings(
     severity: FindingSeverity;
     items: EvidenceItem[];
     sources: FindingSource[];
+    rootCause: Set<string>;
   };
   const drafts = new Map<string, Draft>();
   const add = (
@@ -152,6 +157,7 @@ export function deriveFindings(
     summary: string,
     item: Omit<EvidenceItem, "id" | "current" | "stance"> & { id: string },
     source: FindingSource,
+    rootCause: readonly string[] = [],
   ) => {
     const id = `finding:${kind}:${target.kind}:${target.id}${target.context ? `@${target.context}` : ""}`;
     const draft = drafts.get(id) ?? {
@@ -161,7 +167,9 @@ export function deriveFindings(
       severity,
       items: [],
       sources: [],
+      rootCause: new Set<string>(),
     };
+    for (const file of rootCause) draft.rootCause.add(file);
     if (!draft.summaries.includes(summary)) draft.summaries.push(summary);
     if (
       SEVERITY_ORDER.indexOf(severity) > SEVERITY_ORDER.indexOf(draft.severity)
@@ -201,6 +209,7 @@ export function deriveFindings(
           summary: `Bounded SMT: reachable before, unreachable after, for ${describe(change.context)}.`,
         },
         { report, entry: `removedReachability[${index}]` },
+        change.changedAt,
       );
     });
     semantic.newReachability.forEach((change, index) => {
@@ -376,6 +385,9 @@ export function deriveFindings(
       detectedAt,
       modelVersion,
       ...(options.release ? { release: options.release } : {}),
+      ...(draft.rootCause.size
+        ? { rootCause: [...draft.rootCause].sort(compare) }
+        : {}),
     }))
     .sort((a, b) => compare(a.id, b.id));
 
@@ -395,14 +407,39 @@ export function deriveFindings(
     finding.target.kind === "goal"
       ? (goalCapabilities[finding.target.id] ?? finding.target.id)
       : finding.target.id;
+  // Subjects whose findings trace to the same root-cause file are one
+  // opportunity: fixing the cause fixes them together (ISSUES_LOG #48).
+  const parent = new Map<string, string>();
+  const root = (subject: string): string => {
+    const next = parent.get(subject) ?? subject;
+    return next === subject ? subject : root(next);
+  };
+  const byFile = new Map<string, string>();
+  for (const finding of findings) {
+    const subject = subjectOf(finding);
+    if (!parent.has(subject)) parent.set(subject, subject);
+    for (const file of finding.rootCause ?? []) {
+      const other = byFile.get(file);
+      if (other === undefined) byFile.set(file, subject);
+      else {
+        const [a, b] = [root(other), root(subject)].sort(compare) as [
+          string,
+          string,
+        ];
+        if (a !== b) parent.set(b, a);
+      }
+    }
+  }
   const groups = new Map<string, ProductFinding[]>();
-  for (const finding of findings)
-    groups.set(subjectOf(finding), [
-      ...(groups.get(subjectOf(finding)) ?? []),
-      finding,
-    ]);
+  for (const finding of findings) {
+    const key = root(subjectOf(finding));
+    groups.set(key, [...(groups.get(key) ?? []), finding]);
+  }
   const opportunities = [...groups]
-    .map(([subject, members]): ImprovementOpportunity => {
+    .map(([, members]): ImprovementOpportunity => {
+      const subjects = [...new Set(members.map(subjectOf))].sort(compare);
+      const subject = subjects[0] as string;
+      const shared = subjects.length > 1;
       const severity = members.reduce<FindingSeverity>(
         (worst, item) =>
           SEVERITY_ORDER.indexOf(item.severity) > SEVERITY_ORDER.indexOf(worst)
@@ -436,7 +473,7 @@ export function deriveFindings(
         {
           name: "corroboration",
           value: Math.min(1, 0.5 + 0.25 * (members.length - 1)),
-          reason: `${members.length} finding(s) about ${subject}.`,
+          reason: `${members.length} finding(s) about ${subjects.join(", ")}.`,
         },
       ];
       const score =
@@ -447,15 +484,16 @@ export function deriveFindings(
         compare,
       );
       return {
-        id: `opportunity:${subject}`,
+        id: `opportunity:${subjects.join("+")}`,
         subject,
+        subjects,
         findingIds: members.map((item) => item.id),
         kinds,
         priority: {
           score,
           scoreMeaning: "ordering-not-probability",
           components,
-          rationale: `${kinds.join(", ")} for ${subject}: severity × confidence × regression × corroboration.`,
+          rationale: `${kinds.join(", ")} for ${subjects.join(", ")}${shared ? " (one shared root cause)" : ""}: severity × confidence × regression × corroboration.`,
         },
       };
     })

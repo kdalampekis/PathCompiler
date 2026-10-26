@@ -324,7 +324,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler harness import <mutation-result.json> [directory] [--tests <json-file>] [--browser <json-file>] [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
-       pathcompiler diagnose <browser-report.json> [directory] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler diagnose <browser-report.json> [directory] [--base <commit>] [--context <name=value> ...] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler analyze [directory] [--model-fixtures <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler eval capabilities|workflow-discovery|resolver|impact|reasoning [directory] [--compare] [--json] [--out <directory>]
        pathcompiler evaluate <base> <candidate> [directory] [--criteria <json-file>] [--tests <json-file>] [--browser <json-file>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -570,7 +570,9 @@ diagnose ranks the likely causes of a failed browser verification report (C8): s
 target, permission mismatch, feature flag mismatch, backend changed, formal model wrong or
 network issue. It fuses the failure's stage and code, whether the target is still in the
 directory's source, and the formal model's role and flag guards on the failing target
-evaluated against --context (the run's role and flags), in reports/diagnosis.json.
+evaluated against --context (the run's role and flags), in reports/diagnosis.json. --base
+<commit> (the approved commit) diffs the API endpoints up to the report's candidate commit (or
+HEAD), which separates "backend changed" from "formal model wrong" for outcome failures.
 Rankings are hypotheses for a developer, never verdicts.
 No repository code is executed. Only analyze with a configured model_provider sends anything
 to a model, and never file contents; nothing else is sent to a network service.
@@ -616,6 +618,7 @@ const CLI_OPTIONS = {
   commits: { type: "string" },
   "model-fixtures": { type: "string" },
   "at-least": { type: "string" },
+  base: { type: "string" },
   "allow-origin": { type: "string", multiple: true },
   browser: { type: "string" },
   impact: { type: "string" },
@@ -755,6 +758,8 @@ export async function runCli(
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (values["model-fixtures"] !== undefined && positionals[0] !== "analyze")
     throw new Error("--model-fixtures is only supported by analyze.");
+  if (values.base !== undefined && positionals[0] !== "diagnose")
+    throw new Error("--base is only supported by diagnose.");
   if (values.impact !== undefined && positionals[0] !== "review")
     throw new Error("--impact is only supported by review queue.");
   if (positionals[0] === "review") return runReview(positionals, values, cwd);
@@ -4421,11 +4426,32 @@ async function runDiagnose(
         typeof entry[1] === "string" || typeof entry[1] === "boolean",
     ),
   );
+  let changedEndpoints: string[] | undefined;
+  if (values.base !== undefined) {
+    const candidate =
+      (report as { candidateCommit?: string | null }).candidateCommit ?? "HEAD";
+    const { summary } = (
+      await analyzeCommitRangeDetailed({
+        directory: path.resolve(cwd, directory ?? "."),
+        base: values.base,
+        head: candidate,
+        exclude: values.exclude ?? [],
+      })
+    ).delta;
+    changedEndpoints = [
+      ...new Set([
+        ...summary.apis.added,
+        ...summary.apis.removed,
+        ...summary.apis.changed,
+      ]),
+    ].sort();
+  }
   const diagnosis = diagnoseBrowserFailure({
     report: report as Parameters<typeof diagnoseBrowserFailure>[0]["report"],
     model,
     sourceTargets,
     ...(values.context ? { context } : {}),
+    ...(changedEndpoints ? { changedEndpoints } : {}),
   });
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   const file = "reports/diagnosis.json";

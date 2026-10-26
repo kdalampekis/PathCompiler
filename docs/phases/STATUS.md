@@ -4914,3 +4914,28 @@ clear fix are being fixed and verified one by one.
 | #41 Bound labels | P5 bounds are labeled "from per-transition 95% intervals" everywhere | CLI test on the new wording |
 
 Checks for the batch: lint and typecheck passed; `pnpm test` passed 528 tests across 98 suites (all 98 test files).
+
+## Issue fixes after the phase run — batch 2 (2026-10-25)
+
+| Issue | Fix | Verified by |
+| --- | --- | --- |
+| #19 Dirty fixture breaks approval tests | The approving CLI tests and the custom-assistant example approve from a committed temporary git copy of the fixture | All 27 tests pass with a deliberately dirty fixture (the edit was then reverted) |
+| #22 Component-level roles | Roles come from the endpoint handlers' permission checks, with component-level checks as the fallback; Archive Plan lists `admin` only | Capability tests; graph golden (one fewer evidence edge) |
+| #21 Baseline applicability | Baseline candidates carry the capability roles and the handlers' feature flags as preconditions | `eval workflow-discovery`: baseline applicability 0 → 1; discovery, compiler and golden updates reviewed |
+| #38 Diagnose without endpoint changes | `diagnose --base <commit>` diffs endpoints up to the candidate | New CLI test on real commits: copy-only change gives formal-model-wrong, moved endpoint gives backend-changed |
+| #48 Shared root causes | Findings keep R11 root-cause files, and opportunities sharing one merge (`subjects`); recommendations, harness tasks and protected workflows cover every merged capability | Findings unit test, plus an Integration V0 test where the editor-to-owner rename (5 capabilities) gives one task whose revert evaluates PASS |
+
+Checks for the batch:
+- lint and typecheck passed;
+- `pnpm test` passed 531 tests across 98 suites (all 98 test files);
+- `pnpm test:e2e` passed 50 Chromium tests.
+
+**Errors found while fixing:**
+- **The reference demo's guide test failed.** Change Plan Structure now
+  carries a `planStructure` flag precondition, and the test started the
+  guide without the app's feature flags, so it stopped with
+  `precondition-unmet`. The test now passes the fixture's flags as the
+  guide context, which is the documented contract (README, RuntimeContext).
+  Apps must pass `featureFlags` for flag-guarded guides.
+- **A test type error** (`exactOptionalPropertyTypes`) in the new findings
+  test was fixed.

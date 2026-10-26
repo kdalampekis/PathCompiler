@@ -176,7 +176,11 @@ describe("improvement memory", () => {
     const other = {
       ...next,
       id: "recommendation:clients.create:improve",
-      target: { subject: "clients.create", goals: [] },
+      target: {
+        subject: "clients.create",
+        goals: [],
+        capabilities: ["clients.create"],
+      },
     };
     const ranked = rankWithMemory([next, other], memory);
     expect(ranked.map((item) => [item.id, item.priority.score])).toEqual([

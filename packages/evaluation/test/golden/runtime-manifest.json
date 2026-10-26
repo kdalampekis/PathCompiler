@@ -140,7 +140,13 @@
           "route": "/plans"
         }
       ],
-      "preconditions": [],
+      "preconditions": [
+        {
+          "type": "feature_flag",
+          "flag": "planArchive",
+          "enabled": true
+        }
+      ],
       "steps": [
         {
           "id": "step.1",
@@ -176,7 +182,13 @@
           "route": "/plans"
         }
       ],
-      "preconditions": [],
+      "preconditions": [
+        {
+          "type": "feature_flag",
+          "flag": "planStructure",
+          "enabled": true
+        }
+      ],
       "steps": [
         {
           "id": "step.1",

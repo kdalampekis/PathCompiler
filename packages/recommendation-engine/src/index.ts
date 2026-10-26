@@ -62,7 +62,8 @@ export type ImprovementRecommendation = {
   findingIds: string[];
   opportunityId: string;
   category: RecommendationCategory;
-  target: { subject: string; goals: string[] };
+  /** `capabilities` lists every capability one shared root cause affects. */
+  target: { subject: string; goals: string[]; capabilities: string[] };
   problem: {
     summary: string;
     classification: FindingKind[];
@@ -135,6 +136,7 @@ export function recommend(input: {
       ...new Set(members.flatMap((item) => goalOf(item.target))),
     ].sort(compare);
     const subject = opportunity.subject;
+    const capabilities = opportunity.subjects ?? [subject];
     const regression =
       kinds.has("release_regression") || kinds.has("permission_regression");
     // Lost versus gained access: R11 evidence item IDs say which.
@@ -194,7 +196,7 @@ export function recommend(input: {
         ),
       ];
       hypothesis = {
-        statement: `Restoring the behavior ${subject} had before the change resolves the regression${gained.length ? ", unless the new access was intended (confirm first)" : ""}.`,
+        statement: `Restoring the behavior ${capabilities.join(", ")} had before the change resolves the regression${capabilities.length > 1 ? " (one shared root cause)" : ""}${gained.length ? ", unless the new access was intended (confirm first)" : ""}.`,
         mechanism:
           "The regression traces to a specific change (R11 root cause or a removed element); reverting or correcting it restores the previous reachability.",
         expectedEffect: desired,
@@ -285,7 +287,7 @@ export function recommend(input: {
         property,
       })),
       ...(input.approvedWorkflows ?? [])
-        .filter((workflowId) => workflowId !== subject)
+        .filter((workflowId) => !capabilities.includes(workflowId))
         .sort(compare)
         .map((workflowId) => ({
           kind: "approved-workflow" as const,
@@ -297,8 +299,9 @@ export function recommend(input: {
       required.push({ kind: "property-holds", propertyId: property.id });
     for (const workflowId of input.approvedWorkflows ?? [])
       required.push({ kind: "workflow-valid", workflowId });
-    if ((input.approvedWorkflows ?? []).includes(subject))
-      required.push({ kind: "browser-verified", workflowId: subject });
+    for (const capability of capabilities)
+      if ((input.approvedWorkflows ?? []).includes(capability))
+        required.push({ kind: "browser-verified", workflowId: capability });
     const strongest = members.reduce(
       (best, item) =>
         item.confidence.confidence.score > best.score
@@ -314,7 +317,7 @@ export function recommend(input: {
       findingIds: members.map((item) => item.id),
       opportunityId: opportunity.id,
       category,
-      target: { subject, goals },
+      target: { subject, goals, capabilities },
       problem: {
         summary: members.map((item) => item.summary).join(" "),
         classification: [...kinds].sort(compare),

@@ -66,6 +66,9 @@ async function guide(page: Page, workflow: RuntimeWorkflow) {
   await page.evaluate((input) => {
     const runtime = window.PathCompilerRuntime.createGuideRuntime({
       environment: window.PathCompilerRuntime.createDomEnvironment(),
+      // The app's runtime context: discovered workflows carry feature-flag
+      // preconditions, as the fixture's default session sets them.
+      context: { featureFlags: { planStructure: true, planArchive: false } },
       targetTimeoutMs: 500,
     });
     window.guide = runtime;

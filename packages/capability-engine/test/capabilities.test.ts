@@ -57,9 +57,10 @@ describe("capability discovery", () => {
     for (const capability of report.capabilities) {
       expect(capability).toMatchObject({
         status: "candidate",
-        // Component-level role checks: Archive Plan's admin-only guard lives
-        // in its API handler, so the heuristic lists both (not authoritative).
-        roles: ["admin", "editor"],
+        // Roles come from each endpoint's server guard: Archive Plan's
+        // handler requires admin; the others require editor (or admin).
+        roles:
+          capability.id === "plans.archive" ? ["admin"] : ["admin", "editor"],
         rolesAreAuthoritative: false,
         reviewRequired: true,
         confidenceMeaning: "rule-strength-not-probability",

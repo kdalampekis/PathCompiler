@@ -102,7 +102,10 @@ export function buildMemoryRecord(input: {
     schemaVersion: 1,
     kind: "improvement-memory",
     id: `memory:${recommendation.id}`,
-    target: recommendation.target,
+    target: {
+      subject: recommendation.target.subject,
+      goals: recommendation.target.goals,
+    },
     category: recommendation.category,
     findingIds: recommendation.findingIds,
     recommendationId: recommendation.id,

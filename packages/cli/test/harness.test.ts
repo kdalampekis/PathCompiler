@@ -231,4 +231,92 @@ describe("external harness integration (Integration V0)", () => {
       await readdir(path.join(cwd, "out", "harness", "results")),
     ).toHaveLength(2);
   }, 300_000);
+
+  it("covers a root cause shared by several capabilities with one task (#48)", async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { cp, readFile } = await import("node:fs/promises");
+    const { fileURLToPath } = await import("node:url");
+    const { runFixtureHarness, parseHarnessTask } = await import(
+      "@pathcompiler/harness-contracts"
+    );
+    const exec = promisify(execFile);
+    const fixture = fileURLToPath(
+      new URL("../../../fixtures/next-demo", import.meta.url),
+    );
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-v0-role-"));
+    temporary.push(cwd);
+    const app = path.join(cwd, "app");
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.test",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.test",
+    };
+    const git = async (...args: string[]) =>
+      (await exec("git", ["-C", app, ...args], { env })).stdout.trim();
+    for (const file of (
+      await exec("git", ["-C", fixture, "ls-files", "-z", "--", "."])
+    ).stdout
+      .split("\0")
+      .filter(Boolean)) {
+      await mkdir(path.dirname(path.join(app, file)), { recursive: true });
+      await cp(path.join(fixture, file), path.join(app, file));
+    }
+    await git("init", "--quiet", "--initial-branch=main");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "base");
+    const base = await git("rev-parse", "HEAD");
+    const session = path.join(app, "lib/session.ts");
+    const original = await readFile(session, "utf8");
+    // One edit removes editors from five capabilities and adds owners.
+    await writeFile(
+      session,
+      original.replace('session.role !== "editor"', 'session.role !== "owner"'),
+    );
+    await git("commit", "--quiet", "-am", "Owner only");
+    const regressed = await git("rev-parse", "HEAD");
+    await writeFile(
+      path.join(cwd, "pathcompiler.yaml"),
+      "version: 1\nmodes:\n  recommend: true\n  self_improvement: true\nreasoning:\n  enabled: true\n  semantic_diff: true\nimprovement_policy:\n  autonomous_mutation: true\n  max_autonomous_mutations: 1\n  min_confidence: 0.5\n",
+    );
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    await run(["reason", "diff", base, regressed, "app"]);
+    const findings = JSON.parse(await run(["findings", "--json"]));
+    expect(findings.opportunities).toHaveLength(1);
+    expect(findings.opportunities[0].subjects.length).toBeGreaterThanOrEqual(5);
+    await run(["gate"]);
+    const [fix] = JSON.parse(
+      await run(["recommend", "--json"]),
+    ).recommendations;
+    await run(["harness", "task", fix.id, regressed]);
+    const [taskFile] = await readdir(path.join(cwd, "out", "harness", "tasks"));
+    const task = parseHarnessTask(
+      JSON.parse(
+        await readFile(
+          path.join(cwd, "out", "harness", "tasks", taskFile as string),
+          "utf8",
+        ),
+      ),
+    );
+    expect(task.relevantContext.capabilityIds.length).toBeGreaterThanOrEqual(5);
+    // The harness reverts the one cause; every affected capability is fixed.
+    await git("checkout", "--quiet", "-b", "pathcompiler/fix");
+    await writeFile(session, original);
+    await git("commit", "--quiet", "-am", "Restore editors");
+    const candidate = await git("rev-parse", "HEAD");
+    await writeFile(
+      path.join(cwd, "result.json"),
+      JSON.stringify(
+        runFixtureHarness(task, {
+          outcome: "complete",
+          candidateCommit: candidate,
+        }),
+      ),
+    );
+    expect(await run(["harness", "import", "result.json", "app"])).toContain(
+      `Candidate ${candidate.slice(0, 12)} against ${regressed.slice(0, 12)}: PASS`,
+    );
+  }, 300_000);
 });

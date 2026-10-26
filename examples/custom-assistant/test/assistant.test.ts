@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,11 +16,39 @@ import { renderTerminal, toCard } from "../src/ui.ts";
 
 const exec = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
-const fixture = path.resolve(here, "../../../fixtures/next-demo");
+const source = path.resolve(here, "../../../fixtures/next-demo");
 let out: string;
 let pathcompiler: PathCompiler;
 beforeAll(async () => {
   out = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-example-"));
+  // Approval needs a clean, committed repository (#19): approve from a
+  // committed copy of the fixture, not the working tree.
+  const fixture = path.join(out, "next-demo");
+  const tracked = (
+    await exec("git", ["-C", source, "ls-files", "-z", "--", "."])
+  ).stdout
+    .split("\0")
+    .filter(Boolean);
+  for (const file of tracked) {
+    await mkdir(path.dirname(path.join(fixture, file)), { recursive: true });
+    await writeFile(
+      path.join(fixture, file),
+      await readFile(path.join(source, file)),
+    );
+  }
+  const git = (...args: string[]) =>
+    exec("git", ["-C", fixture, ...args], {
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Test",
+        GIT_AUTHOR_EMAIL: "test@example.test",
+        GIT_COMMITTER_NAME: "Test",
+        GIT_COMMITTER_EMAIL: "test@example.test",
+      },
+    });
+  await git("init", "--quiet");
+  await git("add", ".");
+  await git("commit", "--quiet", "-m", "fixture");
   const run = (...args: string[]) => runCli([...args, "--out", out], out);
   await run("workflows", "discover", fixture);
   for (const id of ["clients.create", "plans.create", "plans.change_structure"])

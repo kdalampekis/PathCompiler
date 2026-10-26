@@ -1,11 +1,11 @@
 Capabilities: precision 1, recall 1.
-Workflow discovery (baseline): precision 1, recall 0.833, entrypoints 1, major steps 1, terminals 0.8, invented steps 0 (rate 0), applicability 0, mean edit distance 0.5.
-  clients.create: steps 1, edit distance 0, terminal correct, applicability wrong
-  clients.deactivate: steps 1, edit distance 0, terminal correct, applicability wrong
+Workflow discovery (baseline): precision 1, recall 0.833, entrypoints 1, major steps 1, terminals 0.8, invented steps 0 (rate 0), applicability 1, mean edit distance 0.5.
+  clients.create: steps 1, edit distance 0, terminal correct
+  clients.deactivate: steps 1, edit distance 0, terminal correct
   clients.edit: not discovered
-  plans.archive: steps 1, edit distance 0, terminal correct, applicability wrong
-  plans.change_structure: steps 1, edit distance 0, terminal wrong, applicability wrong
-  plans.create: steps 1, edit distance 0, terminal correct, applicability wrong
+  plans.archive: steps 1, edit distance 0, terminal correct
+  plans.change_structure: steps 1, edit distance 0, terminal wrong
+  plans.create: steps 1, edit distance 0, terminal correct
 Resolver: top-1 0.85, ambiguity 1, unsupported 1, controls passed.
   "How can I onboard a new customer?": expected clients.create, got unsupported
   "restructure a plan": expected plans.change_structure, got ambiguous
