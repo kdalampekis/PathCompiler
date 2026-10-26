@@ -101,6 +101,23 @@ const singular = (word: string) =>
     : word.endsWith("s") && !word.endsWith("ss")
       ? word.slice(0, -1)
       : word;
+/** Common synonyms of capability verbs, so "Remove Client" counts as delete. */
+const VERB_SYNONYMS: Record<string, string> = {
+  add: "create",
+  new: "create",
+  make: "create",
+  register: "create",
+  update: "edit",
+  modify: "edit",
+  remove: "delete",
+  destroy: "delete",
+  disable: "deactivate",
+  suspend: "deactivate",
+  enable: "activate",
+  copy: "duplicate",
+  clone: "duplicate",
+  unarchive: "restore",
+};
 export const NEVER_SENT = [
   "file contents (privacy.source_upload is always false)",
   "hidden files and directories, including .env",
@@ -297,11 +314,13 @@ function validate(
   const titleWords = words(proposal.title).map(singular);
   const verbs = new Set(covered.map((capability) => capability.verb));
   if (
-    titleWords.some(
-      (word) =>
-        (CapabilityVerbSchema.options as string[]).includes(word) &&
-        !verbs.has(word as Capability["verb"]),
-    )
+    titleWords.some((word) => {
+      const verb = VERB_SYNONYMS[word] ?? word;
+      return (
+        (CapabilityVerbSchema.options as string[]).includes(verb) &&
+        !verbs.has(verb as Capability["verb"])
+      );
+    })
   )
     rejections.push("unsupported-verb");
   const nouns = new Set(

@@ -1255,7 +1255,9 @@ report gives verdict accuracy, plan accuracy, diff accuracy and the unknown rate
 endpoints, tests, capabilities, candidate workflows, warnings) and phase
 durations. It caches repository analysis by content hash under
 `.pathcompiler/cache/` (`--no-cache` to bypass); a cached result is always
-identical to a fresh one. Set `PATHCOMPILER_LOG=json` for structured logs on
+identical to a fresh one. Every analyzing command (`capabilities discover`,
+`workflows discover`, `reason`, `analyze`, `diagnose` and others) shares that
+cache. Set `PATHCOMPILER_LOG=json` for structured logs on
 stderr; they never include source contents. Errors use a named taxonomy
 (`ConfigurationError`, `RepositoryAnalysisError`,
 `UnsupportedFrameworkError`, `GitProviderError` and others) from
@@ -1403,7 +1405,7 @@ pnpm pathcompiler observe check clients.created --at-least 0.6 --baseline r1 --r
 ```
 
 On the observed Markov chain (O11), `observe check` reports for a goal:
-- the probability of completion and of abandonment, with 95% bounds;
+- the probability of completion and of abandonment, with bounds built from per-transition 95% intervals (conservative, not a joint confidence level);
 - the expected transitions to completion.
 
 The bounds treat each state's Wilson intervals, including a small mass for
@@ -1776,7 +1778,9 @@ rejected individually. Events for other projects are refused. Batch size and
 rate are limited, and accepted events are stored as NDJSON under
 `<out>/events/<project>/<day>.ndjson`. `PATHCOMPILER_INGEST_TOKEN` sets an
 optional token that can only post events. The SDK's
-`new FetchTransport({ url, token })` sends to this endpoint.
+`new FetchTransport({ url, token })` sends to this endpoint. For an app on
+another origin, add `--allow-origin https://app.example.com` (repeatable).
+Exact origins only; `*` is refused, because requests carry tokens.
 See [ADR 0049](docs/decisions/0049-event-ingestion.md).
 
 `pathcompiler observe graph [--release <id>]` (phase O6) aggregates the

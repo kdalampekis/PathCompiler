@@ -116,8 +116,10 @@ describe("semantic interpretation", () => {
       capabilities: [
         proposal("Create Client", [button(1)], [ui(1)]),
         proposal("Archive Client", [button(2)], [ui(2), "route:/clients"]),
-        // Inventions: a verb the evidence lacks, and another surface's evidence.
+        // Inventions: a verb the evidence lacks (also as a synonym), and
+        // another surface's evidence.
         proposal("Delete Client", [button(2)], [ui(2)]),
+        proposal("Remove Client", [button(2)], [ui(2)]),
         proposal("Add Client", [button(1)], [ui(2)]),
         proposal("Manage Clients", [button(1), button(2)], [ui(1), ui(2)]),
       ],
@@ -161,11 +163,15 @@ describe("semantic interpretation", () => {
       capabilityIds: ["clients.archive", "clients.create"],
       status: "supported",
     });
+    expect(byTitle["Remove Client"]).toMatchObject({
+      status: "rejected",
+      rejections: ["unsupported-verb"],
+    });
     expect(report.summary).toEqual({
-      hypotheses: 5,
+      hypotheses: 6,
       supported: 3,
-      rejected: 2,
-      proposedInventionRate: 0.4,
+      rejected: 3,
+      proposedInventionRate: 0.5,
       appliedInventionRate: 0,
     });
     expect(report.context).toMatchObject({

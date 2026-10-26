@@ -429,7 +429,7 @@ describe("pathcompiler CLI", () => {
         "0.5",
       ]);
       expect(checked).toMatch(
-        / {2}P\(completion\) = 1 \(95% bounds 0\.\d+–1\)/,
+        / {2}P\(completion\) = 1 \(bounds 0\.\d+–1 from per-transition 95% intervals\)/,
       );
       // One session cannot decide anything.
       expect(checked).toContain(

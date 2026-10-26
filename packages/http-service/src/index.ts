@@ -35,6 +35,12 @@ export type HttpServiceOptions = {
    * end-user API and ingest tokens never reach reasoning.
    */
   reasoning?: DeveloperReasoningOptions;
+  /**
+   * Browser origins allowed to call the API (CORS), e.g. an app posting
+   * events from another origin. Exact origins only; `*` is refused because
+   * requests carry tokens.
+   */
+  allowedOrigins?: readonly string[];
 };
 
 export type DeveloperReasoningOptions = {
@@ -369,7 +375,27 @@ export function createRequestHandler(
     return { accepted: accepted.length, rejected };
   }
 
+  const origins = new Set(
+    (options.allowedOrigins ?? []).map((value) => {
+      let origin: string;
+      try {
+        origin = new URL(value).origin;
+      } catch {
+        origin = "null";
+      }
+      if (value === "*" || origin === "null" || origin !== value)
+        throw new Error(
+          `Allowed origin "${value}" must be an exact origin such as https://app.example.com (no path, no wildcard).`,
+        );
+      return origin;
+    }),
+  );
   return (request, response) => {
+    const origin = request.headers.origin;
+    const cors: Record<string, string> =
+      origin && origins.has(origin)
+        ? { "access-control-allow-origin": origin, vary: "Origin" }
+        : {};
     const send = (
       status: number,
       payload: unknown,
@@ -379,10 +405,29 @@ export function createRequestHandler(
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
         "x-content-type-options": "nosniff",
+        ...cors,
         ...headers,
       });
       response.end(`${JSON.stringify(payload)}\n`);
     };
+    // Preflight: answered for allowed origins only, before authentication.
+    if (request.method === "OPTIONS") {
+      if (!cors["access-control-allow-origin"])
+        return send(403, {
+          error: {
+            code: "forbidden-origin",
+            message: "This origin is not allowed.",
+          },
+        });
+      response.writeHead(204, {
+        ...cors,
+        "access-control-allow-methods": "GET, POST",
+        "access-control-allow-headers": "authorization, content-type",
+        "access-control-max-age": "600",
+      });
+      response.end();
+      return;
+    }
     (async () => {
       authorize(request);
       return route(request);

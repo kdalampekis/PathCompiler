@@ -195,3 +195,64 @@ describe("event ingestion", () => {
     expect(analytics.stats()).toMatchObject({ sent: 2, queued: 0 });
   });
 });
+
+describe("CORS for browser apps on another origin", () => {
+  async function startWith(allowedOrigins: string[]) {
+    const server = createHttpService({
+      client,
+      token,
+      events: { sink: new InMemoryEventSink(), ingestToken },
+      allowedOrigins,
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    closers.push(() => new Promise((resolve) => server.close(() => resolve())));
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/events/batch`;
+  }
+
+  it("answers preflights and posts from allowed origins only", async () => {
+    const url = await startWith(["https://app.example.test"]);
+    const preflight = await fetch(url, {
+      method: "OPTIONS",
+      headers: { origin: "https://app.example.test" },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe(
+      "https://app.example.test",
+    );
+    expect(preflight.headers.get("access-control-allow-headers")).toContain(
+      "authorization",
+    );
+    const posted = await fetch(url, {
+      method: "POST",
+      headers: {
+        origin: "https://app.example.test",
+        "content-type": "application/json",
+        authorization: `Bearer ${ingestToken}`,
+      },
+      body: JSON.stringify({ events: [event()] }),
+    });
+    expect(posted.status).toBe(200);
+    expect(posted.headers.get("access-control-allow-origin")).toBe(
+      "https://app.example.test",
+    );
+    const other = await fetch(url, {
+      method: "OPTIONS",
+      headers: { origin: "https://evil.example.test" },
+    });
+    expect(other.status).toBe(403);
+    expect(other.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("refuses wildcards and non-origins", () => {
+    for (const value of [
+      "*",
+      "https://app.example.test/path",
+      "app.example.test",
+    ])
+      expect(() =>
+        createHttpService({ client, token, allowedOrigins: [value] }),
+      ).toThrow("must be an exact origin");
+  });
+});

@@ -17,6 +17,10 @@ import {
  * upper). Point estimates use observed transitions only. These are statements about observed users, not about what the product
  * allows (the formal model answers that).
  */
+/**
+ * Bounds from per-transition 95% intervals: conservative, but not a joint
+ * 95% confidence level over the whole chain (ISSUES_LOG #41).
+ */
 export type ProbabilityBounds = {
   point: number;
   lower: number;

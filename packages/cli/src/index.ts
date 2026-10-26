@@ -212,7 +212,10 @@ import {
   summarizeSemanticChange,
 } from "@pathcompiler/semantic-change";
 import { createZ3SolverProvider } from "@pathcompiler/solver-z3";
-import { readSourceProject } from "@pathcompiler/source-model";
+import {
+  readSourceProject,
+  type SourceProject,
+} from "@pathcompiler/source-model";
 import {
   type GenerationReport,
   generateTests,
@@ -299,7 +302,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
        pathcompiler mcp-reasoning [directory] [--model <json-file>]
-       pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events]
+       pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events] [--allow-origin <origin> ...]
        pathcompiler observe graph|workflows|transitions [--release <id>] [--json] [--out <directory>]
        pathcompiler observe check <goal> [--at-least <p> | --at-most <p>] [--baseline <release>] [--release <id>] [--json] [--out <directory>]
        pathcompiler observe reconcile [directory] [--model <json-file>] [--json] [--out <directory>]
@@ -379,7 +382,9 @@ serve runs the HTTP runtime API on 127.0.0.1:4310 by default from the same files
 requires PATHCOMPILER_API_TOKEN (Authorization: Bearer <token>). --events enables
 POST /v1/events/batch: semantic events are validated against the default privacy policy and
 appended as NDJSON under events/<project>/<day>.ndjson; PATHCOMPILER_INGEST_TOKEN optionally
-sets a token that may only post events. observe graph aggregates the stored events into
+sets a token that may only post events. --allow-origin <origin> (repeatable, exact origins
+only, never *) lets a browser app on another origin call the API (CORS).
+observe graph aggregates the stored events into
 reports/observed-graph.json: transition counts, sessions, frequencies, median times and
 role/release segments (what happened; never compared with the formal model here).
 observe workflows reconstructs guide runs per workflow version: starts, completions,
@@ -394,7 +399,7 @@ per completion) by the cheapest formal path for each goal and observed role (Pat
 Ratio; 30+ completions), lists friction at 1.5x or more, and writes reports/path-efficiency.json.
 It is a friction signal, not proof that the shortest path is the best experience.
 observe check <goal> model-checks the observed Markov chain: completion and abandonment
-probability with 95% bounds (every state's Wilson intervals as an interval Markov chain, so
+probability with bounds from per-transition 95% intervals (every state's Wilson intervals as an interval Markov chain, so
 small samples give wide bounds), and expected transitions to completion. --at-least/--at-most
 <p> decides P(completion) only when the whole interval agrees (otherwise inconclusive), and
 --baseline <release> compares with another release (a change only when the bounds do not
@@ -611,6 +616,7 @@ const CLI_OPTIONS = {
   commits: { type: "string" },
   "model-fixtures": { type: "string" },
   "at-least": { type: "string" },
+  "allow-origin": { type: "string", multiple: true },
   browser: { type: "string" },
   impact: { type: "string" },
   "at-most": { type: "string" },
@@ -705,6 +711,8 @@ export async function runCli(
     );
   if (values.events && positionals[0] !== "serve")
     throw new Error("--events is only supported by serve.");
+  if (values["allow-origin"] !== undefined && positionals[0] !== "serve")
+    throw new Error("--allow-origin is only supported by serve.");
   if (
     (values["at-least"] !== undefined ||
       values["at-most"] !== undefined ||
@@ -979,7 +987,11 @@ export async function runCli(
     const project = await readSourceProject(directory, {
       exclude: values.exclude ?? [],
     });
-    const source = analyzeNextProject(project);
+    const source = await analyzeProject(
+      project,
+      path.resolve(cwd, values.out ?? ".pathcompiler"),
+      values["no-cache"],
+    );
     const pr =
       values.pr !== undefined
         ? await provider.getPullRequest(values.pr)
@@ -1036,7 +1048,11 @@ export async function runCli(
     const project = await readSourceProject(directory, {
       exclude: values.exclude ?? [],
     });
-    const source = analyzeNextProject(project);
+    const source = await analyzeProject(
+      project,
+      path.resolve(cwd, values.out ?? ".pathcompiler"),
+      values["no-cache"],
+    );
     const result = await enrichNodeHistory(
       await openGitRepository(directory),
       source.graph,
@@ -1107,7 +1123,11 @@ export async function runCli(
       path.resolve(cwd, positionals[2] ?? "."),
       { exclude: values.exclude ?? [] },
     );
-    const source = analyzeNextProject(project);
+    const source = await analyzeProject(
+      project,
+      path.resolve(cwd, values.out ?? ".pathcompiler"),
+      values["no-cache"],
+    );
     const result = minePlaywrightTests(project, source.graph);
     result.report.diagnostics.push(
       ...source.summary.diagnostics.filter(
@@ -1259,6 +1279,9 @@ export async function runCli(
       client: await loadGeneratedClient(output),
       token,
       ...(reasoning ? { reasoning } : {}),
+      ...(values["allow-origin"]
+        ? { allowedOrigins: values["allow-origin"] }
+        : {}),
       ...(values.events
         ? {
             events: {
@@ -1464,7 +1487,11 @@ export async function runCli(
       path.resolve(cwd, positionals[2] ?? "."),
       { exclude: values.exclude ?? [] },
     );
-    const source = analyzeNextProject(project);
+    const source = await analyzeProject(
+      project,
+      path.resolve(cwd, values.out ?? ".pathcompiler"),
+      values["no-cache"],
+    );
     const mined = minePlaywrightTests(project, source.graph);
     const capabilities = discoverCapabilities(mined.graph);
     const result = discoverWorkflows(
@@ -1530,7 +1557,11 @@ export async function runCli(
       path.resolve(cwd, positionals[2] ?? "."),
       { exclude: values.exclude ?? [] },
     );
-    const source = analyzeNextProject(project);
+    const source = await analyzeProject(
+      project,
+      path.resolve(cwd, values.out ?? ".pathcompiler"),
+      values["no-cache"],
+    );
     const mined = minePlaywrightTests(project, source.graph);
     const result = discoverCapabilities(
       mined.graph,
@@ -1737,7 +1768,16 @@ async function runGenerateTests(
     path.resolve(cwd, positionals[2] ?? "."),
     { exclude: values.exclude ?? [] },
   );
-  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const mined = minePlaywrightTests(
+    project,
+    (
+      await analyzeProject(
+        project,
+        path.resolve(cwd, values.out ?? ".pathcompiler"),
+        values["no-cache"],
+      )
+    ).graph,
+  );
   const discovered = discoverCapabilities(mined.graph);
   const { model } = buildFormalModel(
     discovered.graph,
@@ -2332,7 +2372,16 @@ async function loadReasoningModel(
   const project = await readSourceProject(path.resolve(cwd, directory ?? "."), {
     exclude: values.exclude ?? [],
   });
-  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const mined = minePlaywrightTests(
+    project,
+    (
+      await analyzeProject(
+        project,
+        path.resolve(cwd, values.out ?? ".pathcompiler"),
+        values["no-cache"],
+      )
+    ).graph,
+  );
   const capabilities = discoverCapabilities(mined.graph);
   const extraction = buildFormalModel(
     capabilities.graph,
@@ -2864,7 +2913,7 @@ async function runObserve(
     ]);
     if (values.json) return `${JSON.stringify(result, null, 2)}\n`;
     const range = (value: { point: number; lower: number; upper: number }) =>
-      `${value.point} (95% bounds ${value.lower}–${value.upper})`;
+      `${value.point} (bounds ${value.lower}–${value.upper} from per-transition 95% intervals)`;
     return `${[
       `Observed behavior of ${goal}${values.release ? ` in release ${values.release}` : ""} (estimates from ${model.sessions} sessions):`,
       `  P(completion) = ${range(result.check.reach)}`,
@@ -3324,7 +3373,7 @@ async function validateStored(
     );
   const candidate = parseStored(content, id, parseCandidateYaml);
   const project = await readSourceProject(directory, { exclude });
-  const source = analyzeNextProject(project);
+  const source = await analyzeProject(project, output);
   const mined = minePlaywrightTests(project, source.graph);
   const report = validateWorkflow(candidate.workflow, {
     graph: mined.graph,
@@ -3610,7 +3659,13 @@ async function runProposals(
       );
       const mined = minePlaywrightTests(
         project,
-        analyzeNextProject(project).graph,
+        (
+          await analyzeProject(
+            project,
+            path.resolve(cwd, values.out ?? ".pathcompiler"),
+            values["no-cache"],
+          )
+        ).graph,
       );
       const result = acceptProposal(proposal, {
         decidedBy,
@@ -4061,7 +4116,16 @@ async function explainModelContext(
   const project = await readSourceProject(directory, {
     exclude: values.exclude ?? [],
   });
-  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const mined = minePlaywrightTests(
+    project,
+    (
+      await analyzeProject(
+        project,
+        path.resolve(cwd, values.out ?? ".pathcompiler"),
+        values["no-cache"],
+      )
+    ).graph,
+  );
   const { report } = discoverProductSurfaces(mined.graph);
   const request = { surfaces: report.surfaces, evidence: report.evidence };
   const { value: payload, redactions } = redactValue(request);
@@ -4184,7 +4248,16 @@ async function runAnalyze(
   const project = await readSourceProject(directory, {
     exclude: values.exclude ?? [],
   });
-  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const mined = minePlaywrightTests(
+    project,
+    (
+      await analyzeProject(
+        project,
+        path.resolve(cwd, values.out ?? ".pathcompiler"),
+        values["no-cache"],
+      )
+    ).graph,
+  );
   const surfaces = discoverProductSurfaces(mined.graph).report.surfaces;
   const { capabilities } = discoverCapabilities(mined.graph).report;
   const fixtures = values["model-fixtures"];
@@ -4320,7 +4393,16 @@ async function runDiagnose(
   const project = await readSourceProject(path.resolve(cwd, directory ?? "."), {
     exclude: values.exclude ?? [],
   });
-  const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
+  const mined = minePlaywrightTests(
+    project,
+    (
+      await analyzeProject(
+        project,
+        path.resolve(cwd, values.out ?? ".pathcompiler"),
+        values["no-cache"],
+      )
+    ).graph,
+  );
   const capabilities = discoverCapabilities(mined.graph);
   const { model } = buildFormalModel(
     capabilities.graph,
@@ -5237,4 +5319,20 @@ async function runHarnessImport(
     await solver.close();
   }
   return reportEvaluation(evaluation, output, values);
+}
+
+/**
+ * Repository analysis through the content-hash cache (C4) under
+ * `<out>/cache/analysis`; a cached result is identical to a fresh one.
+ */
+async function analyzeProject(
+  project: SourceProject,
+  output: string,
+  noCache = false,
+): Promise<ReturnType<typeof analyzeNextProject>> {
+  if (noCache) return analyzeNextProject(project);
+  return analyzeNextProjectCached(
+    project,
+    createFileCache(path.join(output, "cache", "analysis")),
+  );
 }

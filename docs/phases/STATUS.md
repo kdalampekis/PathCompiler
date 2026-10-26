@@ -4897,3 +4897,20 @@ No runtime or browser code changed, so the e2e suite was not rerun.
 ### Scope notes
 
 - All planned phases except C6 are complete.
+
+---
+
+## Issue fixes after the phase run — batch 1 (2026-10-25)
+
+Every planned phase except C6 was complete. Open ISSUES_LOG entries with a
+clear fix are being fixed and verified one by one.
+
+| Issue | Fix | Verified by |
+| --- | --- | --- |
+| #8 Node version | `.nvmrc` already pins 22 and the README documents `nvm install && nvm use`; the remaining step is the local environment | Documentation check |
+| #15 CORS | `serve --allow-origin <origin>`: exact origins only (`*` refused); preflights are answered for allowed origins and refused (403) for others; CORS headers on responses | New http-service tests: preflight, a cross-origin post, a foreign origin, wildcard and path refusal |
+| #33 Analysis cache | Every analyzing CLI command uses the content-hash cache (`--no-cache` bypasses it) | New CLI test: identical `capabilities discover` output cold, cached and uncached; all 56 earlier CLI tests unchanged |
+| #36 Verb synonyms | Hypothesis validation maps add, remove, update, disable, copy and other synonyms to capability verbs | Semantic test: "Remove Client" for an archive action is rejected |
+| #41 Bound labels | P5 bounds are labeled "from per-transition 95% intervals" everywhere | CLI test on the new wording |
+
+Checks for the batch: lint and typecheck passed; `pnpm test` passed 528 tests across 98 suites (all 98 test files).
