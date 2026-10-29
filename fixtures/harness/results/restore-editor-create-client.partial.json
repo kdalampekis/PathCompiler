@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0",
+  "id": "mutation:task:recommendation:clients.create:fix:aaaaaaaaaaaa:retry-1",
+  "harnessTaskId": "task:recommendation:clients.create:fix:aaaaaaaaaaaa",
+  "recommendationId": "recommendation:clients.create:fix",
+  "repository": {
+    "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidateCommit": "cccccccccccccccccccccccccccccccccccccccc"
+  },
+  "status": "partial",
+  "changedFiles": [],
+  "implementationSummary": "Restored the editor check for client creation only; the other four capabilities still need the same change.",
+  "claimedSemanticChanges": [
+    {
+      "goal": "clients.created",
+      "kind": "restore-reachability"
+    }
+  ],
+  "testsAddedOrChanged": [],
+  "assumptions": ["Fixture harness: no code was changed."],
+  "unresolvedQuestions": ["Should plans.created also be restored for editors?"],
+  "artifacts": [],
+  "harnessMetadata": {
+    "provider": "pathcompiler-fixture",
+    "version": "1.0.0",
+    "runId": "retry-1",
+    "previousRunId": "example-blocked"
+  }
+}

@@ -3537,9 +3537,14 @@ async function runProposals(
       commits,
       newCapabilities,
     });
+    const risk = scoreCommitRisk(
+      impact,
+      semantic ? { uncertainty: semantic.uncertainty } : {},
+    );
     await writeArtifacts(output, [
       ["reports/graph-delta.json", `${JSON.stringify(delta, null, 2)}\n`],
       ["reports/workflow-impact.json", `${JSON.stringify(impact, null, 2)}\n`],
+      ["reports/commit-risk.json", `${JSON.stringify(risk, null, 2)}\n`],
       ...(semantic
         ? ([
             [
@@ -3563,7 +3568,7 @@ async function runProposals(
       await writeExclusive(file, serializeProposalYaml(proposal));
       written.push(path.basename(file, ".yaml"));
     }
-    return `Wrote ${written.length} proposals for medium/high impact${kept.length ? `; kept ${kept.length} existing` : ""}.\n${[...written, ...kept].map((name) => `  ${name}`).join("\n")}${written.length + kept.length ? "\n" : ""}Approved workflows were not changed. Review with proposals show/accept/reject/ignore.\n`;
+    return `Wrote ${written.length} proposals for medium/high impact${kept.length ? `; kept ${kept.length} existing` : ""}.\n${[...written, ...kept].map((name) => `  ${name}`).join("\n")}${written.length + kept.length ? "\n" : ""}Change risk: ${risk.level.toUpperCase()} (definite ${risk.counts.definite}, probable ${risk.counts.probable}, uncertain ${risk.counts.uncertain}; a rule level, not an incident probability).\nApproved workflows were not changed. Review with proposals show/accept/reject/ignore.\n`;
   }
   if (command === "list" && positionals.length === 2) {
     let names: string[] = [];
@@ -5272,6 +5277,12 @@ async function runHarnessImport(
     );
   const output = path.resolve(cwd, values.out ?? ".pathcompiler");
   const raw = await readJsonFile(cwd, resultFile, "mutation result");
+  // Results must not carry secrets (handoff §61); they are stored with the repository.
+  const secrets = redactValue(raw).redactions;
+  if (Object.keys(secrets).length > 0)
+    throw new Error(
+      `${resultFile} appears to contain secrets (${Object.keys(secrets).join(", ")}). Remove them and have the harness rerun; nothing was stored.`,
+    );
   const taskId = z
     .looseObject({ harnessTaskId: z.string() })
     .parse(raw).harnessTaskId;

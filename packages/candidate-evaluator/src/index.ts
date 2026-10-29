@@ -54,6 +54,8 @@ export const EvaluationCriteriaSchema = z.strictObject({
       id: z.string().min(1),
       claimedOutcome: z.enum(["success", "partial", "failed"]).optional(),
       summary: z.string().optional(),
+      /** Goals whose reachability the author claims to have changed (handoff §16). */
+      claimedGoals: z.array(z.string().min(1)).optional(),
     })
     .optional(),
 });
@@ -174,7 +176,15 @@ export type CandidateEvaluation = {
     /** Reports for another commit, which were ignored. */
     stale: string[];
   };
-  mutationClaim?: { claimedOutcome?: string; contradicted: boolean };
+  mutationClaim?: {
+    claimedOutcome?: string;
+    contradicted: boolean;
+    /**
+     * Unexpected semantic change rate (handoff §54): observed goals the
+     * author did not claim, over observed goals. Absent without claimed goals.
+     */
+    undeclared?: { goals: string[]; rate: number };
+  };
   risks: EvaluationFinding[];
   warnings: EvaluationFinding[];
   /** Evidence this evaluation could not use (e.g. browser verification, I4). */
@@ -528,6 +538,28 @@ export async function evaluateCandidate(
       : warnings.length
         ? "pass_with_warnings"
         : "pass";
+  const claimedGoals = criteria.mutation?.claimedGoals;
+  const observedGoals = [...new Set(observed.map((item) => item.goal))].sort(
+    compareText,
+  );
+  const undeclared =
+    claimedGoals && observedGoals.length > 0
+      ? (() => {
+          const goals = observedGoals.filter(
+            (goal) => !claimedGoals.includes(goal),
+          );
+          return {
+            goals,
+            rate:
+              Math.round((goals.length / observedGoals.length) * 1000) / 1000,
+          };
+        })()
+      : undefined;
+  if (undeclared && undeclared.goals.length > 0)
+    warnings.push({
+      code: "undeclared-semantic-change",
+      message: `The mutation did not claim changes to ${undeclared.goals.join(", ")}, which PathCompiler observed.`,
+    });
   const contradicted =
     criteria.mutation?.claimedOutcome === "success" && status === "fail";
   if (contradicted)
@@ -570,6 +602,7 @@ export async function evaluateCandidate(
     ...(criteria.mutation
       ? {
           mutationClaim: {
+            ...(undeclared ? { undeclared } : {}),
             ...(criteria.mutation.claimedOutcome
               ? { claimedOutcome: criteria.mutation.claimedOutcome }
               : {}),

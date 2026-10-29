@@ -370,6 +370,16 @@ export function createGuideRuntime(options: GuideRuntimeOptions): GuideRuntime {
       if (!stepDone()) break;
       advance();
     }
+    if (
+      (status() === "active" || status() === "target-missing") &&
+      leftWorkflowRoutes()
+    ) {
+      finish("stopped", {
+        code: "navigated-away",
+        message: `The page left the routes of ${workflow.id} (${environment.route()}). Restart the guide when ready.`,
+      });
+      return;
+    }
     if (status() === "awaiting-completion") {
       if (terminal(workflow.terminal)) finish("completed");
       return;
@@ -412,6 +422,41 @@ export function createGuideRuntime(options: GuideRuntimeOptions): GuideRuntime {
       }, targetTimeoutMs);
   }
 
+  /**
+   * True when the user is on a route the workflow never mentions: neither an
+   * entry, a navigation step, nor anything its conditions look for. Workflows
+   * that wait for a URL change or route match are never judged by this.
+   */
+  function leftWorkflowRoutes(): boolean {
+    if (!workflow) return false;
+    const conditions = [
+      ...workflow.steps.flatMap((step) =>
+        step.expected ? [step.expected] : [],
+      ),
+      workflow.terminal,
+    ];
+    const mentionsRoutes = (
+      item: WorkflowCondition | WorkflowTerminalCondition,
+    ): boolean =>
+      "all" in item
+        ? item.all.some(mentionsRoutes)
+        : "any" in item
+          ? item.any.some(mentionsRoutes)
+          : item.type === "route_matches" || item.type === "url_changed";
+    if (conditions.some(mentionsRoutes)) return false;
+    const known = [
+      ...workflow.entrypoints.flatMap((entry) =>
+        entry.route === undefined ? [] : [entry.route],
+      ),
+      ...workflow.steps.flatMap((step) =>
+        step.action.type === "navigate" ? [step.action.route] : [],
+      ),
+    ];
+    return (
+      known.length > 0 &&
+      !known.some((route) => routeMatches(route, environment.route()))
+    );
+  }
   function onEntryRoute(): boolean {
     if (!workflow) return false;
     const routes = workflow.entrypoints.flatMap((entry) =>

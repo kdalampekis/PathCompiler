@@ -492,6 +492,9 @@ describe("pathcompiler reason reachable", () => {
       "--reasoning",
     ]);
     expect(generated).toContain(`clients.create.${head}`);
+    expect(generated).toMatch(
+      /Change risk: HIGH \(definite [1-9]\d*, probable \d+, uncertain \d+;/,
+    );
     const proposal = await readFile(
       path.join(cwd, "out/proposals", `clients.create.${head}.yaml`),
       "utf8",

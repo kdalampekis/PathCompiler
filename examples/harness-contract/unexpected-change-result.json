@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0",
+  "id": "mutation:task:recommendation:clients.create:fix:aaaaaaaaaaaa:unexpected",
+  "harnessTaskId": "task:recommendation:clients.create:fix:aaaaaaaaaaaa",
+  "recommendationId": "recommendation:clients.create:fix",
+  "repository": {
+    "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "candidateCommit": "cccccccccccccccccccccccccccccccccccccccc"
+  },
+  "status": "completed",
+  "changedFiles": [],
+  "implementationSummary": "Restored editor client creation (the diff also touches the plan permission helper).",
+  "claimedSemanticChanges": [
+    {
+      "goal": "clients.created",
+      "kind": "restore-reachability"
+    }
+  ],
+  "testsAddedOrChanged": [],
+  "assumptions": ["Fixture harness: no code was changed."],
+  "unresolvedQuestions": [],
+  "artifacts": [],
+  "harnessMetadata": {
+    "provider": "pathcompiler-fixture",
+    "version": "1.0.0",
+    "runId": "unexpected"
+  }
+}

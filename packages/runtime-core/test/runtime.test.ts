@@ -171,6 +171,20 @@ describe("guide runtime", () => {
     expect(environment.listeners).toBe(0);
   });
 
+  it("stops with navigated-away when the user leaves every route the workflow knows (#14)", () => {
+    const { environment, runtime } = setup("/clients");
+    runtime.start(createClient());
+    environment.show("clients.create");
+    expect(runtime.getState().status).toBe("active");
+    environment.path = "/settings";
+    runtime.refresh();
+    expect(runtime.getState()).toMatchObject({
+      status: "stopped",
+      failure: { code: "navigated-away" },
+    });
+    expect(environment.listeners).toBe(0);
+  });
+
   it("does not skip a step whose expected state already holds until the user acts", () => {
     const { environment, runtime } = setup();
     environment.show("clients.feedback", "Client created");

@@ -371,6 +371,7 @@ export type GuideStateLike = {
   version: number | null;
   completedStepIds: string[];
   step: { id: string } | null;
+  failure?: { code: string } | null;
 };
 export type GuideLike = {
   getState(): GuideStateLike;
@@ -452,7 +453,10 @@ export function instrumentGuide(
       );
       run = null;
     } else {
-      const reason = ABANDONED[state.status];
+      const reason =
+        state.status === "stopped" && state.failure?.code === "navigated-away"
+          ? "navigated-away"
+          : ABANDONED[state.status];
       if (reason) {
         analytics.workflowAbandoned(run.workflow, reason, run.lastStepId);
         run = null;

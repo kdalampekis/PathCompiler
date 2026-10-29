@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@pathcompiler/capability-engine": "workspace:*",
+    "@pathcompiler/config": "workspace:*",
     "@pathcompiler/graph-delta": "workspace:*",
     "@pathcompiler/impact-analysis": "workspace:*",
     "@pathcompiler/semantic-change": "workspace:*",

@@ -258,6 +258,14 @@ describe("guide telemetry", () => {
     // A second run that is stopped, and a guide that fails before starting.
     fake.emit({ ...running, status: "active", step: { id: "step.1" } });
     fake.emit({ ...running, status: "stopped", step: { id: "step.1" } });
+    // A third run, abandoned by leaving the workflow's routes (#14).
+    fake.emit({ ...running, status: "active", step: { id: "step.1" } });
+    fake.emit({
+      ...running,
+      status: "stopped",
+      step: { id: "step.1" },
+      failure: { code: "navigated-away" },
+    });
     fake.emit({ ...running, version: null, status: "failed" });
     await analytics.flush();
     expect(
@@ -278,6 +286,9 @@ describe("guide telemetry", () => {
       "workflow.started guide",
       "step step.1#0",
       "abandoned stopped at step.1",
+      "workflow.started guide",
+      "step step.1#0",
+      "abandoned navigated-away at step.1",
     ]);
     expect(transport.events[0]).toMatchObject({
       workflowId: "clients.create",

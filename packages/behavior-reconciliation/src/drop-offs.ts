@@ -86,6 +86,18 @@ export async function analyzeDropOffs(
         ]),
       );
   const goals = model.goals.filter((goal) => goal.capabilityId);
+  // A target used by several capabilities (a shared form's submit button)
+  // cannot tell which one the user is attempting, so it never starts an
+  // attempt; the capability's own entry targets do (ISSUES_LOG #32).
+  const owners = new Map<string, number>();
+  for (const targets of targetsOf.values())
+    for (const target of targets)
+      owners.set(target, (owners.get(target) ?? 0) + 1);
+  const startersOf = (capabilityId: string) => {
+    const all = targetsOf.get(capabilityId) ?? new Set<string>();
+    const own = new Set([...all].filter((target) => owners.get(target) === 1));
+    return own.size > 0 ? own : all;
+  };
 
   type Tally = {
     attempts: number;
@@ -105,6 +117,7 @@ export async function analyzeDropOffs(
     );
     for (const goal of goals) {
       const targets = targetsOf.get(goal.capabilityId as string) ?? new Set();
+      const starters = startersOf(goal.capabilityId as string);
       // An attempt starts at the first activation of one of the goal's targets.
       let open: { role: string; last: string } | undefined;
       const close = (completed: boolean) => {
@@ -125,9 +138,15 @@ export async function analyzeDropOffs(
       for (const event of ordered) {
         if (
           event.type === "semantic_target.activated" &&
-          targets.has(event.semanticTarget)
+          starters.has(event.semanticTarget)
         )
           open = { role: event.role ?? "(none)", last: event.semanticTarget };
+        else if (
+          event.type === "semantic_target.activated" &&
+          open &&
+          targets.has(event.semanticTarget)
+        )
+          open = { ...open, last: event.semanticTarget };
         else if (event.type === "goal.reached" && event.goalId === goal.id)
           close(true);
       }

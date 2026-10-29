@@ -213,6 +213,20 @@ describe("external harness integration (Integration V0)", () => {
       ),
     ).toBe(true);
 
+    // Claimed versus observed (handoff §54): the claim names the changed goal.
+    expect(report.mutationClaim.undeclared).toEqual({ goals: [], rate: 0 });
+    // A result carrying a secret is refused before anything is stored (§61).
+    await writeFile(
+      path.join(cwd, "leaky.json"),
+      JSON.stringify({
+        ...JSON.parse(await readFile(path.join(cwd, "result.json"), "utf8")),
+        implementationSummary:
+          "Used key sk-abcdefghijklmnopqrstuv to run checks.",
+      }),
+    );
+    await expect(
+      run(["harness", "import", "leaky.json", "app"]),
+    ).rejects.toThrow("appears to contain secrets (provider-key)");
     // A blocked harness is recorded with its question; nothing is evaluated.
     await writeFile(
       path.join(cwd, "blocked.json"),

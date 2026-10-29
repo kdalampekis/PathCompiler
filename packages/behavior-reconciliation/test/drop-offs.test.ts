@@ -16,6 +16,7 @@ import { analyzeDropOffs, type DropOffReport } from "../src/index.js";
 
 let solver: SolverProvider;
 let report: DropOffReport;
+let model: Parameters<typeof analyzeDropOffs>[0];
 function session(id: string, completes: boolean): ProductRuntimeEvent[] {
   let counter = 0;
   const create = createEventFactory({
@@ -52,7 +53,7 @@ beforeAll(async () => {
   );
   const mined = minePlaywrightTests(project, analyzeNextProject(project).graph);
   const capabilities = discoverCapabilities(mined.graph);
-  const model = buildFormalModel(
+  model = buildFormalModel(
     capabilities.graph,
     capabilities.report,
     mined.report,
@@ -121,4 +122,39 @@ describe("drop-offs and alternative paths", () => {
       }),
     ]);
   }, 120_000);
+
+  it("does not count shared targets as attempts at another capability (#32)", async () => {
+    // Sessions that edit a client and finish. Targets the edit form shares
+    // with Deactivate Client must not start deactivate attempts.
+    const editing = (id: string): ProductRuntimeEvent[] => {
+      let counter = 0;
+      const create = createEventFactory({
+        projectId: "demo",
+        sessionId: id,
+        now: () => new Date(Date.UTC(2026, 9, 24, 10, 0, counter)),
+        nextId: () => `${id}-${String(++counter).padStart(3, "0")}`,
+      });
+      return [
+        create("semantic_target.activated", {
+          semanticTarget: "clients.edit",
+          interaction: "click",
+          role: "editor",
+        }),
+        create("semantic_target.activated", {
+          semanticTarget: "client.form.submit",
+          interaction: "click",
+          role: "editor",
+        }),
+        create("goal.reached", { goalId: "clients.edited", role: "editor" }),
+      ];
+    };
+    const edits = await analyzeDropOffs(
+      model,
+      Array.from({ length: 40 }, (_, index) => editing(`edit-${index}`)).flat(),
+      solver,
+    );
+    expect(
+      edits.items.map((item) => [item.goal, item.attempts, item.dropOffs]),
+    ).toEqual([["clients.edited", 40, 0]]);
+  });
 });

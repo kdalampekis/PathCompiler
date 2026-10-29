@@ -4939,3 +4939,17 @@ Checks for the batch:
   Apps must pass `featureFlags` for flag-guarded guides.
 - **A test type error** (`exactOptionalPropertyTypes`) in the new findings
   test was fixed.
+
+## Issue fixes after the phase run — batch 3 (2026-10-29)
+
+| Issue | Fix | Verified by |
+| --- | --- | --- |
+| #14 Abandonment by navigating away | A guide stops with `navigated-away` when the route leaves everything the workflow mentions; analytics report the reason | New runtime and telemetry tests; the first version kept running after finishing (it did not return), which the test caught |
+| #16 GitHub App ignores repo config | The worker reads the repository's `pathcompiler.yaml` for the reasoning section | Worker test with and without `reasoning.impact` |
+| #32 Shared drop-off targets | Attempts start only at a capability's own targets | New test that fails without the fix |
+| #40 Risk not in checks | Risk line in the GitHub check summary and in `proposals generate` | Existing tests updated; new assertions |
+| #46 CI example | `examples/ci/` | Documentation only |
+
+| Handoff review §54, §59, §61, §76 | The evaluator reports undeclared semantic changes (claimed goals versus observed), `previousRunId` links retries, `harness import` refuses results containing secrets, and the harness fixtures gain partial and unexpected-change cases | Contract tests on the new fixtures; the Integration V0 test checks the undeclared rate and the secret refusal |
+
+Checks for the batch: lint and typecheck passed; `pnpm test` passed 533 tests across 98 suites (all 98 test files); `pnpm test:e2e` passed 50 Chromium tests. A workspace dependency check found 59 packages and no cycles (AGENTS.md rule).

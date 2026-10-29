@@ -352,7 +352,7 @@ describe("GitHub App", () => {
       conclusion: "neutral",
       title: "1 workflow requires review",
       summary:
-        "✓ 2 workflows unaffected\n⚠ 1 workflow requires review\n+ 0 possible new workflows",
+        "✓ 2 workflows unaffected\n⚠ 1 workflow requires review\n+ 0 possible new workflows\nChange risk: HIGH (definite 1, probable 0, uncertain 0)",
     });
     expect(check.text).toContain("x.one (high): Gone.");
   });
@@ -518,6 +518,30 @@ describe("GitHub App", () => {
       name: CHECK_NAME,
     });
     expect(JSON.stringify(calls)).not.toContain("x-access-token");
+    expect(check.summary).toContain("Change risk: HIGH (definite 1,");
+
+    // #16: the repository's pathcompiler.yaml decides about the reasoning
+    // section, even when the App could run it.
+    const { createZ3SolverProvider } = await import("@pathcompiler/solver-z3");
+    const reasoningWorker = createWorkflowCheckWorker({
+      auth: { installationToken: async () => "ghs_installation" },
+      repositories: createLocalRepositoryProvider({
+        "acme/demo": { path: clone },
+      }),
+      fetch: fakeGitHub(calls),
+      reasoning: { solver: createZ3SolverProvider },
+    });
+    await writeFile(path.join(clone, "pathcompiler.yaml"), "version: 1\n");
+    expect((await reasoningWorker({ ...job, base, head })).text).not.toContain(
+      "PathCompiler Product Logic",
+    );
+    await writeFile(
+      path.join(clone, "pathcompiler.yaml"),
+      "version: 1\nreasoning:\n  enabled: true\n  impact: true\n",
+    );
+    expect((await reasoningWorker({ ...job, base, head })).text).toContain(
+      "PathCompiler Product Logic",
+    );
 
     await expect(worker({ ...job, repo: "other", base, head })).rejects.toThrow(
       "not configured",
@@ -526,5 +550,5 @@ describe("GitHub App", () => {
       conclusion: "failure",
       output: { summary: expect.stringContaining("not configured") },
     });
-  }, 90_000);
+  }, 180_000);
 });

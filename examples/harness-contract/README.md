@@ -20,3 +20,9 @@ commit independently (`pathcompiler evaluate`).
 
 The schema files are generated from `@pathcompiler/harness-contracts`, and a
 test fails if they drift.
+
+Also included are a partial result that retries a blocked run
+(`harnessMetadata.previousRunId`) and a result whose claim names fewer goals
+than PathCompiler observes. The evaluation reports the difference as the
+unexpected semantic change rate. `harness import` refuses a result that
+contains secrets.

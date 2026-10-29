@@ -640,6 +640,9 @@ importers:
       "@pathcompiler/capability-engine":
         specifier: workspace:*
         version: link:../capability-engine
+      "@pathcompiler/config":
+        specifier: workspace:*
+        version: link:../config
       "@pathcompiler/graph-delta":
         specifier: workspace:*
         version: link:../graph-delta

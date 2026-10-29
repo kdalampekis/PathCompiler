@@ -141,6 +141,8 @@ export const MutationResultSchema = z.strictObject({
     provider: text.optional(),
     version: text.optional(),
     runId: text,
+    /** A retry names the run it follows (handoff §59). */
+    previousRunId: text.optional(),
     startedAt: z.iso.datetime().optional(),
     finishedAt: z.iso.datetime().optional(),
   }),
@@ -349,6 +351,17 @@ export function evaluationCriteria(
                   ? ("partial" as const)
                   : ("failed" as const),
             summary: result.implementationSummary,
+            ...(result.claimedSemanticChanges.some((item) => item.goal)
+              ? {
+                  claimedGoals: [
+                    ...new Set(
+                      result.claimedSemanticChanges.flatMap((item) =>
+                        item.goal ? [item.goal] : [],
+                      ),
+                    ),
+                  ].sort(),
+                }
+              : {}),
           },
         }
       : {}),

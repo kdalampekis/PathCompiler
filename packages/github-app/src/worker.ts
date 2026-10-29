@@ -3,9 +3,11 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { discoverCapabilities } from "@pathcompiler/capability-engine";
+import { loadConfig, reasoningEnabled } from "@pathcompiler/config";
 import { analyzeCommitRangeDetailed } from "@pathcompiler/graph-delta";
 import {
   analyzeWorkflowImpact,
+  scoreCommitRisk,
   type WorkflowImpactReport,
 } from "@pathcompiler/impact-analysis";
 import {
@@ -43,10 +45,16 @@ export function summarizeWorkflowCheck(
   const fresh = detections.detections.filter(
     (item) => item.status !== "insufficient-evidence",
   );
+  const risk = scoreCommitRisk(
+    impact,
+    semantic ? { uncertainty: semantic.uncertainty } : {},
+  );
   const summary = [
     `✓ ${plural(unaffected, "workflow", "workflows")} unaffected`,
     `⚠ ${plural(review.length, "workflow requires", "workflows require")} review`,
     `+ ${plural(fresh.length, "possible new workflow", "possible new workflows")}`,
+    // P4: a rule level over impact classes, never an incident probability.
+    `Change risk: ${risk.level.toUpperCase()} (definite ${risk.counts.definite}, probable ${risk.counts.probable}, uncertain ${risk.counts.uncertain})`,
   ].join("\n");
   const text = [
     ...review.map(
@@ -205,8 +213,14 @@ export function createWorkflowCheckWorker(options: {
         base: job.base,
         head: job.head,
       });
+      // The repository's own pathcompiler.yaml decides (#16): with one,
+      // reasoning runs only if it enables reasoning.impact, as in the CLI.
+      const repositoryConfig = await loadConfig(prepared.directory);
+      const reasoningWanted = repositoryConfig
+        ? reasoningEnabled(repositoryConfig.config, "impact")
+        : true;
       let semantic: SemanticChangeReport | undefined;
-      if (options.reasoning) {
+      if (options.reasoning && reasoningWanted) {
         const solver = await options.reasoning.solver();
         try {
           semantic = await analyzeSemanticChange({ delta, base, head }, solver);

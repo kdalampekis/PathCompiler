@@ -1,0 +1,38 @@
+# Example GitHub Actions job: verify a pull request's affected workflows in a
+# browser against its preview build, then evaluate the candidate (I4, ADR 0081).
+# PathCompiler never runs your application or deploys it; this job does.
+name: pathcompiler-candidate
+on: pull_request
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # base and head commits are both needed
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # 1. Start the candidate build (replace with your own command).
+      - run: pnpm build && (pnpm start --port 3101 &) && npx wait-on http://127.0.0.1:3101
+
+      # 2. A Playwright test that calls verifyCandidateWorkflows from
+      #    @pathcompiler/workflow-validator/browser with
+      #    candidateCommit: ${{ github.event.pull_request.head.sha }}
+      #    and writes its reports to browser-reports.json.
+      - run: pnpm exec playwright test browser-test/pathcompiler.spec.ts
+        env:
+          CANDIDATE_COMMIT: ${{ github.event.pull_request.head.sha }}
+
+      # 3. Independent evaluation: exits nonzero when the candidate fails.
+      - run: >
+          pnpm pathcompiler evaluate
+          ${{ github.event.pull_request.base.sha }}
+          ${{ github.event.pull_request.head.sha }}
+          --browser browser-reports.json

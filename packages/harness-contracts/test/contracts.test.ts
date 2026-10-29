@@ -180,6 +180,15 @@ describe("harness contract", () => {
     const task = parseHarnessTask(await json(`${examples}task.json`));
     parseMutationResult(await json(`${examples}result.json`), task);
     parseMutationResult(await json(`${examples}blocked-result.json`), task);
+    const partial = parseMutationResult(
+      await json(`${examples}partial-result.json`),
+      task,
+    );
+    expect(partial.harnessMetadata.previousRunId).toBe("example-blocked");
+    parseMutationResult(
+      await json(`${examples}unexpected-change-result.json`),
+      task,
+    );
     const fixtureTask = parseHarnessTask(
       await json(`${fixtures}tasks/restore-editor-create-client.json`),
     );
@@ -195,5 +204,12 @@ describe("harness contract", () => {
       ),
       fixtureTask,
     );
+    for (const name of ["partial", "unexpected-change"])
+      parseMutationResult(
+        await json(
+          `${fixtures}results/restore-editor-create-client.${name}.json`,
+        ),
+        fixtureTask,
+      );
   });
 });
