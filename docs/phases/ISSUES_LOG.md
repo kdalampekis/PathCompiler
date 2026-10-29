@@ -4,6 +4,22 @@ Errors, bugs and deferred items found during phase work, kept so they can be
 retried or fixed later. Newest first. Mark entries **resolved** with the fixing
 commit instead of deleting them.
 
+## Entries deliberately left open (2026-10-29)
+
+After the phase run, every entry with a clear, testable fix was resolved. The
+rest stay open for a stated reason:
+
+| Why | Entries |
+| --- | --- |
+| Needs the user's API key or real repositories (C6, alpha validation) | #34, #35, #43 (thresholds), #44, #47 |
+| Modeling limits that need data-flow analysis or a finer abstraction, best judged on real code | #4, #5, #30, #31 |
+| Evaluation-quality limits that are measured and by design today | #17, #18, #20 |
+| Feature gaps outside the current scope (UI views, templates needing new evidence classes, hypothesis review) | #7, #42, #45 |
+| Design work: cost-bounded plan search with the new `optimize`, and stronger handler association | #28, #37 |
+| Environment fault | #9 |
+
+Entries marked **Resolved** below were fixed and verified with a test.
+
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
 | 48 | I9 | Limitation, resolved | Opportunities, and so recommendations and harness tasks, group findings by capability. One root cause affecting several capabilities, such as renaming the editor role check (5 capabilities), becomes 5 tasks. A harness fixing the cause once then fails each task's evaluation with "unexpected" changes for the other capabilities. | **Resolved** after the phase run (2026-10-25): findings keep their R11 root-cause files, and opportunities whose findings share one merge (`subjects`), so one recommendation and harness task cover them all. Verified by an Integration V0 test where the editor-to-owner rename (5 capabilities) becomes one task and the revert evaluates PASS. |
