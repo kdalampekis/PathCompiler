@@ -2,18 +2,40 @@
 
 Compile your codebase into executable product workflows.
 
-PathCompiler will analyze source code, tests and Git history, discover workflows,
-and compile reviewed workflows into versioned headless artifacts. The product graph
-is a build-time representation; approved workflows are the runtime source of truth.
+PathCompiler analyzes source code, tests and Git history, discovers the
+workflows and capabilities of a product, and compiles reviewed workflows into
+versioned, headless artifacts. The product graph is a build-time
+representation; approved workflows are the runtime source of truth.
 
-This repository implements **Phase 0 — Repository Foundation**,
-**Phase 1 — Static Next.js Analyzer**, **Phase 2 — Semantic Targets**,
-**Phase 3 — Playwright Test Mining**, **Phase 4 — Git Intelligence**,
-**Phase 5 — GitHub PR Adapter**, **Phase 6 — Product Surface Graph**,
-**Phase 7 — Capability Discovery**, **Phase 8 — Workflow Candidate Discovery** and
-**Phase 9 — Workflow Validation**.
-Browser verification, compilation, SDKs and
-runtime guidance are future phases.
+What the repository implements today (details per phase in
+[docs/phases/STATUS.md](docs/phases/STATUS.md), plan in
+[docs/phases/MASTER_ROADMAP.md](docs/phases/MASTER_ROADMAP.md)):
+
+- **Understand:** a static Next.js analyzer, semantic targets, Playwright test
+  mining, Git and GitHub evidence, capability and workflow discovery,
+  validation, browser verification and human review.
+- **Guide:** a workflow compiler, runtime resolver, headless SDK, React
+  runtime and optional UI, MCP server, HTTP service, assistant adapters and a
+  dashboard.
+- **Keep current:** incremental graph diffs, impact analysis, update
+  proposals, new-workflow detection, deprecation and a GitHub App check.
+- **Reason (developers only):** a Formal Product Model, SMT reachability,
+  plans, unreachability explanations, property checking, semantic change
+  between commits, and optimization, enumeration and test generation.
+- **Observe (opt-in, privacy first):** semantic events, an analytics SDK,
+  event ingestion, an observed graph, workflow analytics, reconciliation of
+  possible versus observed behavior, path efficiency, drop-offs, a Markov
+  model, release behavior diffs and probabilistic checks.
+- **Recommend and evaluate:** model providers (opt-in), probabilistic
+  interpretation and diagnosis, change-risk scoring, findings, an improvement
+  gate, recommendations, candidate evaluation with browser verification,
+  experiments, adoption decisions, improvement memory and an optional
+  harness boundary for coding agents.
+
+Everything runs locally on a repository checkout; no source is sent to a model
+or network service unless a model provider is explicitly configured. Run
+`pathcompiler --help` for the command list. Alpha validation on real
+repositories (C6) is the next step.
 
 ## Development
 
