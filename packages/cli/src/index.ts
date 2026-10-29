@@ -18,6 +18,15 @@ import {
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
 import {
+  type BehaviorSpec,
+  formatExpression,
+  fromFormalModel,
+  isHumanBacked,
+  parseBehaviorSpec,
+  serializeBehaviorSpec,
+  weakestConfidence,
+} from "@pathcompiler/behavior-ir";
+import {
   analyzeDropOffs,
   computePathEfficiency,
   type DropOffReport,
@@ -320,6 +329,9 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler experiment approve|decline <decision.json> [--by <name>] [--reason <text>]
        pathcompiler memory record <recommendation-id> [--json] [--out <directory>]
        pathcompiler memory list [--json] [--out <directory>]
+       pathcompiler behavior export [directory] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler behavior validate <behavior-spec.json> [--json]
+       pathcompiler behavior show <behavior-spec.json> [--json]
        pathcompiler harness task <recommendation-id> <base-commit> [--json] [--out <directory>]
        pathcompiler harness import <mutation-result.json> [directory] [--tests <json-file>] [--browser <json-file>] [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
@@ -551,6 +563,12 @@ the output directory) into memory/<recommendation>.json, with lessons only from 
 decisions. recommend then weighs those lessons: an earlier rejected hypothesis for the same
 subject and category halves the priority (one observation, never a rule). memory list shows
 the records. Nothing is trained.
+behavior export converts the repository's extracted Formal Product Model into a BehaviorIR
+specification (reports/behavior-spec.json): the solver-neutral intermediate representation every
+rule of which carries provenance (source type, explicit/inferred/human-approved, extraction
+method, confidence). behavior validate checks a specification file (references, scopes, types,
+mandatory provenance) and behavior show lists its rules with their provenance. Rules extracted
+automatically are candidates, not business ground truth.
 harness task (mode 6 only) writes a provider-neutral HarnessTaskSpec for a recommendation the
 gate made eligible_for_harness, which needs improvement_policy.autonomous_mutation and
 modes.self_improvement: objective, intended semantic changes, protected behaviors, acceptance
@@ -770,6 +788,8 @@ export async function runCli(
   if (positionals[0] === "experiment")
     return runExperiment(positionals, values, cwd);
   if (positionals[0] === "memory") return runMemory(positionals, values, cwd);
+  if (positionals[0] === "behavior")
+    return runBehavior(positionals, values, cwd);
   if (positionals[0] === "harness") return runHarness(positionals, values, cwd);
   if (positionals[0] === "gate")
     return runGate(
@@ -5371,5 +5391,130 @@ async function analyzeProject(
   return analyzeNextProjectCached(
     project,
     createFileCache(path.join(output, "cache", "analysis")),
+  );
+}
+
+/** Rules of a specification with their provenance, in a stable order. */
+function behaviorRules(spec: BehaviorSpec) {
+  const text = (expr: Parameters<typeof formatExpression>[0] | undefined) =>
+    expr ? formatExpression(expr) : "";
+  return [
+    ...spec.invariants.map((item) => ({
+      kind: "invariant",
+      id: item.id,
+      text: text(item.expression),
+      provenance: item.provenance,
+    })),
+    ...spec.businessRules.map((item) => ({
+      kind: "business rule",
+      id: item.id,
+      text: `${text(item.when)} => ${text(item.must)}`,
+      provenance: item.provenance,
+    })),
+    ...spec.permissions.map((item) => ({
+      kind: "permission",
+      id: item.id,
+      text: `${item.role} ${item.effect === "deny" ? "may never" : "may"} ${item.action}${item.constraint ? ` when ${text(item.constraint)}` : ""}`,
+      provenance: item.provenance,
+    })),
+    ...spec.dataPolicies.map((item) => ({
+      kind: "data policy",
+      id: item.id,
+      text: text(item.rule),
+      provenance: item.provenance,
+    })),
+    ...spec.temporalRules.map((item) => ({
+      kind: "temporal rule",
+      id: item.id,
+      text: `${item.before} ${item.kind === "must_precede" ? "MUST_PRECEDE" : "NEVER_AFTER"} ${item.after}`,
+      provenance: item.provenance,
+    })),
+    ...spec.operations.map((item) => ({
+      kind: "operation",
+      id: item.id,
+      text: `${item.parameters.join(", ")}: ${item.preconditions.map(text).join(" && ") || "true"}`,
+      provenance: item.provenance,
+    })),
+  ];
+}
+
+async function runBehavior(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, sub, argument, ...rest] = positionals;
+  if (sub === "export" && rest.length === 0) {
+    const { model } = await loadReasoningModel(argument, values, cwd);
+    const spec = fromFormalModel(model);
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const file = "reports/behavior-spec.json";
+    await writeArtifacts(output, [[file, serializeBehaviorSpec(spec)]]);
+    if (values.json) return serializeBehaviorSpec(spec);
+    return `Exported ${spec.transitions.length} transitions, ${spec.workflows.length} workflows, ${spec.invariants.length} invariants and ${spec.variables.length} variables as BehaviorIR.\nEvery rule carries provenance; extracted rules are inferred candidates, not business ground truth.\nSpecification: ${path.join(output, file)}\n`;
+  }
+  if ((sub === "validate" || sub === "show") && argument && rest.length === 0) {
+    let spec: BehaviorSpec;
+    try {
+      spec = parseBehaviorSpec(
+        await readJsonFile(cwd, argument, "behavior specification"),
+      );
+    } catch (error) {
+      const issues =
+        error instanceof z.ZodError
+          ? error.issues
+              .slice(0, 10)
+              .map(
+                (item) =>
+                  `  ${item.path.join(".") || "(root)"}: ${item.message}`,
+              )
+              .join("\n")
+          : String(error);
+      throw new Error(
+        `${argument} is not a valid BehaviorIR specification:\n${issues}`,
+        { cause: error },
+      );
+    }
+    const counts = {
+      variables: spec.variables.length,
+      workflows: spec.workflows.length,
+      transitions: spec.transitions.length,
+      operations: spec.operations.length,
+      invariants: spec.invariants.length,
+      permissions: spec.permissions.length,
+      temporalRules: spec.temporalRules.length,
+      dataPolicies: spec.dataPolicies.length,
+      businessRules: spec.businessRules.length,
+    };
+    const rules = behaviorRules(spec);
+    if (values.json)
+      return `${JSON.stringify({ valid: true, id: spec.id, counts, rules }, null, 2)}\n`;
+    if (sub === "validate")
+      return `${argument} is a valid BehaviorIR specification (${Object.entries(
+        counts,
+      )
+        .filter(([, count]) => count > 0)
+        .map(([name, count]) => `${count} ${name}`)
+        .join(", ")}).\n`;
+    return `${[
+      `BehaviorIR ${spec.id} (${spec.metadata.producer} ${spec.metadata.producerVersion}${spec.metadata.repositoryCommit ? `, commit ${spec.metadata.repositoryCommit.slice(0, 12)}` : ""}):`,
+      ...rules.map(
+        (rule) =>
+          `  ${rule.kind} ${rule.id}: ${rule.text}\n    provenance: ${rule.provenance
+            .map(
+              (record) =>
+                `${record.sourceType}/${record.origin}${record.sourceFile ? ` ${record.sourceFile}${record.sourceLines ? `:${record.sourceLines}` : ""}` : ""}`,
+            )
+            .join(
+              "; ",
+            )}; confidence ${weakestConfidence(rule.provenance)}${isHumanBacked(rule.provenance) ? "; human-backed" : ""}`,
+      ),
+      rules.length === 0 ? "  (no rules)" : "",
+    ]
+      .filter(Boolean)
+      .join("\n")}\n`;
+  }
+  throw new Error(
+    "Expected: pathcompiler behavior export [directory], behavior validate <file> or behavior show <file>. Use --help for options.",
   );
 }

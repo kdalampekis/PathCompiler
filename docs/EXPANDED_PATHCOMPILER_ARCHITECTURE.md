@@ -138,9 +138,9 @@ BehaviorSpec
   operations[]       id, parameters[], preconditions[], postconditions[], provenance
   invariants[]       id, expression, provenance
   permissions[]      id, role, action, resource?, constraint?, effect, provenance
-  temporalRules[]    id, kind (must_precede | never_after | …), a, b, provenance
+  temporalRules[]    id, kind (must_precede | never_after), before, after, provenance
   dataPolicies[]     id, rule, provenance
-  businessRules[]    id, when, then, provenance            (an implication)
+  businessRules[]    id, when, must, provenance            (when X holds, Y must hold)
 ```
 
 Expressions are a small typed tree, not strings, with a text syntax for

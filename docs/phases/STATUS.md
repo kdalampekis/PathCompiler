@@ -4973,3 +4973,55 @@ evals and a conservative repair loop. No existing functionality is removed.
 
 Documentation only; no checks beyond `git diff --check`. Next: BX1 —
 BehaviorIR and provenance.
+
+---
+
+## Expansion BX1 — BehaviorIR and provenance
+
+Complete — verified locally on 2026-10-29.
+
+- **New `@pathcompiler/behavior-ir`** (additive; nothing existing changed):
+  rule kinds (variables, workflows, transitions, operations, invariants,
+  permissions, temporal rules, data policies, business rules), a typed
+  expression language with linear arithmetic and `old()`, a text parser and
+  printer that round-trip, an evaluator, validation of references, scopes
+  and types, and deterministic serialization and hashing.
+- **Provenance is mandatory** on every rule (source type, origin, method,
+  confidence, file and lines or evidence, `declaredBy` for human origins),
+  with rules such as "model-assisted extraction cannot be EXPLICIT".
+- **`fromFormalModel` and `toFormalModel`:** lossless for the Formal Product
+  Model's fragment, tested on the hand-encoded model and the model
+  extracted from the Next.js fixture; anything outside the fragment is
+  listed as omitted with a reason.
+- **CLI `behavior export | validate | show`.**
+- Recorded in ADR 0088.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm test` | 547 tests passed across 102 suites (all 102 test files; 13 BehaviorIR tests and 1 CLI test are new) |
+| `git diff --check` | Passed |
+
+The tests cover the brief's examples as one specification, round-trip of
+the text syntax, precedence, syntax errors with columns, evaluation of
+postconditions with `old()`, order-independent serialization and hashing,
+every provenance and reference rule, and the lossless round trip on both
+models. No runtime or browser code changed.
+
+### Errors found during the phase
+
+- An `exactOptionalPropertyTypes` mismatch on the expression type was
+  caught by the build and fixed.
+- **A skipped check was nearly committed:** the first run printed no
+  "checks-ok" because Biome rejected the code, but the test step ran
+  afterwards. The causes were a property named `then` (forbidden by the
+  lint rules; renamed `must` for business rules and `before`/`after` for
+  temporal rules), expression-bodied `forEach` callbacks and assignments in
+  expressions in tests. All were fixed, and the chain was rerun.
+
+### Scope notes
+
+- Next: BX2 — deterministic extractors, then BX3 — the verification router.

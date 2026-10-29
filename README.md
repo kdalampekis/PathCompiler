@@ -1447,6 +1447,34 @@ whether completion increased only when the bounds do not overlap. The
 results are estimates about observed users, not about what the product
 allows. See [ADR 0076](docs/decisions/0076-probabilistic-model-checking.md).
 
+## BehaviorIR: a behavioral specification (`pathcompiler behavior`)
+
+PathCompiler is also a compiler from software artifacts to an explicit,
+solver-neutral behavioral specification. The workflows, journeys and
+reachability described above are one consumer of it; PR verification, an
+agent action gate and counterexample evals are others (see
+[docs/EXPANDED_PATHCOMPILER_ARCHITECTURE.md](docs/EXPANDED_PATHCOMPILER_ARCHITECTURE.md)
+and the [roadmap](docs/EXPANDED_PATHCOMPILER_ROADMAP.md)).
+
+```bash
+pnpm pathcompiler behavior export fixtures/next-demo   # reports/behavior-spec.json
+pnpm pathcompiler behavior validate .pathcompiler/reports/behavior-spec.json
+pnpm pathcompiler behavior show .pathcompiler/reports/behavior-spec.json
+```
+
+BehaviorIR describes what the system does (transitions, operations), what the
+specification requires (invariants, permissions, temporal rules, data
+policies, business rules) and how far to trust each requirement. Rules use a
+small expression language with linear arithmetic, for example
+`refund > 5000 => manager_approval == true`. **Every rule carries
+provenance**: source type, whether it is explicit, inferred or human
+approved, how it was extracted, and its confidence. An automatically
+extracted rule is a candidate. A verifier that checks a property proves it
+relative to the encoded specification, not that the specification is the
+real business rule. The existing Formal Product Model converts to BehaviorIR
+and back without loss. See
+[ADR 0088](docs/decisions/0088-behavior-ir-and-provenance.md).
+
 ## Review queue and feedback (`pathcompiler review`)
 
 ```bash
@@ -1893,6 +1921,7 @@ Analysis packages:
 | `@pathcompiler/outcome-analysis` | `measureOutcome`, `OutcomeAssessment`, `MetricComparison`, `GuardrailAssessment` (I6); `decideAdoption`, `recordApproval`, `AdoptionDecision` (I7) |
 | `@pathcompiler/improvement-memory` | `buildMemoryRecord`, `historyFactor`, `rankWithMemory`, `ImprovementMemoryRecordSchema` (I8) |
 | `@pathcompiler/harness-contracts` | `HarnessTaskSpecSchema`, `MutationResultSchema`, `createHarnessTask`, `parseMutationResult`, `evaluationCriteria`, `runFixtureHarness`, `contractJsonSchemas` (I2) |
+| `@pathcompiler/behavior-ir` | `BehaviorSpecSchema`, `parseBehaviorSpec`, `serializeBehaviorSpec`, `behaviorSpecHash`, `ProvenanceSchema`, `parseExpression`, `formatExpression`, `evaluateExpression`, `fromFormalModel`, `toFormalModel` (BX1) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `interpretCandidates` (P1), `selectInterpretations`, `candidateWeight` (P2), `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
@@ -1903,7 +1932,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import`, `behavior export/validate/show`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
