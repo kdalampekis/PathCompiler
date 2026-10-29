@@ -4953,3 +4953,23 @@ Checks for the batch:
 | Handoff review §54, §59, §61, §76 | The evaluator reports undeclared semantic changes (claimed goals versus observed), `previousRunId` links retries, `harness import` refuses results containing secrets, and the harness fixtures gain partial and unexpected-change cases | Contract tests on the new fixtures; the Integration V0 test checks the undeclared rate and the secret refusal |
 
 Checks for the batch: lint and typecheck passed; `pnpm test` passed 533 tests across 98 suites (all 98 test files); `pnpm test:e2e` passed 50 Chromium tests. A workspace dependency check found 59 packages and no cycles (AGENTS.md rule).
+
+---
+
+## Expansion BX0 — Architecture audit (2026-10-29)
+
+PathCompiler is being generalized into a behavioral-specification compiler:
+UX and product paths become one consumer of an explicit, solver-neutral
+BehaviorIR next to PR verification, an agent action gate, counterexample
+evals and a conservative repair loop. No existing functionality is removed.
+
+- [docs/EXPANDED_PATHCOMPILER_ARCHITECTURE.md](../EXPANDED_PATHCOMPILER_ARCHITECTURE.md):
+  the audit (current architecture, mapping, gaps), the proposed BehaviorIR,
+  the diagram, reuse, risks, the MVP, the flagship refund demo, the
+  evaluation strategy, and how claims are bounded.
+- [docs/EXPANDED_PATHCOMPILER_ROADMAP.md](../EXPANDED_PATHCOMPILER_ROADMAP.md):
+  phases BX0–BX7 (named to avoid the earlier P0–P5), research questions and
+  the evaluation plan.
+
+Documentation only; no checks beyond `git diff --check`. Next: BX1 —
+BehaviorIR and provenance.
