@@ -58,4 +58,20 @@ describe("solver problem boundary", () => {
     expect(issue({ ...problem([]), timeoutMs: 0 })).not.toBe("");
     expect(issue(problem([{ op: "int", value: 1.5 }]))).not.toBe("");
   });
+
+  it("accepts integer arithmetic and rejects it on booleans", () => {
+    const sum = { op: "add", args: [x, { op: "int", value: 1 }] } as const;
+    expect(
+      parseSolverProblem(
+        problem([
+          { op: "le", left: { op: "sub", left: sum, right: x }, right: x },
+        ]),
+      ).assertions,
+    ).toHaveLength(1);
+    expect(() =>
+      parseSolverProblem(
+        problem([{ op: "eq", left: { op: "add", args: [b, x] }, right: x }]),
+      ),
+    ).toThrow(/Expected a int term/);
+  });
 });

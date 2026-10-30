@@ -11,7 +11,10 @@ export type SolverTerm =
   | { op: "var"; name: string }
   | { op: "not"; arg: SolverTerm }
   | { op: "and" | "or"; args: SolverTerm[] }
-  | { op: "eq" | "lt" | "le"; left: SolverTerm; right: SolverTerm };
+  | { op: "eq" | "lt" | "le"; left: SolverTerm; right: SolverTerm }
+  /** Integer arithmetic (BX3). `mul` is linear in practice: verifiers pass a literal factor. */
+  | { op: "add" | "mul"; args: SolverTerm[] }
+  | { op: "sub"; left: SolverTerm; right: SolverTerm };
 export type SolverValue = boolean | number;
 
 const name = z.string().min(1);
@@ -23,13 +26,21 @@ export const SolverTermSchema: z.ZodType<SolverTerm> = z.lazy(() =>
     z.strictObject({ op: z.literal("not"), arg: SolverTermSchema }),
     z.strictObject({ op: z.literal("and"), args: z.array(SolverTermSchema) }),
     z.strictObject({ op: z.literal("or"), args: z.array(SolverTermSchema) }),
-    ...(["eq", "lt", "le"] as const).map((op) =>
+    ...(["eq", "lt", "le", "sub"] as const).map((op) =>
       z.strictObject({
         op: z.literal(op),
         left: SolverTermSchema,
         right: SolverTermSchema,
       }),
     ),
+    z.strictObject({
+      op: z.literal("add"),
+      args: z.array(SolverTermSchema).min(1),
+    }),
+    z.strictObject({
+      op: z.literal("mul"),
+      args: z.array(SolverTermSchema).min(1),
+    }),
   ]),
 );
 export const SolverProblemSchema = z
@@ -184,6 +195,21 @@ function sortOf(
         if (issue) return { issue };
       }
       return "bool";
+    }
+    case "add":
+    case "mul": {
+      for (const arg of term.args) {
+        const issue = sortIssue(arg, sorts, "int");
+        if (issue) return { issue };
+      }
+      return "int";
+    }
+    case "sub": {
+      for (const side of [term.left, term.right]) {
+        const issue = sortIssue(side, sorts, "int");
+        if (issue) return { issue };
+      }
+      return "int";
     }
     default: {
       const left = sortOf(term.left, sorts);

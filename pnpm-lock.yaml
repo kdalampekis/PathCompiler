@@ -435,6 +435,9 @@ importers:
       "@pathcompiler/trace-clustering":
         specifier: workspace:*
         version: link:../trace-clustering
+      "@pathcompiler/verification":
+        specifier: workspace:*
+        version: link:../verification
       "@pathcompiler/workflow-compiler":
         specifier: workspace:*
         version: link:../workflow-compiler
@@ -1543,6 +1546,22 @@ importers:
       react-dom:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
+
+  packages/verification:
+    dependencies:
+      "@pathcompiler/behavior-ir":
+        specifier: workspace:*
+        version: link:../behavior-ir
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+    devDependencies:
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
 
   packages/workflow-compiler:
     dependencies:

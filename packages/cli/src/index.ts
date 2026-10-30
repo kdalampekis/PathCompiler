@@ -238,6 +238,12 @@ import {
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import { clusterTraces } from "@pathcompiler/trace-clustering";
 import {
+  createSmtVerifier,
+  createVerificationRouter,
+  type VerificationReport,
+  verifySpec,
+} from "@pathcompiler/verification";
+import {
   COMPILER_VERSION,
   compileWorkflows,
   EXPORT_FORMATS,
@@ -335,6 +341,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler memory list [--json] [--out <directory>]
        pathcompiler behavior export [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler behavior extract [directory] [--bind <name>=<entity> ...] [--commit <sha>] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler behavior verify <behavior-spec.json> [--operation <id> ...] [--json] [--out <directory>]
        pathcompiler behavior validate <behavior-spec.json> [--json]
        pathcompiler behavior show <behavior-spec.json> [--json]
        pathcompiler harness task <recommendation-id> <base-commit> [--json] [--out <directory>]
@@ -574,6 +581,14 @@ rule of which carries provenance (source type, explicit/inferred/human-approved,
 method, confidence). behavior validate checks a specification file (references, scopes, types,
 mandatory provenance) and behavior show lists its rules with their provenance. Rules extracted
 automatically are candidates, not business ground truth.
+behavior verify asks, for every operation, whether each invariant is preserved, each applicable
+business rule or data policy is enforced and each deny or constrained permission is respected,
+within a supported fragment (linear integer arithmetic, booleans, finite enums, string
+equality; one execution of one operation from any state satisfying the invariants). A result is
+VERIFIED, VIOLATED (with a counterexample re-evaluated by the specification's own evaluator),
+UNKNOWN or UNSUPPORTED, and says how far the rule can be trusted. VERIFIED means the encoded
+rule holds within that model, not that the business rule is right. It exits nonzero on a
+violation and writes reports/behavior-verification.json.
 behavior extract reads SQL DDL, Zod models, OpenAPI documents, test assertions and an optional
 approved-rules.json from the directory (and if (…) throw guard clauses of exported
 functions as operation contracts) and writes reports/behavior-spec.json plus
@@ -650,6 +665,7 @@ const CLI_OPTIONS = {
   base: { type: "string" },
   "allow-origin": { type: "string", multiple: true },
   bind: { type: "string", multiple: true },
+  operation: { type: "string", multiple: true },
   browser: { type: "string" },
   impact: { type: "string" },
   "at-most": { type: "string" },
@@ -5525,6 +5541,106 @@ function formatExtraction(result: ExtractionResult, output: string): string {
     .join("\n")}\n`;
 }
 
+async function readBehaviorSpec(
+  cwd: string,
+  argument: string,
+): Promise<BehaviorSpec> {
+  try {
+    return parseBehaviorSpec(
+      await readJsonFile(cwd, argument, "behavior specification"),
+    );
+  } catch (error) {
+    const issues =
+      error instanceof z.ZodError
+        ? error.issues
+            .slice(0, 10)
+            .map(
+              (item) => `  ${item.path.join(".") || "(root)"}: ${item.message}`,
+            )
+            .join("\n")
+        : String(error);
+    throw new Error(
+      `${argument} is not a valid BehaviorIR specification:\n${issues}`,
+      { cause: error },
+    );
+  }
+}
+
+function formatVerification(
+  report: VerificationReport,
+  spec: BehaviorSpec,
+  file: string,
+): string {
+  const lines = [
+    `Verified ${report.results.length} properties of ${spec.id} (${report.specHash.slice(0, 19)}): ${report.summary.VERIFIED} verified, ${report.summary.VIOLATED} violated, ${report.summary.UNKNOWN} unknown, ${report.summary.UNSUPPORTED} unsupported.`,
+  ];
+  const show = (
+    value: Record<string, unknown>,
+    relevant: (id: string) => boolean,
+  ) =>
+    Object.entries(value)
+      .filter(([id]) => relevant(id))
+      .map(([id, item]) => `${id}=${JSON.stringify(item)}`)
+      .join(", ");
+  for (const result of report.results) {
+    // A routine proof is a count; one with a real caveat is worth reading.
+    const notable = result.caveats.filter((item) =>
+      /Vacuous|did not model/.test(item),
+    );
+    if (result.status === "VERIFIED" && notable.length === 0) continue;
+    const { property } = result;
+    const name =
+      property.kind === "invariant_preserved"
+        ? `${property.operation} preserves ${property.invariant}`
+        : property.kind === "rule_enforced"
+          ? `${property.operation} enforces ${property.rule}`
+          : property.kind === "permission_enforced"
+            ? `${property.operation} respects ${property.permission}`
+            : `${property.operation} guarantees its postconditions`;
+    lines.push(`${result.status} ${name}`);
+    if (result.rule)
+      lines.push(
+        `  rule: ${result.rule.text} (${result.rule.humanBacked ? "human-approved" : "extracted candidate"}, ${result.rule.confidence} confidence; ${result.rule.sources.join("; ")})`,
+      );
+    if (result.reason) lines.push(`  ${result.reason}`);
+    const cex = result.counterexample;
+    if (cex) {
+      const operation = spec.operations.find(
+        (item) => item.id === cex.operation,
+      );
+      const mentioned = new Set<string>();
+      const text = [
+        cex.violated,
+        ...(operation?.preconditions.map((item) => formatExpression(item)) ??
+          []),
+        ...(operation?.effects.map(
+          (item) => `${item.variable} ${formatExpression(item.value)}`,
+        ) ?? []),
+      ].join(" ");
+      for (const variable of spec.variables)
+        if (text.includes(variable.id)) mentioned.add(variable.id);
+      const relevant = (id: string) => mentioned.has(id);
+      lines.push(
+        `  counterexample (re-evaluated ${cex.replayed ? "and confirmed" : "but NOT confirmed"}):`,
+        `    inputs: ${show(cex.inputs, relevant) || "-"}`,
+        `    context: ${show(cex.context, relevant) || "-"}`,
+        `    state before: ${show(cex.state, relevant) || "-"}`,
+      );
+      if (cex.after)
+        lines.push(`    state after: ${show(cex.after, relevant) || "-"}`);
+    }
+    for (const caveat of result.status === "VERIFIED"
+      ? notable
+      : result.caveats)
+      lines.push(`  caveat: ${caveat}`);
+  }
+  lines.push(
+    "VERIFIED means the encoded rule holds for one execution of the operation within the supported fragment, given the specification; it does not mean the specification is the business's rule or that the code outside the model is correct.",
+    `Report: ${file}`,
+  );
+  return `${lines.join("\n")}\n`;
+}
+
 async function runBehavior(
   positionals: string[],
   values: Values,
@@ -5539,6 +5655,36 @@ async function runBehavior(
     await writeArtifacts(output, [[file, serializeBehaviorSpec(spec)]]);
     if (values.json) return serializeBehaviorSpec(spec);
     return `Exported ${spec.transitions.length} transitions, ${spec.workflows.length} workflows, ${spec.invariants.length} invariants and ${spec.variables.length} variables as BehaviorIR.\nEvery rule carries provenance; extracted rules are inferred candidates, not business ground truth.\nSpecification: ${path.join(output, file)}\n`;
+  }
+  if (sub === "verify" && argument && rest.length === 0) {
+    const spec = await readBehaviorSpec(cwd, argument);
+    const solver = await createZ3SolverProvider();
+    let report: VerificationReport;
+    try {
+      report = await verifySpec(
+        createVerificationRouter([createSmtVerifier(solver)]),
+        spec,
+        values.operation ? { operations: values.operation } : {},
+      );
+    } finally {
+      await solver.close();
+    }
+    const unknownOperation = (values.operation ?? []).filter(
+      (id) => !spec.operations.some((item) => item.id === id),
+    );
+    if (unknownOperation.length > 0)
+      throw new Error(
+        `No operation ${unknownOperation.join(", ")} in ${argument}. Operations: ${spec.operations.map((item) => item.id).join(", ") || "none"}.`,
+      );
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const file = "reports/behavior-verification.json";
+    await writeArtifacts(output, [
+      [file, `${JSON.stringify(report, null, 2)}\n`],
+    ]);
+    const text = formatVerification(report, spec, path.join(output, file));
+    if (report.summary.VIOLATED > 0)
+      throw new Error(`Rule violations found.\n${text}`);
+    return values.json ? `${JSON.stringify(report, null, 2)}\n` : text;
   }
   if (sub === "extract" && rest.length === 0) {
     const directory = path.resolve(cwd, argument ?? ".");
@@ -5642,6 +5788,6 @@ async function runBehavior(
       .join("\n")}\n`;
   }
   throw new Error(
-    "Expected: pathcompiler behavior export|extract [directory], behavior validate <file> or behavior show <file>. Use --help for options.",
+    "Expected: pathcompiler behavior export|extract [directory], behavior verify|validate|show <file>. Use --help for options.",
   );
 }

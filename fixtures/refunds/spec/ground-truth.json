@@ -169,13 +169,43 @@
     },
     {
       "kind": "business_rule",
+      "text": "true => !refund_requests.processed",
+      "sourceType": "HUMAN_DECLARATION",
+      "file": "fixtures/refunds/spec/approved-rules.json"
+    },
+    {
+      "kind": "business_rule",
+      "text": "true => actor.id != refund_requests.requester_id",
+      "sourceType": "HUMAN_DECLARATION",
+      "file": "fixtures/refunds/spec/approved-rules.json"
+    },
+    {
+      "kind": "business_rule",
+      "text": "true => refund_requests.approved",
+      "sourceType": "HUMAN_DECLARATION",
+      "file": "fixtures/refunds/spec/approved-rules.json"
+    },
+    {
+      "kind": "business_rule",
       "text": "true => refund.amount <= payments.original_amount - payments.refunded_amount",
       "sourceType": "HUMAN_DECLARATION",
       "file": "fixtures/refunds/spec/approved-rules.json"
     },
     {
       "kind": "permission",
+      "text": "customer deny approve_refund",
+      "sourceType": "HUMAN_DECLARATION",
+      "file": "fixtures/refunds/spec/approved-rules.json"
+    },
+    {
+      "kind": "permission",
       "text": "customer deny refund",
+      "sourceType": "HUMAN_DECLARATION",
+      "file": "fixtures/refunds/spec/approved-rules.json"
+    },
+    {
+      "kind": "permission",
+      "text": "support_agent deny approve_refund",
       "sourceType": "HUMAN_DECLARATION",
       "file": "fixtures/refunds/spec/approved-rules.json"
     },

@@ -145,4 +145,29 @@ describe("z3 assumptions", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("solves linear integer arithmetic (BX3)", async () => {
+    // x + 2 * 3 - 1 == 10 → x == 5; a satisfiable system and its negation.
+    const arithmetic: SolverTerm = {
+      op: "sub",
+      left: { op: "add", args: [x, { op: "mul", args: [int(2), int(3)] }] },
+      right: int(1),
+    };
+    const result = await solver.check({
+      variables,
+      assertions: [{ op: "eq", left: arithmetic, right: int(10) }],
+      timeoutMs: 5000,
+    });
+    expect(result).toMatchObject({ status: "sat", model: { x: 5 } });
+    expect(
+      await solver.check({
+        variables,
+        assertions: [
+          { op: "eq", left: arithmetic, right: int(10) },
+          { op: "lt", left: x, right: int(5) },
+        ],
+        timeoutMs: 5000,
+      }),
+    ).toEqual({ status: "unsat" });
+  });
 });

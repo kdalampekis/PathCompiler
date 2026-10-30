@@ -71,6 +71,15 @@ export async function createZ3SolverProvider(): Promise<SolverProvider> {
           return Z3.mk_lt(context, translate(term.left), translate(term.right));
         case "le":
           return Z3.mk_le(context, translate(term.left), translate(term.right));
+        case "add":
+          return Z3.mk_add(context, term.args.map(translate));
+        case "mul":
+          return Z3.mk_mul(context, term.args.map(translate));
+        case "sub":
+          return Z3.mk_sub(context, [
+            translate(term.left),
+            translate(term.right),
+          ]);
       }
     };
     return { constants, translate };

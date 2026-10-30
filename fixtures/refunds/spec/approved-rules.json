@@ -15,6 +15,27 @@
       "when": "true",
       "must": "refund.amount <= payments.original_amount - payments.refunded_amount",
       "appliesTo": ["refund"]
+    },
+    {
+      "id": "refunds.no_self_approval",
+      "description": "Nobody approves their own refund request.",
+      "when": "true",
+      "must": "actor.id != refund_requests.requester_id",
+      "appliesTo": ["approve_refund"]
+    },
+    {
+      "id": "refunds.process_once",
+      "description": "A refund request is processed at most once.",
+      "when": "true",
+      "must": "!refund_requests.processed",
+      "appliesTo": ["process_refund"]
+    },
+    {
+      "id": "refunds.process_only_approved",
+      "description": "Only an approved refund request is processed.",
+      "when": "true",
+      "must": "refund_requests.approved",
+      "appliesTo": ["process_refund"]
     }
   ],
   "permissions": [
@@ -23,6 +44,20 @@
       "description": "Customers never issue refunds.",
       "role": "customer",
       "action": "refund",
+      "effect": "deny"
+    },
+    {
+      "id": "refunds.support_cannot_approve",
+      "description": "Support agents never approve refunds.",
+      "role": "support_agent",
+      "action": "approve_refund",
+      "effect": "deny"
+    },
+    {
+      "id": "refunds.customers_cannot_approve",
+      "description": "Customers never approve refunds.",
+      "role": "customer",
+      "action": "approve_refund",
       "effect": "deny"
     }
   ]

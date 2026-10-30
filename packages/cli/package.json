@@ -59,6 +59,7 @@
     "@pathcompiler/test-generator": "workspace:*",
     "@pathcompiler/test-miner-playwright": "workspace:*",
     "@pathcompiler/trace-clustering": "workspace:*",
+    "@pathcompiler/verification": "workspace:*",
     "@pathcompiler/workflow-compiler": "workspace:*",
     "@pathcompiler/workflow-discovery": "workspace:*",
     "@pathcompiler/workflow-ir": "workspace:*",

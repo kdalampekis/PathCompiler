@@ -1460,7 +1460,8 @@ and the [roadmap](docs/EXPANDED_PATHCOMPILER_ROADMAP.md)).
 pnpm pathcompiler behavior export fixtures/next-demo   # reports/behavior-spec.json
 pnpm pathcompiler behavior validate .pathcompiler/reports/behavior-spec.json
 pnpm pathcompiler behavior show .pathcompiler/reports/behavior-spec.json
-pnpm pathcompiler behavior extract fixtures/refunds --bind payment=payments --bind createRefund=refund
+pnpm pathcompiler behavior extract fixtures/refunds --bind payment=payments --bind createRefund=refund --bind request=refund_requests --exclude variants
+pnpm pathcompiler behavior verify .pathcompiler/reports/behavior-spec.json
 ```
 
 `behavior extract` reads SQL DDL, Zod models, OpenAPI documents, test
@@ -1469,6 +1470,16 @@ model, and lists every construct it could not model instead of guessing. It also
 `if (…) throw` guard clauses of exported functions as operation preconditions, effects and role
 permissions, and marks what it skipped as limitations. See
 [ADR 0089](docs/decisions/0089-deterministic-behavior-extractors.md).
+
+`behavior verify` checks, per operation, that each invariant is preserved,
+each business rule is enforced and each permission is respected, with an SMT
+solver behind a router that reports `UNSUPPORTED` instead of guessing. A
+violation comes with a counterexample that is re-evaluated against the
+specification before it is shown. Given the encoded specification and the
+modeled state, it establishes whether the checked property holds within the
+supported model; it does not establish that the specification is the real
+business rule. See
+[ADR 0090](docs/decisions/0090-verification-router-and-smt-backend.md).
 
 BehaviorIR describes what the system does (transitions, operations), what the
 specification requires (invariants, permissions, temporal rules, data

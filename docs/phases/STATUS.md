@@ -5123,3 +5123,49 @@ Complete — verified locally on 2026-10-29.
 ### Scope notes
 
 - Next: BX3 — the verification router and SMT backend.
+
+## Expansion BX3 — Verification router and SMT backend
+
+Complete — verified locally on 2026-10-29.
+
+- **New `@pathcompiler/verification`:** `Verifier` interface and router
+  (UNSUPPORTED lists every reason), an SMT verifier, `propertiesOf` and
+  `verifySpec` (every invariant, applicable rule and enforceable permission
+  per operation, in a stable order).
+- **`SolverTerm` gains integer `add`/`sub`/`mul`** in `solver-provider` and
+  `solver-z3`; nothing existing changed.
+- **Counterexamples are replayed** with the IR evaluator; a replay mismatch
+  is UNKNOWN, never VIOLATED. VERIFIED carries a vacuity check.
+- **CLI `behavior verify`** (nonzero on a violation).
+- On the refund fixture: 23 properties of the base service all verify; the
+  support-agent fast path is the one violation (approval rule, confirmed
+  counterexample: a support agent refunding 5001 without approval);
+  removing the self-approval or already-processed check each violates
+  exactly its rule; the benign refactor and the stricter limit violate
+  nothing. The approved rules were extended with five rules (self-approval,
+  process once, process only approved, support and customers cannot approve),
+  so the extraction ground truth now has 53 facts.
+- Recorded in ADR 0090.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 597 tests passed across 105 suites (all 105 test files; 16 verification, 1 solver-z3, 1 solver-provider and 1 CLI tests are new) |
+
+### Errors found during the phase
+
+- None in the encoding; the replay never disagreed with the solver on the
+  fixture. The replay, vacuity and UNKNOWN paths are covered with stub
+  solvers so they are exercised even though the real solver never triggers
+  them.
+
+### Scope notes
+
+- Not verified: temporal rules, reachability from the initial state,
+  decimals, null, collections. Each is reported UNSUPPORTED or absent from
+  the model, never as a pass.
+- Next: BX4 — behavior diff and the PR guard.
