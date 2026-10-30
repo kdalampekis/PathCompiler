@@ -1460,7 +1460,13 @@ and the [roadmap](docs/EXPANDED_PATHCOMPILER_ROADMAP.md)).
 pnpm pathcompiler behavior export fixtures/next-demo   # reports/behavior-spec.json
 pnpm pathcompiler behavior validate .pathcompiler/reports/behavior-spec.json
 pnpm pathcompiler behavior show .pathcompiler/reports/behavior-spec.json
+pnpm pathcompiler behavior extract fixtures/refunds --bind payment=payments --bind createRefund=refund
 ```
+
+`behavior extract` reads SQL DDL, Zod models, OpenAPI documents, test
+assertions and an optional `approved-rules.json` from a directory, with no
+model, and lists every construct it could not model instead of guessing. See
+[ADR 0089](docs/decisions/0089-deterministic-behavior-extractors.md).
 
 BehaviorIR describes what the system does (transitions, operations), what the
 specification requires (invariants, permissions, temporal rules, data

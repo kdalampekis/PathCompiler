@@ -18,6 +18,10 @@ import {
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
 import {
+  type ExtractionResult,
+  extractBehavior,
+} from "@pathcompiler/behavior-extraction";
+import {
   type BehaviorSpec,
   formatExpression,
   fromFormalModel,
@@ -330,6 +334,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler memory record <recommendation-id> [--json] [--out <directory>]
        pathcompiler memory list [--json] [--out <directory>]
        pathcompiler behavior export [directory] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler behavior extract [directory] [--bind <name>=<entity> ...] [--commit <sha>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler behavior validate <behavior-spec.json> [--json]
        pathcompiler behavior show <behavior-spec.json> [--json]
        pathcompiler harness task <recommendation-id> <base-commit> [--json] [--out <directory>]
@@ -569,6 +574,11 @@ rule of which carries provenance (source type, explicit/inferred/human-approved,
 method, confidence). behavior validate checks a specification file (references, scopes, types,
 mandatory provenance) and behavior show lists its rules with their provenance. Rules extracted
 automatically are candidates, not business ground truth.
+behavior extract reads SQL DDL, Zod models, OpenAPI documents, test assertions and an optional
+approved-rules.json from the directory and writes reports/behavior-spec.json plus
+reports/behavior-extraction.json (every extracted fact with its source, and every construct it
+could not model). It uses no model. --bind payment=payments maps a code identifier to the
+entity or operation prefix its variables use (also applied to OpenAPI operation IDs).
 harness task (mode 6 only) writes a provider-neutral HarnessTaskSpec for a recommendation the
 gate made eligible_for_harness, which needs improvement_policy.autonomous_mutation and
 modes.self_improvement: objective, intended semantic changes, protected behaviors, acceptance
@@ -638,6 +648,7 @@ const CLI_OPTIONS = {
   "at-least": { type: "string" },
   base: { type: "string" },
   "allow-origin": { type: "string", multiple: true },
+  bind: { type: "string", multiple: true },
   browser: { type: "string" },
   impact: { type: "string" },
   "at-most": { type: "string" },
@@ -5438,6 +5449,81 @@ function behaviorRules(spec: BehaviorSpec) {
   ];
 }
 
+const EXTRACTION_EXTENSIONS = /\.(sql|tsx?|json|ya?ml)$/;
+const EXTRACTION_SKIPPED = new Set([
+  "node_modules",
+  "dist",
+  ".git",
+  ".next",
+  ".pathcompiler",
+  "coverage",
+]);
+/** Source files the deterministic extractors may read, relative to the directory. */
+async function readExtractionInputs(
+  directory: string,
+  exclude: readonly string[],
+): Promise<{ path: string; content: string }[]> {
+  const files: { path: string; content: string }[] = [];
+  const excluded = new Set(
+    exclude.map((item) => path.resolve(directory, item)),
+  );
+  const walk = async (current: string): Promise<void> => {
+    for (const entry of await readdir(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (excluded.has(full)) continue;
+      if (entry.isDirectory()) {
+        if (!EXTRACTION_SKIPPED.has(entry.name)) await walk(full);
+      } else if (entry.isFile() && EXTRACTION_EXTENSIONS.test(entry.name)) {
+        const content = await readFile(full, "utf8");
+        if (content.length <= 1_000_000)
+          files.push({
+            path: path.relative(directory, full).split(path.sep).join("/"),
+            content,
+          });
+      }
+    }
+  };
+  await walk(directory);
+  return files;
+}
+
+function formatExtraction(result: ExtractionResult, output: string): string {
+  const bySource = new Map<string, number>();
+  for (const entry of result.ledger)
+    bySource.set(
+      entry.provenance.sourceType,
+      (bySource.get(entry.provenance.sourceType) ?? 0) + 1,
+    );
+  const spec = result.spec;
+  return `${[
+    `Extracted BehaviorIR ${spec.id} (${result.specHash.slice(0, 19)}) without a model:`,
+    `  ${spec.variables.length} variables, ${spec.operations.length} operations, ${spec.invariants.length} invariants, ${spec.businessRules.length} business rules, ${spec.permissions.length} permissions, ${(spec.dataConstraints ?? []).length} data constraints`,
+    `  facts by source: ${[...bySource].map(([name, count]) => `${name} ${count}`).join(", ") || "none"}`,
+    `  files read: ${
+      Object.entries(result.inputs)
+        .filter(([, list]) => list.length > 0)
+        .map(([name, list]) => `${name} ${list.length}`)
+        .join(", ") || "none"
+    }`,
+    result.unsupported.length > 0
+      ? `  ${result.unsupported.length} constructs not modeled (listed, not guessed):\n${result.unsupported
+          .slice(0, 10)
+          .map(
+            (item) =>
+              `    ${item.file}${item.lines ? `:${item.lines}` : ""} ${item.construct}: ${item.reason}`,
+          )
+          .join(
+            "\n",
+          )}${result.unsupported.length > 10 ? `\n    … ${result.unsupported.length - 10} more in reports/behavior-extraction.json` : ""}`
+      : "",
+    ...result.conflicts.map((item) => `  conflict: ${item}`),
+    "Extracted rules are candidates with provenance, not business ground truth; review them (behavior show) before relying on them.",
+    `Specification: ${path.join(output, "reports/behavior-spec.json")}`,
+  ]
+    .filter(Boolean)
+    .join("\n")}\n`;
+}
+
 async function runBehavior(
   positionals: string[],
   values: Values,
@@ -5452,6 +5538,46 @@ async function runBehavior(
     await writeArtifacts(output, [[file, serializeBehaviorSpec(spec)]]);
     if (values.json) return serializeBehaviorSpec(spec);
     return `Exported ${spec.transitions.length} transitions, ${spec.workflows.length} workflows, ${spec.invariants.length} invariants and ${spec.variables.length} variables as BehaviorIR.\nEvery rule carries provenance; extracted rules are inferred candidates, not business ground truth.\nSpecification: ${path.join(output, file)}\n`;
+  }
+  if (sub === "extract" && rest.length === 0) {
+    const directory = path.resolve(cwd, argument ?? ".");
+    const bindings: Record<string, string> = {};
+    for (const entry of values.bind ?? []) {
+      const [name, target, ...extra] = entry.split("=");
+      if (!name || !target || extra.length > 0)
+        throw new Error(
+          `--bind expects <name>=<entity>, for example --bind payment=payments; got "${entry}".`,
+        );
+      bindings[name] = target;
+    }
+    const files = await readExtractionInputs(directory, values.exclude ?? []);
+    const result = extractBehavior(files, {
+      bindings,
+      id:
+        path
+          .basename(directory)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_") || "extracted",
+      repositoryCommit: values.commit ?? null,
+    });
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const report = {
+      schemaVersion: 1,
+      specHash: result.specHash,
+      inputs: result.inputs,
+      ledger: result.ledger,
+      unsupported: result.unsupported,
+      conflicts: result.conflicts,
+    };
+    await writeArtifacts(output, [
+      ["reports/behavior-spec.json", serializeBehaviorSpec(result.spec)],
+      [
+        "reports/behavior-extraction.json",
+        `${JSON.stringify(report, null, 2)}\n`,
+      ],
+    ]);
+    if (values.json) return serializeBehaviorSpec(result.spec);
+    return formatExtraction(result, output);
   }
   if ((sub === "validate" || sub === "show") && argument && rest.length === 0) {
     let spec: BehaviorSpec;
@@ -5515,6 +5641,6 @@ async function runBehavior(
       .join("\n")}\n`;
   }
   throw new Error(
-    "Expected: pathcompiler behavior export [directory], behavior validate <file> or behavior show <file>. Use --help for options.",
+    "Expected: pathcompiler behavior export|extract [directory], behavior validate <file> or behavior show <file>. Use --help for options.",
   );
 }

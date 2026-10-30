@@ -24,6 +24,7 @@
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/behavior-reconciliation": "workspace:*",
     "@pathcompiler/candidate-evaluator": "workspace:*",
+    "@pathcompiler/behavior-extraction": "workspace:*",
     "@pathcompiler/behavior-ir": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/config": "workspace:*",

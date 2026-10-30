@@ -17,6 +17,10 @@ afterEach(async () => {
   );
 });
 
+const refunds = fileURLToPath(
+  new URL("../../../fixtures/refunds/", import.meta.url),
+);
+
 describe("behavior", () => {
   it("exports the existing analysis as BehaviorIR, then validates and shows it", async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-behavior-"));
@@ -53,5 +57,40 @@ describe("behavior", () => {
     await expect(run(["behavior", "other"])).rejects.toThrow(
       "Expected: pathcompiler behavior export",
     );
+  }, 120_000);
+
+  it("extracts a specification from SQL, Zod, OpenAPI, tests and approved rules without a model", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-extract-"));
+    temporary.push(cwd);
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    const bind = [
+      "--bind",
+      "payment=payments",
+      "--bind",
+      "createRefund=refund",
+    ];
+    const text = await run(["behavior", "extract", refunds, ...bind]);
+    expect(text).toContain("without a model");
+    expect(text).toContain("4 constructs not modeled");
+    expect(text).toContain("not business ground truth");
+    const file = path.join("out", "reports", "behavior-spec.json");
+    expect(await run(["behavior", "validate", file])).toContain(
+      "is a valid BehaviorIR specification",
+    );
+    const report = JSON.parse(
+      await readFile(
+        path.join(cwd, "out", "reports", "behavior-extraction.json"),
+        "utf8",
+      ),
+    );
+    expect(report.ledger.length).toBeGreaterThan(30);
+    expect(report.unsupported).toHaveLength(4);
+    // Same input, same bytes.
+    const first = await readFile(path.join(cwd, file), "utf8");
+    await run(["behavior", "extract", refunds, ...bind]);
+    expect(await readFile(path.join(cwd, file), "utf8")).toBe(first);
+    await expect(
+      run(["behavior", "extract", refunds, "--bind", "payment"]),
+    ).rejects.toThrow("--bind expects <name>=<entity>");
   }, 120_000);
 });

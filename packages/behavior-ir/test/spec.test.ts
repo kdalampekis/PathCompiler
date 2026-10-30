@@ -288,3 +288,71 @@ describe("BehaviorIR", () => {
     );
   });
 });
+
+describe("BehaviorIR extraction extensions", () => {
+  const first = <T>(items: T[]): T => items[0] as T;
+  const constraint = {
+    id: "balance_not_null",
+    kind: "not_null" as const,
+    subject: "balance",
+    provenance: [declared],
+  };
+
+  it("keeps data constraints, sorted, and rejects an ID shared with a rule", () => {
+    const base = refundSpec();
+    const withConstraints = {
+      ...base,
+      dataConstraints: [
+        { ...constraint, id: "z_unique", kind: "unique" as const },
+        constraint,
+      ],
+    };
+    expect(issues(withConstraints)).toEqual([]);
+    const text = JSON.parse(serializeBehaviorSpec(withConstraints));
+    expect(text.dataConstraints.map((item: { id: string }) => item.id)).toEqual(
+      ["balance_not_null", "z_unique"],
+    );
+    expect(
+      issues({
+        ...base,
+        dataConstraints: [{ ...constraint, id: first(base.invariants).id }],
+      }).join("\n"),
+    ).toContain("is used by more than one rule");
+  });
+
+  it("limits a rule to named operations and rejects unknown ones", () => {
+    const base = refundSpec();
+    const operation = first(base.operations).id;
+    expect(
+      issues({
+        ...base,
+        businessRules: [
+          { ...first(base.businessRules), appliesTo: [operation] },
+        ],
+      }),
+    ).toEqual([]);
+    expect(
+      issues({
+        ...base,
+        businessRules: [
+          { ...first(base.businessRules), appliesTo: ["no_such_operation"] },
+        ],
+      }),
+    ).toContain("no_such_operation is not an operation or transition.");
+  });
+
+  it("records what an extractor could not model on the operation", () => {
+    const base = refundSpec();
+    const spec = {
+      ...base,
+      operations: [
+        {
+          ...first(base.operations),
+          limitations: ["A guard calling isEligible() was not modeled."],
+        },
+      ],
+    };
+    expect(issues(spec)).toEqual([]);
+    expect(serializeBehaviorSpec(spec)).toContain("isEligible()");
+  });
+});

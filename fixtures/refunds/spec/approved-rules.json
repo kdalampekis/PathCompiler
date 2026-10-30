@@ -1,0 +1,29 @@
+{
+  "declaredBy": "finance-policy@example.com",
+  "reference": "Refund policy v3, section 2 (fixture)",
+  "businessRules": [
+    {
+      "id": "refunds.manager_approval_over_limit",
+      "description": "A refund above 5000 needs manager approval.",
+      "when": "refund.amount > 5000",
+      "must": "refund.manager_approval == true",
+      "appliesTo": ["refund"]
+    },
+    {
+      "id": "refunds.within_remaining_balance",
+      "description": "A refund cannot exceed what is left to refund on the payment.",
+      "when": "true",
+      "must": "refund.amount <= payments.original_amount - payments.refunded_amount",
+      "appliesTo": ["refund"]
+    }
+  ],
+  "permissions": [
+    {
+      "id": "refunds.customers_cannot_refund",
+      "description": "Customers never issue refunds.",
+      "role": "customer",
+      "action": "refund",
+      "effect": "deny"
+    }
+  ]
+}

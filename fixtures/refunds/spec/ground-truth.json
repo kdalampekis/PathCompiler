@@ -1,0 +1,278 @@
+{
+  "facts": [
+    {
+      "kind": "data_constraint",
+      "text": "required refund.payment_id",
+      "sourceType": "OPENAPI",
+      "file": "fixtures/refunds/api/openapi.json",
+      "lines": "17"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.payment_id >= 1",
+      "sourceType": "OPENAPI",
+      "file": "fixtures/refunds/api/openapi.json",
+      "lines": "17"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "required refund.amount",
+      "sourceType": "OPENAPI",
+      "file": "fixtures/refunds/api/openapi.json",
+      "lines": "18-22"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.amount <= 100000",
+      "sourceType": "OPENAPI",
+      "file": "fixtures/refunds/api/openapi.json",
+      "lines": "18-22"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.amount >= 1",
+      "sourceType": "OPENAPI",
+      "file": "fixtures/refunds/api/openapi.json",
+      "lines": "18-22"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "authentication_required refund",
+      "sourceType": "OPENAPI",
+      "file": "fixtures/refunds/api/openapi.json",
+      "lines": "8"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "primary_key refund_requests.id",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "10"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "foreign_key refund_requests.payment_id -> payments.id",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "11"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "not_null refund_requests.payment_id",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "11"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "not_null refund_requests.requester_id",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "12"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "not_null refund_requests.amount",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "13"
+    },
+    {
+      "kind": "invariant",
+      "text": "refund_requests.amount > 0",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "13"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "not_null refund_requests.approved",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "14"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "not_null refund_requests.processed",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "15"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "unique refund_requests.payment_id, refund_requests.requester_id, refund_requests.amount",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "16"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "primary_key payments.id",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "2"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "not_null payments.original_amount",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "3"
+    },
+    {
+      "kind": "invariant",
+      "text": "payments.original_amount > 0",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "3"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "not_null payments.refunded_amount",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "4"
+    },
+    {
+      "kind": "invariant",
+      "text": "payments.refunded_amount >= 0",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "4"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "not_null payments.currency",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "5"
+    },
+    {
+      "kind": "invariant",
+      "text": "payments.currency == \"USD\" || payments.currency == \"EUR\"",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "5"
+    },
+    {
+      "kind": "invariant",
+      "text": "payments.refunded_amount <= payments.original_amount",
+      "sourceType": "DATABASE_SCHEMA",
+      "file": "fixtures/refunds/db/schema.sql",
+      "lines": "6"
+    },
+    {
+      "kind": "business_rule",
+      "text": "refund.amount > 5000 => refund.manager_approval == true",
+      "sourceType": "HUMAN_DECLARATION",
+      "file": "fixtures/refunds/spec/approved-rules.json"
+    },
+    {
+      "kind": "business_rule",
+      "text": "true => refund.amount <= payments.original_amount - payments.refunded_amount",
+      "sourceType": "HUMAN_DECLARATION",
+      "file": "fixtures/refunds/spec/approved-rules.json"
+    },
+    {
+      "kind": "permission",
+      "text": "customer deny refund",
+      "sourceType": "HUMAN_DECLARATION",
+      "file": "fixtures/refunds/spec/approved-rules.json"
+    },
+    {
+      "kind": "invariant",
+      "text": "payments.original_amount > 0",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "16"
+    },
+    {
+      "kind": "invariant",
+      "text": "payments.refunded_amount >= 0",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "17"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "required refund.payment_id",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "4"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.payment_id > 0",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "4"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "required refund.amount",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "5"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.amount <= 100000",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "5"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.amount > 0",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "5"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "required refund.manager_approval",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "6"
+    },
+    {
+      "kind": "data_constraint",
+      "text": "required refund.reason",
+      "sourceType": "VALIDATION_MODEL",
+      "file": "fixtures/refunds/src/models.ts",
+      "lines": "7"
+    },
+    {
+      "kind": "invariant",
+      "text": "payments.refunded_amount >= 0",
+      "sourceType": "TEST",
+      "file": "fixtures/refunds/tests/refunds.test.ts",
+      "lines": "10"
+    },
+    {
+      "kind": "invariant",
+      "text": "payments.refunded_amount <= payments.original_amount",
+      "sourceType": "TEST",
+      "file": "fixtures/refunds/tests/refunds.test.ts",
+      "lines": "11"
+    }
+  ],
+  "unsupported": [
+    {
+      "file": "fixtures/refunds/api/openapi.json",
+      "construct": "createRefund responses (200, 400, 403)"
+    },
+    {
+      "file": "fixtures/refunds/src/models.ts",
+      "construct": "RefundInput.reason"
+    },
+    {
+      "file": "fixtures/refunds/tests/refunds.test.ts",
+      "construct": "expect(payment.originalAmount).toBeLessThanOrEqual(1000)"
+    },
+    {
+      "file": "fixtures/refunds/tests/refunds.test.ts",
+      "construct": "toBe(200)"
+    }
+  ]
+}

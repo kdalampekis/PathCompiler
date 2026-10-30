@@ -5025,3 +5025,58 @@ models. No runtime or browser code changed.
 ### Scope notes
 
 - Next: BX2 — deterministic extractors, then BX3 — the verification router.
+
+## Expansion BX2 — Deterministic extractors
+
+Complete — verified locally on 2026-10-29 (extraction from declarations; the
+guard-clause source extractor follows as BX2b).
+
+- **New `@pathcompiler/behavior-extraction`:** SQL DDL, Zod, OpenAPI
+  (JSON/YAML), test-assertion and approved-rules extractors, a merge that
+  keeps corroborating provenance and quarantines invalid rules, a per-fact
+  ledger, and `scoreExtraction` (precision, recall, provenance correctness,
+  unsupported reported).
+- **BehaviorIR extended, additively:** `dataConstraints`, `appliesTo` on
+  business rules and data policies, `limitations` on operations. Existing
+  specifications are unchanged.
+- **CLI `behavior extract`** (`--bind`, `--commit`, `--exclude`), writing the
+  specification and an extraction report with every fact and every construct
+  not modeled.
+- **Refund fixture** (`fixtures/refunds`): schema, models, OpenAPI, tests,
+  approved rules, hand-reviewed ground truth, and five candidate variants for
+  the next phases.
+- Recorded in ADR 0089.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 571 tests passed across 103 suites (all 103 test files; 20 extraction tests, 3 BehaviorIR tests and 1 CLI test are new) |
+
+On the refund fixture the extraction matches the ground truth (37 facts from
+five files): precision 1.0, recall 1.0, provenance correct for every fact,
+and all four constructs it must refuse to guess are reported. The ground
+truth is small and was reviewed by its author, so these numbers say the
+extractors are consistent on supported constructs, not how they do on a
+real repository.
+
+### Errors found during the phase
+
+- Source line numbers for SQL items were one line early because the split
+  kept leading whitespace; found by reading the ledger, fixed by trimming
+  and covered by the ground truth's line ranges.
+- `!a == b` prints without parentheses. This is by design (`!` binds looser
+  than comparison, like `not` in Python) and round-trips; recorded so it is
+  not mistaken for a bug.
+- `pnpm install` rewrote the lockfile style again; reformatted with Biome per
+  the check-chain note.
+
+### Scope notes
+
+- Not modeled yet: decimal amounts, null semantics, string length, response
+  status contracts, ORM models, source-code guards (BX2b).
+- Next: BX2b — guard-clause source extractor, then BX3 — the verification
+  router.

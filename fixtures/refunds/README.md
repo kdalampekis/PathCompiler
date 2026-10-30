@@ -1,0 +1,25 @@
+# Refunds fixture
+
+A small, framework-free TypeScript service used to develop and evaluate
+PathCompiler's behavioral-specification features: extraction, verification,
+the PR guard, the agent action gate and counterexample evals. It is not a
+real payments system.
+
+| Path | Purpose |
+| --- | --- |
+| `src/refunds.ts` | The service (the "base" version): guard clauses throw on invalid input |
+| `db/schema.sql` | SQL constraints on payments and refund requests |
+| `src/models.ts` | Zod validation models |
+| `api/openapi.json` | The HTTP contract |
+| `tests/refunds.test.ts` | Test assertions (documentation fixtures; not run by the repository's test runner) |
+| `spec/approved-rules.json` | The rules a human approved (BehaviorIR) |
+| `spec/ground-truth.json` | Hand-written expected extraction results, for precision and recall |
+| `variants/*.ts` | Candidate versions of `src/refunds.ts`: one introduces a violation tests do not catch, others are benign or break a different rule |
+
+Roles: `support_agent`, `manager`, `customer`.
+
+Rules the approved specification states:
+- a payment's refunded total never goes below zero or above the original amount;
+- a refund above 5000 needs manager approval;
+- only a manager approves a refund, and never their own request;
+- a refund request cannot be processed twice.

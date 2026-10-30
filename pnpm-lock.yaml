@@ -180,6 +180,21 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
 
+  packages/behavior-extraction:
+    dependencies:
+      "@pathcompiler/behavior-ir":
+        specifier: workspace:*
+        version: link:../behavior-ir
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
   packages/behavior-ir:
     dependencies:
       "@pathcompiler/formal-model":
@@ -309,6 +324,9 @@ importers:
       "@pathcompiler/adapter-nextjs":
         specifier: workspace:*
         version: link:../adapter-nextjs
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
       "@pathcompiler/behavior-ir":
         specifier: workspace:*
         version: link:../behavior-ir

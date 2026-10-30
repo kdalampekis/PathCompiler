@@ -1,0 +1,41 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Refunds", "version": "1.0.0" },
+  "paths": {
+    "/refunds": {
+      "post": {
+        "operationId": "createRefund",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["paymentId", "amount"],
+                "properties": {
+                  "paymentId": { "type": "integer", "minimum": 1 },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000
+                  },
+                  "managerApproval": { "type": "boolean" },
+                  "currency": { "type": "string", "enum": ["USD", "EUR"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Refunded" },
+          "400": { "description": "Invalid refund" },
+          "403": { "description": "Not allowed" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer" } }
+  }
+}

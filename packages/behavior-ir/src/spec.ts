@@ -19,7 +19,8 @@ import { ProvenanceListSchema } from "./provenance.js";
  * Semantics, used by every verifier:
  * - an **invariant** holds in every reachable state;
  * - an **execution rule** (business rule, data policy) holds whenever an
- *   operation or transition executes, over state, inputs and context;
+ *   operation or transition executes, over state, inputs and context; with
+ *   `appliesTo` it is limited to those operations;
  * - a **permission** says a role may run an action only when its constraint
  *   holds (`allow`), or never (`deny`); roles without an entry are
  *   unconstrained by permissions;
@@ -123,6 +124,12 @@ export const OperationSchema = z.strictObject({
   postconditions: z.array(ExprSchema),
   /** An update with a frame; when present it defines the new state. */
   effects: z.array(EffectSchema),
+  /**
+   * Constructs an extractor saw but could not model. When present, the
+   * preconditions may be weaker than the code, so a violation found against
+   * them can be spurious; verifiers carry this into their results.
+   */
+  limitations: z.array(text).optional(),
   provenance,
 });
 export const InvariantSchema = z.strictObject({
@@ -158,6 +165,8 @@ export const DataPolicySchema = z.strictObject({
   id,
   description: text.optional(),
   rule: ExprSchema,
+  /** Operations or transitions the policy applies to; absent means every execution. */
+  appliesTo: z.array(id).optional(),
   provenance,
 });
 export const BusinessRuleSchema = z.strictObject({
@@ -166,6 +175,30 @@ export const BusinessRuleSchema = z.strictObject({
   /** Whenever this holds at an execution, `must` has to hold too. */
   when: ExprSchema,
   must: ExprSchema,
+  /** Operations or transitions the rule applies to; absent means every execution. */
+  appliesTo: z.array(id).optional(),
+  provenance,
+});
+/**
+ * Declarations about data that the expression language cannot state (there
+ * is no null or uniqueness in it). They are kept, with provenance, so they
+ * are reviewable and can feed other checks; they are not verified here.
+ */
+export const DataConstraintSchema = z.strictObject({
+  id,
+  description: text.optional(),
+  kind: z.enum([
+    "not_null",
+    "unique",
+    "primary_key",
+    "foreign_key",
+    "required",
+    "authentication_required",
+  ]),
+  /** A column or columns (`payments.original_amount`), a field, or an operation. */
+  subject: text,
+  /** The referenced column, for foreign keys. */
+  references: text.optional(),
   provenance,
 });
 export type Workflow = z.infer<typeof WorkflowSchema>;
@@ -176,6 +209,7 @@ export type Permission = z.infer<typeof PermissionSchema>;
 export type TemporalRule = z.infer<typeof TemporalRuleSchema>;
 export type DataPolicy = z.infer<typeof DataPolicySchema>;
 export type BusinessRule = z.infer<typeof BusinessRuleSchema>;
+export type DataConstraint = z.infer<typeof DataConstraintSchema>;
 
 const SpecShape = z.strictObject({
   schemaVersion: z.literal(BEHAVIOR_SPEC_SCHEMA_VERSION),
@@ -200,6 +234,7 @@ const SpecShape = z.strictObject({
   temporalRules: z.array(TemporalRuleSchema),
   dataPolicies: z.array(DataPolicySchema),
   businessRules: z.array(BusinessRuleSchema),
+  dataConstraints: z.array(DataConstraintSchema).optional(),
 });
 
 type ValueType =
@@ -242,6 +277,9 @@ export const BehaviorSpecSchema = SpecShape.superRefine((spec, context) => {
     ),
     ...spec.businessRules.map(
       (item, index) => ["businessRules", index, item.id] as const,
+    ),
+    ...(spec.dataConstraints ?? []).map(
+      (item, index) => ["dataConstraints", index, item.id] as const,
     ),
   ];
   const seenRules = new Set<string>();
@@ -490,12 +528,31 @@ export const BehaviorSpecSchema = SpecShape.superRefine((spec, context) => {
         "A deny permission is unconditional; remove the constraint or use allow.",
       );
   });
-  for (const [index, item] of spec.dataPolicies.entries())
+  const executable = new Set([
+    ...spec.operations.map((item) => item.id),
+    ...spec.transitions.map((item) => item.id),
+  ]);
+  const scoped = (
+    key: "dataPolicies" | "businessRules",
+    index: number,
+    appliesTo: readonly string[] | undefined,
+  ) => {
+    for (const name of appliesTo ?? [])
+      if (!executable.has(name))
+        issue(
+          [key, index, "appliesTo"],
+          `${name} is not an operation or transition.`,
+        );
+  };
+  for (const [index, item] of spec.dataPolicies.entries()) {
     boolean(item.rule, ["dataPolicies", index, "rule"]);
-  spec.businessRules.forEach((item, index) => {
+    scoped("dataPolicies", index, item.appliesTo);
+  }
+  for (const [index, item] of spec.businessRules.entries()) {
     boolean(item.when, ["businessRules", index, "when"]);
     boolean(item.must, ["businessRules", index, "must"]);
-  });
+    scoped("businessRules", index, item.appliesTo);
+  }
   spec.temporalRules.forEach((item, index) => {
     for (const name of ["before", "after"] as const)
       if (!states.has(item[name]))
@@ -546,6 +603,9 @@ export function normalizeBehaviorSpec(input: unknown): BehaviorSpec {
     temporalRules: byId(spec.temporalRules).map(sortProvenance),
     dataPolicies: byId(spec.dataPolicies).map(sortProvenance),
     businessRules: byId(spec.businessRules).map(sortProvenance),
+    ...(spec.dataConstraints
+      ? { dataConstraints: byId(spec.dataConstraints).map(sortProvenance) }
+      : {}),
   };
 }
 /** Deterministic, human-readable JSON with sorted keys and a trailing newline. */

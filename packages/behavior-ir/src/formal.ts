@@ -380,6 +380,7 @@ export function toFormalModel(input: unknown): FormalConversion {
     ["temporal rule", spec.temporalRules],
     ["data policy", spec.dataPolicies],
     ["business rule", spec.businessRules],
+    ["data constraint", spec.dataConstraints ?? []],
   ] as const)
     for (const item of items)
       omitted.push({
