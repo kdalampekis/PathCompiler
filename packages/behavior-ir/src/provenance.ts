@@ -58,6 +58,11 @@ export const ProvenanceSchema = z
     /** The extractor's own 0–1 score, when it has one (kept so scores round-trip). */
     score: z.number().min(0).max(1).optional(),
     sourceFile: text.optional(),
+    /** The commit the rule was found in (a commit message or a change), when that is its evidence. */
+    sourceCommit: z
+      .string()
+      .regex(/^[0-9a-f]{7,40}$/, "Use a commit SHA (7 to 40 hex digits)")
+      .optional(),
     /** Inclusive line range, e.g. "32-47" or "12". */
     sourceLines: z
       .string()

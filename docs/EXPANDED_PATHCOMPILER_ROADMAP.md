@@ -7,7 +7,7 @@ exist in the probabilistic track of
 
 ## Status
 
-All eight phases are complete (2026-10-30). Each has an ADR and a record in
+All nine phases are complete (2026-10-30). Each has an ADR and a record in
 [phases/STATUS.md](phases/STATUS.md); the as-built differences from the design
 are in [the architecture document](EXPANDED_PATHCOMPILER_ARCHITECTURE.md#17-what-was-built-and-where-it-differs-from-the-design);
 usage is in [BEHAVIOR_SPEC_GUIDE.md](BEHAVIOR_SPEC_GUIDE.md).
@@ -22,6 +22,7 @@ usage is in [BEHAVIOR_SPEC_GUIDE.md](BEHAVIOR_SPEC_GUIDE.md).
 | BX5 | `agent-gate`: concrete action checks, tool wrapper, labeled evaluation, log audit | 0092 | `agent check`, `eval`, `audit` |
 | BX6 | `counterexamples`: records, store, regression evals | 0093 | `counterexamples …` |
 | BX7 | `repair-loop`: bounded, logged, human-approved prototype | 0094 | `repair propose` |
+| BX8 | `rule-discovery`: a harness (file contract) or a model (provider adapters) proposes rules from code and history; validated, checked against the code, stored as candidates, approved by a person | 0095 | `rules task`, `import`, `discover`, `list`, `approve`, `reject` |
 
 ## Results on the evaluation plan
 
@@ -36,11 +37,12 @@ performance on a real repository.
 | RQ3 regressions tests miss | 3 of 3 seeded regressions found while the example tests pass; 0 of 2 benign changes flagged; about 0.5 s per check | False-negative and false-positive rates on real pull requests |
 | RQ4 agent gate | 10 of 10 safe actions allowed; 16 of 18 unsafe blocked (88.9%), 15 with the expected rule named; the 2 missed are described by no rule; 0.09 ms per check | Behavior on real agent traffic; the effect of state supplied by the model |
 | RQ5 counterexample evals | The eval fails the violating code, its extracted contract and the verifier, and passes after the repair; a harmless refactor passes | Recurrence of the counterexample and its variants over later commits |
+| RQ7 (added) rule discovery by a harness or model | Scripted proposals on the fixture: valid rules accepted with code check `holds`; a rule the code contradicts flagged; invented variables, unverifiable quotes, syntax errors, duplicates and re-proposed rejected rules refused | How many valid rules a real harness or model finds, how many bugs it encodes as rules, what it costs |
 | RQ6 four sets | OBSERVED ∧ ¬ALLOWED via `agent audit`; POSSIBLE ∧ ¬ALLOWED via `verify` | The four-way comparison as a control loop: **not evaluated** |
 
 ## Open items for the expansion
 
-Recorded as issues #50–#57 in [phases/ISSUES_LOG.md](phases/ISSUES_LOG.md):
+Recorded as issues #50–#57, #63 and #64 in [phases/ISSUES_LOG.md](phases/ISSUES_LOG.md):
 decimals and null in the IR; helper calls and conditionals in the guard
 extractor; temporal rules and reachability in the verifier; GitHub and MCP
 transports; recurrence measurement; a model-backed repair provider; the thin

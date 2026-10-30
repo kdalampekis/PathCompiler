@@ -1,6 +1,7 @@
 import { behaviorSpecHash } from "@pathcompiler/behavior-ir";
 import { extractApprovedRules } from "./approved.js";
 import { extractAssertions } from "./assertions.js";
+import { extractCandidateRules } from "./candidates.js";
 import {
   type ExtractedFragment,
   type ExtractionOptions,
@@ -17,6 +18,7 @@ import { extractZod } from "./zod.js";
 
 export * from "./approved.js";
 export * from "./assertions.js";
+export * from "./candidates.js";
 export * from "./common.js";
 export * from "./evaluate.js";
 export * from "./files.js";
@@ -31,7 +33,8 @@ export type ExtractorName =
   | "openapi"
   | "assertions"
   | "guards"
-  | "approved";
+  | "approved"
+  | "candidates";
 export type ExtractionResult = MergeResult & {
   specHash: string;
   /** Files each extractor looked at. */
@@ -47,6 +50,8 @@ export function classify(file: SourceFile): ExtractorName[] {
   if (IGNORED.test(file.path)) return [];
   if (file.path.endsWith(".sql")) return ["sql"];
   if (/(^|\/)approved-rules[^/]*\.json$/.test(file.path)) return ["approved"];
+  if (/(^|\/)candidate-rules[^/]*\.json$/.test(file.path))
+    return ["candidates"];
   if (
     OPENAPI_NAME.test(file.path) ||
     /["']?openapi["']?\s*:\s*["']3\./.test(file.content)
@@ -78,6 +83,7 @@ export function extractBehavior(
     assertions: [],
     guards: [],
     approved: [],
+    candidates: [],
   };
   const fragments: ExtractedFragment[] = [];
   const types: TypeIndex = collectTypes(files);
@@ -93,9 +99,11 @@ export function extractBehavior(
               ? extractOpenApi(file, options)
               : name === "approved"
                 ? extractApprovedRules(file)
-                : name === "guards"
-                  ? extractGuards(file, options, types)
-                  : extractAssertions(file, options),
+                : name === "candidates"
+                  ? extractCandidateRules(file)
+                  : name === "guards"
+                    ? extractGuards(file, options, types)
+                    : extractAssertions(file, options),
       );
     }
   }

@@ -5,6 +5,7 @@ import {
   ModelProviderError,
   type PathCompilerModelProvider,
   parseModelJson,
+  type StructuredCompletion,
 } from "@pathcompiler/model-provider";
 
 /**
@@ -15,17 +16,34 @@ import {
 export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
 export const DEFAULT_ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY";
 
-export function createAnthropicModelProvider(options: {
+type AnthropicOptions = {
   apiKey: string;
   model?: string;
   maxTokens?: number;
   /** Injected for tests; built from `apiKey` otherwise. */
   client?: Anthropic;
-}): PathCompilerModelProvider {
+};
+
+export function createAnthropicModelProvider(
+  options: AnthropicOptions,
+): PathCompilerModelProvider {
+  return createStructuredModelProvider(
+    "anthropic",
+    createAnthropicCompletion(options),
+  );
+}
+
+/**
+ * The structured-task primitive on its own, for tasks other than the provider
+ * interface's (for example rule discovery).
+ */
+export function createAnthropicCompletion(
+  options: AnthropicOptions,
+): StructuredCompletion {
   const id = "anthropic";
   const model = options.model ?? DEFAULT_ANTHROPIC_MODEL;
   const client = options.client ?? new Anthropic({ apiKey: options.apiKey });
-  return createStructuredModelProvider(id, async (task) => {
+  return async (task) => {
     let response: Anthropic.Beta.BetaMessage;
     try {
       response = await client.beta.messages.create({
@@ -64,5 +82,5 @@ export function createAnthropicModelProvider(options: {
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join("");
     return parseModelJson(id, text);
-  });
+  };
 }

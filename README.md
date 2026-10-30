@@ -29,7 +29,9 @@ What the repository implements today (details per phase in
 - **Specify and verify behavior (new):** a solver-neutral behavioral
   specification (BehaviorIR, every rule with provenance) extracted without a
   model from SQL schemas, Zod models, OpenAPI documents, tests and guard
-  clauses, plus rules a person approves; a verifier with counterexamples that
+  clauses, plus rules a person approves, plus candidate rules that an external
+  harness or a model proposes from the code and its history and that stay
+  candidates until a person approves them; a verifier with counterexamples that
   are re-evaluated before they are shown; a pull-request guard that reports
   only what a change newly breaks; an action gate for agents; counterexamples
   kept as regression evals; and a conservative, human-approved repair loop
@@ -1548,6 +1550,30 @@ for you to review: nothing is applied, merged or deployed. The provider
 boundary is vendor neutral; only a scripted fixture provider exists today. See
 [ADR 0094](docs/decisions/0094-conservative-repair-loop.md).
 
+```bash
+pnpm pathcompiler rules task <repo> --bind payment=payments      # a task for your harness
+pnpm pathcompiler rules import RuleProposals.json <repo> --bind payment=payments
+pnpm pathcompiler rules discover <repo> --explain-context        # the model route, dry run
+pnpm pathcompiler rules approve <rule-id> --by you <repo>
+```
+
+`rules` finds business rules that the extractors cannot read (in helper
+functions, comments, commit history) by letting an **external harness** that
+has the repository, or a **model** behind a provider adapter, read the code
+and the commits. `rules task` gives the harness the operations, where they are
+in the code, what is already known and what could not be modeled, but not the
+repository; the harness returns `RuleProposals.json`. `rules discover` sends
+the same task with bounded excerpts to the configured model, and
+`--explain-context` shows exactly what would be sent. Every proposal is
+validated: it must parse, use existing variables, be new and cite evidence
+that can be found (the quote must be in the cited lines, the commit must
+exist). It is then checked against the code, and a rule the code contradicts
+is flagged for triage. Accepted rules are **candidates** in
+`spec/candidate-rules.json`, inferred and model-assisted, never failing a
+change alone, until a person runs `rules approve`. See
+[examples/rule-discovery/](examples/rule-discovery/) and
+[ADR 0095](docs/decisions/0095-rule-discovery.md).
+
 BehaviorIR describes what the system does (transitions, operations), what the
 specification requires (invariants, permissions, temporal rules, data
 policies, business rules) and how far to trust each requirement. Rules use a
@@ -2013,6 +2039,7 @@ Analysis packages:
 | `@pathcompiler/pr-guard` | `verifyPullRequest`, `diffBehavior`, `formatPrGuardMarkdown`, `PrGuardReport` (BX4) |
 | `@pathcompiler/agent-gate` | `createActionGate`, `guardTool`, `ActionBlockedError`, `evaluateGate`, `auditActions`, `ActionDecision` (BX5) |
 | `@pathcompiler/counterexamples` | `createRecord`, `recordCounterexample`, `listCounterexamples`, `resolveCounterexample`, `generateEval`, `runEval`, `contractExecutor`, `runSpecEval` (BX6) |
+| `@pathcompiler/rule-discovery` | `buildDiscoveryTask`, `RuleProposalsSchema`, `assessProposals`, `completionRuleProvider`, `buildExcerpts`, `describeContext`, `mergeCandidates`, `approveCandidate`, `rejectCandidate` (BX8) |
 | `@pathcompiler/repair-loop` | `runRepairLoop`, `RepairProvider`, `fixtureRepairProvider`, `unifiedDiff`, `RepairReport` (BX7) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
@@ -2024,7 +2051,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import`, `behavior export/extract/verify/validate/show`, `verify-pr`, `agent check/audit/eval`, `counterexamples list/record/eval/run`, `repair propose`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import`, `behavior export/extract/verify/validate/show`, `verify-pr`, `agent check/audit/eval`, `counterexamples list/record/eval/run`, `rules task/import/discover/list/approve/reject`, `repair propose`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
@@ -2046,7 +2073,7 @@ and changed nodes/edges. Inputs must use unique IDs and existing edge endpoints.
 - [Behavioral specification guide](docs/BEHAVIOR_SPEC_GUIDE.md), the
   [expanded architecture](docs/EXPANDED_PATHCOMPILER_ARCHITECTURE.md) and its
   [roadmap with results](docs/EXPANDED_PATHCOMPILER_ROADMAP.md)
-- Architecture decision records in [docs/decisions/](docs/decisions/) (0001–0094)
+- Architecture decision records in [docs/decisions/](docs/decisions/) (0001–0095)
 - [Workflow and graph decisions](docs/decisions/0001-foundation-contracts.md)
 - [Fixture state decision](docs/decisions/0002-fixture-session-state.md)
 

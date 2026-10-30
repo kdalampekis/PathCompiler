@@ -70,3 +70,11 @@ dry run) from a new C9 (real provider adapters and evidence-first
 model-assisted semantic interpretation, behind a flag and evaluated). P1 builds
 on C9. The developer reasoning MCP (R12) and the harness contract (I2) remain
 separate phases with separate permissions.
+
+## Update (2026-10-30)
+
+A narrow form of rule 5 now exists: ADR 0095 lets an external harness, or a
+model through the provider adapters, read the code and its history to *propose
+business rules*. It does not replace deterministic understanding of the
+product: proposals are validated, checked against the code and stored as
+candidates that only a person can approve.

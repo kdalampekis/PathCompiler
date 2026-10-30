@@ -3,6 +3,7 @@ import {
   ModelProviderError,
   type PathCompilerModelProvider,
   parseModelJson,
+  type StructuredCompletion,
 } from "@pathcompiler/model-provider";
 import { z } from "zod";
 
@@ -29,7 +30,7 @@ const ChatCompletionSchema = z.object({
     .min(1),
 });
 
-export function createOpenAICompatibleModelProvider(options: {
+type CompatibleOptions = {
   id: "openai" | "local";
   model: string;
   baseUrl: string;
@@ -37,11 +38,25 @@ export function createOpenAICompatibleModelProvider(options: {
   apiKey?: string;
   /** Injected for tests. */
   fetch?: typeof fetch;
-}): PathCompilerModelProvider {
+};
+
+export function createOpenAICompatibleModelProvider(
+  options: CompatibleOptions,
+): PathCompilerModelProvider {
+  return createStructuredModelProvider(
+    options.id,
+    createOpenAICompatibleCompletion(options),
+  );
+}
+
+/** The structured-task primitive on its own (see the Anthropic adapter). */
+export function createOpenAICompatibleCompletion(
+  options: CompatibleOptions,
+): StructuredCompletion {
   const { id, model } = options;
   const send = options.fetch ?? fetch;
   const url = `${options.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  return createStructuredModelProvider(id, async (task) => {
+  return async (task) => {
     let response: Response;
     try {
       response = await send(url, {
@@ -97,7 +112,7 @@ export function createOpenAICompatibleModelProvider(options: {
         `${id}'s ${task.kind} answer was cut off at the token limit.`,
       );
     return parseModelJson(id, choice.message.content ?? "");
-  });
+  };
 }
 
 export function createOpenAIModelProvider(options: {

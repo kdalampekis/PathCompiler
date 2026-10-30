@@ -439,6 +439,9 @@ importers:
       "@pathcompiler/review-priority":
         specifier: workspace:*
         version: link:../review-priority
+      "@pathcompiler/rule-discovery":
+        specifier: workspace:*
+        version: link:../rule-discovery
       "@pathcompiler/sdk-js":
         specifier: workspace:*
         version: link:../sdk-js
@@ -1400,6 +1403,28 @@ importers:
       "@pathcompiler/workflow-discovery":
         specifier: workspace:*
         version: link:../workflow-discovery
+
+  packages/rule-discovery:
+    dependencies:
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
+      "@pathcompiler/behavior-ir":
+        specifier: workspace:*
+        version: link:../behavior-ir
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      "@pathcompiler/verification":
+        specifier: workspace:*
+        version: link:../verification
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
 
   packages/runtime-core:
     dependencies:

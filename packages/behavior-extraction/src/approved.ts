@@ -21,6 +21,11 @@ import {
  * Expressions use the BehaviorIR text syntax.
  */
 const id = z.string().min(1);
+/** Set when a rule was approved by someone other than the file's `declaredBy`, or came from a candidate. */
+const approval = {
+  declaredBy: z.string().min(1).optional(),
+  derivedFrom: z.string().min(1).optional(),
+};
 const expression = z
   .string()
   .min(1)
@@ -45,6 +50,7 @@ export const ApprovedRulesSchema = z.strictObject({
         id,
         description: z.string().optional(),
         expression,
+        ...approval,
       }),
     )
     .default([]),
@@ -56,6 +62,7 @@ export const ApprovedRulesSchema = z.strictObject({
         when: expression,
         must: expression,
         appliesTo: z.array(id).optional(),
+        ...approval,
       }),
     )
     .default([]),
@@ -69,6 +76,7 @@ export const ApprovedRulesSchema = z.strictObject({
         resource: z.string().optional(),
         effect: z.enum(["allow", "deny"]),
         constraint: expression.optional(),
+        ...approval,
       }),
     )
     .default([]),
@@ -85,21 +93,21 @@ export function extractApprovedRules(file: SourceFile): ExtractedFragment {
       confidence: "HIGH",
       file: file.path,
     });
-  const approved = () => ({
+  const approved = (by?: string) => ({
     ...provenance(),
-    declaredBy: parsed.declaredBy,
+    declaredBy: by ?? parsed.declaredBy,
   });
   for (const item of parsed.invariants) {
     out.invariants.push({
       id: item.id,
       ...(item.description ? { description: item.description } : {}),
       expression: item.expression,
-      provenance: [approved()],
+      provenance: [approved(item.declaredBy)],
     });
     out.ledger.push({
       kind: "invariant",
       text: formatExpression(item.expression),
-      provenance: approved(),
+      provenance: approved(item.declaredBy),
     });
   }
   for (const item of parsed.businessRules) {
@@ -109,12 +117,12 @@ export function extractApprovedRules(file: SourceFile): ExtractedFragment {
       when: item.when,
       must: item.must,
       ...(item.appliesTo ? { appliesTo: item.appliesTo } : {}),
-      provenance: [approved()],
+      provenance: [approved(item.declaredBy)],
     });
     out.ledger.push({
       kind: "business_rule",
       text: `${formatExpression(item.when)} => ${formatExpression(item.must)}`,
-      provenance: approved(),
+      provenance: approved(item.declaredBy),
     });
   }
   for (const item of parsed.permissions) {
@@ -126,13 +134,13 @@ export function extractApprovedRules(file: SourceFile): ExtractedFragment {
       ...(item.resource ? { resource: item.resource } : {}),
       effect: item.effect,
       ...(item.constraint ? { constraint: item.constraint } : {}),
-      provenance: [approved()],
+      provenance: [approved(item.declaredBy)],
     };
     out.permissions.push(permission);
     out.ledger.push({
       kind: "permission",
       text: permissionText(permission),
-      provenance: approved(),
+      provenance: approved(item.declaredBy),
     });
   }
   return out;

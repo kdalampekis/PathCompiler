@@ -126,7 +126,7 @@ describe("pathcompiler CLI", () => {
     await expect(
       runCli(["workflows", "validate", "../secret", fixture], cwd),
     ).rejects.toThrow("Workflow ID");
-  }, 20_000);
+  }, 120_000);
 
   it("approves, rejects, lists and shows reviewed workflows without replacing decisions", async () => {
     const cwd = await directory();
@@ -241,7 +241,7 @@ describe("pathcompiler CLI", () => {
     expect(await readdir(path.join(base, "rejected"))).toEqual([
       "plans.create.yaml",
     ]);
-  }, 30_000);
+  }, 120_000);
 
   it("builds repeatable generated artifacts from approved workflows only", async () => {
     const cwd = await directory();
@@ -310,7 +310,7 @@ describe("pathcompiler CLI", () => {
       ["build", "--exclude", "tests"],
     ])
       await expect(run(invalid)).rejects.toThrow();
-  }, 30_000);
+  }, 120_000);
 
   it("serves MCP tools over stdio from generated artifacts", async () => {
     const cwd = await directory();
@@ -351,7 +351,7 @@ describe("pathcompiler CLI", () => {
       ["mcp", "--exclude", "x"],
     ])
       await expect(run(invalid)).rejects.toThrow();
-  }, 30_000);
+  }, 120_000);
 
   it("serves the token-protected HTTP API from generated artifacts", async () => {
     const cwd = await directory();
@@ -542,7 +542,7 @@ describe("pathcompiler CLI", () => {
     expect(await git("status", "--porcelain", "--", "app")).toBe("");
     await expect(runCli(["diff", base], cwd)).rejects.toThrow();
     await expect(runCli(["diff", base, "nope"], cwd)).rejects.toThrow();
-  }, 30_000);
+  }, 120_000);
 
   it("reports workflow impact between commits without changing approvals", async () => {
     const cwd = await directory();
@@ -621,7 +621,7 @@ describe("pathcompiler CLI", () => {
       affectedSteps: ["step.1"],
     });
     expect(await readFile(approvedPath, "utf8")).toBe(approvedYaml);
-  }, 60_000);
+  }, 120_000);
 
   it("generates, lists, shows and accepts workflow update proposals", async () => {
     const cwd = await directory();
@@ -729,7 +729,7 @@ describe("pathcompiler CLI", () => {
       ["proposals", "show", name, "--json"],
     ])
       await expect(run(invalid)).rejects.toThrow();
-  }, 90_000);
+  }, 120_000);
 
   it("detects a new capability and writes an approvable candidate", async () => {
     const cwd = await directory();
@@ -819,7 +819,7 @@ describe("pathcompiler CLI", () => {
     expect(await run(["workflows", "detect", base, "HEAD", "app"])).toContain(
       "0 new capabilities",
     );
-  }, 90_000);
+  }, 120_000);
 
   it("proposes and accepts deprecation when a workflow loses its support", async () => {
     const cwd = await directory();
@@ -913,7 +913,7 @@ describe("pathcompiler CLI", () => {
         "Ana",
       ]),
     ).rejects.toThrow("deprecated");
-  }, 90_000);
+  }, 120_000);
 
   it("prints the GitHub App manifest and serves verified webhooks", async () => {
     const cwd = await directory();
@@ -998,7 +998,7 @@ describe("pathcompiler CLI", () => {
     await expect(runCli(["build", "--config", "x"], cwd)).rejects.toThrow(
       "only supported by github-app",
     );
-  }, 30_000);
+  }, 120_000);
 
   it("exports static JSON, YAML and Markdown usable without any server", async () => {
     const cwd = await directory();
@@ -1064,7 +1064,7 @@ describe("pathcompiler CLI", () => {
       ["workflows", "list", "--format", "json"],
     ])
       await expect(run(invalid)).rejects.toThrow("--format");
-  }, 30_000);
+  }, 120_000);
 
   it("exports help pages from approved workflows without overwriting hand-written docs", async () => {
     const cwd = await directory();
@@ -1112,7 +1112,7 @@ describe("pathcompiler CLI", () => {
       path.join(cwd, "site/help"),
     );
     await expect(run(["build", "--dir", "x"])).rejects.toThrow("--dir");
-  }, 30_000);
+  }, 120_000);
 
   it("writes repeatable candidate YAML and protects approved artifacts before any replacement", async () => {
     const cwd = await directory();

@@ -156,6 +156,32 @@ tests you supply pass. The result is a patch for review (`git apply`);
 nothing is changed. Only a scripted fixture provider exists; no model adapter
 is wired in.
 
+### Act 7: rules the extractors cannot read
+
+Some rules live in helper functions, comments and commit history. Let your
+harness (usually the cheaper route) or a model read them:
+
+```bash
+pnpm pathcompiler rules task <repo> --bind payment=payments --from <ref> --to HEAD
+#   .pathcompiler/rules/tasks/<id>.json  — the operations, where they are in the code,
+#   what is known, what could not be modeled, the commit range; not the repository
+# the harness reads the code and the commits and writes RuleProposals.json
+pnpm pathcompiler rules import RuleProposals.json <repo> --bind payment=payments
+pnpm pathcompiler rules list <repo>
+pnpm pathcompiler rules approve <rule-id> --by you <repo>
+```
+
+The model route is `rules discover <repo>` with `model_provider` configured in
+`pathcompiler.yaml`; add `--explain-context` first to see exactly what would be
+sent (nothing is). Every proposal must parse, use existing variables, be new,
+and cite evidence PathCompiler can find (the quote must be in the cited lines,
+the commit must exist). It is checked against the code: `holds`,
+`contradicted` (the code violates it: a bug or a wrong rule) or `unknown`.
+Accepted rules go to `spec/candidate-rules.json` as candidates, and the
+verifier, PR guard and agent gate report them with the extracted-candidate
+caveat. Only `rules approve` makes one an approved rule. The contract for
+harness authors is in [../examples/rule-discovery/](../examples/rule-discovery/).
+
 ## 2. Trying it on your own software
 
 This is the protocol for the first real-software trial. Its purpose is to
@@ -180,7 +206,12 @@ limitations; they are not guessed.
    every fact with its source, and every construct not modeled. Run
    `behavior show` and check a sample of rules against the code by hand.
    Count: rules correct, rules wrong, rules you expected and did not get.
-2. **Write the rules only people know.** Create `spec/approved-rules.json`
+2. **Let the harness read what the extractors cannot.** Run `rules task`,
+   give the task to your harness, import its `RuleProposals.json`, and triage
+   every candidate: approve, reject, or (for `contradicted`) decide whether the
+   code or the rule is wrong. Record how many proposals were valid, wrong, or
+   a bug encoded as a rule.
+   **Write the rules only people know.** Create `spec/approved-rules.json`
    (see `fixtures/refunds/spec/approved-rules.json`) for rules that no
    artifact states, with your name in `declaredBy`. Anything a verifier
    treats as authoritative should come from here.

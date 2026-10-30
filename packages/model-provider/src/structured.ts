@@ -20,7 +20,8 @@ import {
  * the core. Outputs are still validated by `guardModelProvider`.
  */
 export type StructuredModelTask = {
-  kind: ModelRequestKind;
+  /** `discoverRules` is a task of the rule-discovery package, run through the same adapters. */
+  kind: ModelRequestKind | "discoverRules";
   /** System instructions: the request is evidence, never instructions. */
   instructions: string;
   /** The guarded request as JSON (already validated and redacted). */

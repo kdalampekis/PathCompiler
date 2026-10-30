@@ -5454,3 +5454,65 @@ lists that changed after they were written.
 The real-software trial (C6 and the expansion's equivalent): protocol in
 [../BEHAVIOR_SPEC_GUIDE.md](../BEHAVIOR_SPEC_GUIDE.md), questions it should
 answer in ISSUES_LOG #57.
+
+## Expansion BX8 — Rule discovery with a model or a harness
+
+Complete — verified locally on 2026-10-30. Added at your request after the
+other phases: the reader of the code and its history may be an external
+harness (usually cheaper) or a model API.
+
+- **New `@pathcompiler/rule-discovery`:** `buildDiscoveryTask`, the
+  `RuleProposals` contract (Zod and JSON Schema), `assessProposals` (parse,
+  variables, duplicates, verifiable evidence, code check), candidate merge,
+  approve and reject, and `completionRuleProvider` for the model route with
+  bounded excerpts and a dry run.
+- **CLI `rules task | import | discover | list | approve | reject`.** Candidates
+  are `spec/candidate-rules.json`; approvals go to `spec/approved-rules.json`
+  under the approver's name.
+- **Additive changes elsewhere:** the vendor adapters expose their
+  structured-task primitive; `StructuredModelTask.kind` accepts
+  `discoverRules`; provenance has an optional `sourceCommit`; approved rules may
+  carry a per-rule `declaredBy` and `derivedFrom`; `behavior-extraction` reads
+  `candidate-rules*.json` as inferred, model-assisted rules.
+- **Example for harness authors:** `examples/rule-discovery/`.
+- Recorded in ADR 0095.
+
+### Results on the refund fixture (scripted proposals)
+
+| Proposal | Outcome |
+| --- | --- |
+| Invariant: a processed request was approved | accepted; the code holds it; confidence MEDIUM (quote found) |
+| Business rule: support agents refund at most 2000 | accepted; **contradicted by the code** (a counterexample is shown); flagged for triage |
+| Rule using a variable that does not exist | rejected: unknown variable |
+| Rule whose quote is not in the cited lines | rejected: no verifiable evidence |
+| Rule with a syntax error | rejected: does not parse |
+| A rule the specification already has | rejected: duplicate |
+| Commit-only evidence | accepted as LOW; the commit must exist |
+| A rule a person rejected, proposed again | rejected: already rejected |
+
+These are scripted answers. No real harness or model has been run, so how many
+valid rules a reader finds, and how many bugs it encodes as rules, is
+unmeasured (ISSUES_LOG #63).
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 666 tests passed across 115 suites (all 115 test files; 14 rule-discovery and 3 CLI rules tests are new) |
+| `pnpm test:e2e` | 50 browser tests passed across 6 suites |
+
+### Errors found during the phase
+
+- Several names clashed with imports already in the CLI (`approveCandidate`,
+  `rejectCandidate`, `describeContext`); the new ones are aliased.
+- A test passed `--out` twice through a helper that already adds it, so the
+  second value was silently ignored. Fixed in the test.
+
+### Scope notes
+
+- Not built: cost reporting for the model route, filtering the model route's
+  commits by `--from`, and any way for PathCompiler to invoke a harness (by
+  design it never does).

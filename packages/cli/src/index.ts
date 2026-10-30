@@ -31,6 +31,7 @@ import {
   type RecordedAction,
 } from "@pathcompiler/agent-gate";
 import {
+  CandidateRulesFileSchema,
   type ExtractionResult,
   extractBehavior,
   readSourceFiles,
@@ -182,7 +183,10 @@ import {
 } from "@pathcompiler/model-provider";
 import {
   createLocalModelProvider,
+  createOpenAICompatibleCompletion,
   createOpenAIModelProvider,
+  DEFAULT_LOCAL_BASE_URL,
+  DEFAULT_OPENAI_BASE_URL,
   DEFAULT_OPENAI_KEY_ENV,
 } from "@pathcompiler/model-provider-openai";
 import {
@@ -250,6 +254,24 @@ import {
   collectReviewFeedback,
   prioritizeReviews,
 } from "@pathcompiler/review-priority";
+import {
+  type Assessment,
+  approveCandidate as approveRuleCandidate,
+  assessProposals,
+  buildDiscoveryTask,
+  buildExcerpts,
+  completionRuleProvider,
+  type DiscoveryTask,
+  describeContext as describeDiscoveryContext,
+  emptyCandidates,
+  mergeCandidates,
+  parseProposalList,
+  RuleProposalsSchema,
+  rejectCandidate as rejectRuleCandidate,
+  ruleProposalsJsonSchema,
+  serializeCandidates,
+  trimCommits,
+} from "@pathcompiler/rule-discovery";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
 import {
   analyzeSemanticChange,
@@ -377,6 +399,9 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler behavior export [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler verify-pr --base <ref> --candidate <ref> [directory] [--bind <name>=<entity> ...] [--strict] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler counterexamples list|record <report.json>|eval <id> --spec <behavior-spec.json>|run <eval.json> --spec <behavior-spec.json> [--strict-neighbors] [--json] [--out <directory>]
+       pathcompiler rules task|discover [directory] [--from <ref>] [--to <ref>] [--bind <name>=<entity> ...] [--exclude <directory> ...] [--explain-context] [--out <directory>]
+       pathcompiler rules import <RuleProposals.json> [directory] [--bind <name>=<entity> ...] [--exclude <directory> ...] [--out <directory>]
+       pathcompiler rules list [directory] | approve <rule-id> --by <name> [directory] | reject <rule-id> --by <name> --reason <text> [directory]
        pathcompiler repair propose [directory] --fixture <proposals.json> [--max-attempts <n>] [--bind <name>=<entity> ...] [--exclude <directory> ...] [--json] [--out <directory>]
        pathcompiler agent check <behavior-spec.json> --request <action.json> [--enforce all|approved_only] [--on-unknown block|allow] [--json]
        pathcompiler agent audit <behavior-spec.json> --trace <actions.jsonl> [--enforce all|approved_only] [--json]
@@ -629,6 +654,21 @@ trusted specification (--spec for eval). run replays an eval against a candidate
 (--spec): it checks the candidate's extracted preconditions on every case and asks the verifier
 the same question; it exits nonzero when the candidate would accept something it must reject.
 Neighbors it rejects are reported as over-restrictive and fail only with --strict-neighbors.
+rules finds business rules the deterministic extractors cannot read, from the code and its commit
+history, in two ways that share one contract and one validation. rules task exports a task file
+(the operations found, the files they come from, what is already known, the constructs that could
+not be modeled and the commit range) for an external harness that has the repository; the harness
+writes RuleProposals.json and rules import validates it. rules discover sends the same task with
+bounded excerpts (the operations' source files and the messages of the commits that touched them,
+never the repository) to the configured model_provider; --explain-context prints exactly what would
+be sent and sends nothing. A proposal is accepted only if it parses, uses variables the specification
+has, is not a known or rejected rule and cites evidence that can be found (the quote must be in the
+cited lines, the commit must exist); unverifiable evidence is dropped. It is then checked against
+the code: a rule the code contradicts is flagged, not discarded. Accepted rules are written to
+spec/candidate-rules.json as inferred, model-assisted candidates: the verifier, PR guard and agent
+gate report them with the extracted-candidate caveat and never fail a change on them alone. rules
+approve moves one into spec/approved-rules.json under your name; rules reject keeps it from being
+proposed again. Nothing is approved automatically.
 repair propose takes the first violated rule of the code in the directory and runs a bounded,
 logged repair loop: the violation and its counterexample go to a repair provider together with the
 source file of the operation (nothing else from the repository), and a proposed change is accepted
@@ -748,6 +788,9 @@ const CLI_OPTIONS = {
   candidate: { type: "string" },
   spec: { type: "string" },
   fixture: { type: "string" },
+  from: { type: "string" },
+  to: { type: "string" },
+  "explain-context": { type: "boolean" },
   "max-attempts": { type: "string" },
   "strict-neighbors": { type: "boolean" },
   request: { type: "string" },
@@ -904,6 +947,15 @@ export async function runCli(
       "--candidate and --strict are only supported by verify-pr.",
     );
   if (
+    (values.from !== undefined ||
+      values.to !== undefined ||
+      values["explain-context"] !== undefined) &&
+    positionals[0] !== "rules"
+  )
+    throw new Error(
+      "--from, --to and --explain-context are only supported by rules.",
+    );
+  if (
     (values.fixture !== undefined || values["max-attempts"] !== undefined) &&
     positionals[0] !== "repair"
   )
@@ -942,6 +994,13 @@ export async function runCli(
     return runBehavior(positionals, values, cwd);
   if (positionals[0] === "agent") return runAgent(positionals, values, cwd);
   if (positionals[0] === "repair") return runRepair(positionals, values, cwd);
+  if (positionals[0] === "rules")
+    return runRules(
+      positionals,
+      values,
+      cwd,
+      configured?.config.model_provider ?? { provider: "none" },
+    );
   if (positionals[0] === "counterexamples")
     return runCounterexamples(positionals, values, cwd);
   if (positionals[0] === "harness") return runHarness(positionals, values, cwd);
@@ -5763,6 +5822,417 @@ async function runCounterexamples(
     } finally {
       await solver.close();
     }
+  }
+  throw usage;
+}
+
+const CANDIDATE_FILE = "spec/candidate-rules.json";
+const APPROVED_FILE = "spec/approved-rules.json";
+
+async function loadCandidates(directory: string) {
+  try {
+    return CandidateRulesFileSchema.parse(
+      JSON.parse(await readFile(path.join(directory, CANDIDATE_FILE), "utf8")),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return emptyCandidates();
+    throw new Error(
+      `${path.join(directory, CANDIDATE_FILE)} is not a valid candidate rules file: ${(error as Error).message.split("\n")[0]}`,
+      { cause: error },
+    );
+  }
+}
+
+/** Reads a file inside the repository directory, or undefined; never outside it. */
+function repositoryLoader(directory: string) {
+  const root = path.resolve(directory);
+  return async (relative: string): Promise<string | undefined> => {
+    const target = path.resolve(root, relative);
+    if (target !== root && !target.startsWith(`${root}${path.sep}`))
+      return undefined;
+    try {
+      const content = await readFile(target, "utf8");
+      return content.length <= 2_000_000 ? content : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+}
+
+type RulesContext = {
+  directory: string;
+  files: Awaited<ReturnType<typeof readSourceFiles>>;
+  result: ExtractionResult;
+  task: DiscoveryTask;
+  git: Awaited<ReturnType<typeof openGitRepository>> | undefined;
+};
+
+/** Extracts the specification as it is now and builds the discovery task from it. */
+async function prepareRules(
+  directory: string,
+  values: Values,
+): Promise<RulesContext> {
+  let git: RulesContext["git"];
+  let commit: string | null = null;
+  try {
+    git = await openGitRepository(directory);
+    commit = await git.getCurrentCommit();
+  } catch {
+    git = undefined;
+  }
+  const files = await readSourceFiles(directory, values.exclude ?? []);
+  const result = extractBehavior(files, {
+    bindings: parseBindings(values.bind),
+    id: "behavior",
+    repositoryCommit: commit,
+  });
+  const candidates = await loadCandidates(directory);
+  const task = buildDiscoveryTask({
+    spec: result.spec,
+    specHash: result.specHash,
+    unmodeled: result.unsupported,
+    commits: { from: values.from ?? null, to: values.to ?? null },
+    rejected: candidates.rejected,
+  });
+  return { directory, files, result, task, git };
+}
+
+/** Assesses proposals, stores the accepted ones as candidates and reports on all of them. */
+async function storeProposals(
+  context: RulesContext,
+  proposals: Parameters<typeof assessProposals>[0]["proposals"],
+  producer: string,
+  task: DiscoveryTask,
+  output: string,
+): Promise<string> {
+  const solver = await createZ3SolverProvider();
+  let assessments: Assessment[];
+  try {
+    assessments = await assessProposals({
+      task,
+      proposals,
+      producer,
+      spec: context.result.spec,
+      loadFile: repositoryLoader(context.directory),
+      ...(context.git
+        ? {
+            commitExists: (sha: string) =>
+              context.git?.hasCommit(sha) ?? Promise.resolve(false),
+          }
+        : {}),
+      solver,
+    });
+  } finally {
+    await solver.close();
+  }
+  const accepted = assessments.flatMap((item) =>
+    item.candidate ? [item.candidate] : [],
+  );
+  const merged = mergeCandidates(
+    await loadCandidates(context.directory),
+    accepted,
+  );
+  await writeArtifacts(context.directory, [
+    [CANDIDATE_FILE, serializeCandidates(merged)],
+  ]);
+  const report = `rules/reports/${task.id}.json`;
+  await writeArtifacts(output, [
+    [
+      report,
+      `${JSON.stringify({ task: task.id, producer, assessments }, null, 2)}\n`,
+    ],
+  ]);
+  const text = (item: Assessment) => {
+    const rule = item.candidate;
+    return rule
+      ? `${rule.id} (${rule.kind}, ${rule.confidence} confidence)`
+      : `proposal ${item.index + 1}`;
+  };
+  return `${[
+    `${producer} proposed ${assessments.length} rule(s): ${accepted.length} accepted as candidates, ${assessments.length - accepted.length} rejected.`,
+    ...assessments.flatMap((item) =>
+      item.status === "accepted"
+        ? [
+            `  accepted ${text(item)}${item.codeCheck ? `; code: ${item.codeCheck.outcome === "contradicted" ? "CONTRADICTED by the code" : item.codeCheck.outcome}` : ""}`,
+            ...item.warnings.map((warning) => `    note: ${warning}`),
+          ]
+        : [`  rejected ${text(item)}: ${item.reasons.join(" ")}`],
+    ),
+    accepted.length > 0
+      ? `Candidates are in ${path.join(context.directory, CANDIDATE_FILE)}. They are inferred, not approved: review each, then rules approve <id> --by <name> or rules reject <id> --by <name> --reason <text>.`
+      : "",
+    `Report: ${path.join(output, report)}`,
+  ]
+    .filter(Boolean)
+    .join("\n")}\n`;
+}
+
+/** The configured provider's structured-task primitive; keys come only from the environment. */
+async function configuredCompletion(
+  config: PathCompilerConfig["model_provider"],
+) {
+  if (config.provider === "none")
+    throw new Error(
+      "rules discover needs model_provider in pathcompiler.yaml (anthropic, openai or local). To use an external harness instead, run rules task, let the harness write RuleProposals.json, then rules import.",
+    );
+  const name =
+    config.api_key_env ??
+    (config.provider === "anthropic"
+      ? "ANTHROPIC_API_KEY"
+      : config.provider === "openai"
+        ? DEFAULT_OPENAI_KEY_ENV
+        : undefined);
+  const apiKey = name ? process.env[name] : undefined;
+  if (config.provider !== "local" && !apiKey)
+    throw new Error(
+      `model_provider.provider is ${config.provider} but $${name} is not set. Export the API key, or set model_provider.api_key_env to the variable that holds it.`,
+    );
+  if (config.provider !== "anthropic" && !config.model)
+    throw new Error(
+      `model_provider.provider is ${config.provider}; set model_provider.model to the model to use.`,
+    );
+  if (config.provider === "anthropic") {
+    const anthropic = await import("@pathcompiler/model-provider-anthropic");
+    return {
+      id: `anthropic${config.model ? ` ${config.model}` : ""}`,
+      complete: anthropic.createAnthropicCompletion({
+        apiKey: apiKey as string,
+        ...(config.model ? { model: config.model } : {}),
+      }),
+    };
+  }
+  return {
+    id: `${config.provider} ${config.model}`,
+    complete: createOpenAICompatibleCompletion({
+      id: config.provider,
+      model: config.model as string,
+      baseUrl:
+        config.base_url ??
+        (config.provider === "openai"
+          ? DEFAULT_OPENAI_BASE_URL
+          : DEFAULT_LOCAL_BASE_URL),
+      ...(apiKey ? { apiKey } : {}),
+    }),
+  };
+}
+
+async function runRules(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+  modelConfig: PathCompilerConfig["model_provider"],
+): Promise<string> {
+  const [, sub, first, second, ...rest] = positionals;
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const usage = new Error(
+    "Expected: pathcompiler rules task|discover [directory], rules import <RuleProposals.json> [directory], rules list [directory], rules approve <rule-id> --by <name> [directory], or rules reject <rule-id> --by <name> --reason <text> [directory]. Use --help for options.",
+  );
+  if (rest.length > 0) throw usage;
+
+  if (sub === "task" || sub === "discover") {
+    if (second) throw usage;
+    const directory = path.resolve(cwd, first ?? ".");
+    const context = await prepareRules(directory, values);
+    if (sub === "task") {
+      const file = `rules/tasks/${context.task.id}.json`;
+      await writeArtifacts(output, [
+        [file, `${JSON.stringify(context.task, null, 2)}\n`],
+        [
+          "rules/schemas/RuleProposals.schema.json",
+          `${JSON.stringify(ruleProposalsJsonSchema(), null, 2)}\n`,
+        ],
+      ]);
+      if (values.json) return `${JSON.stringify(context.task, null, 2)}\n`;
+      return `${[
+        `Task ${context.task.id}: ${context.task.operations.length} operation(s) from ${context.task.readFiles.join(", ") || "no source file"}, ${context.task.existingRules.length} known rule(s), ${context.task.unmodeled.length} construct(s) not modeled.`,
+        `Give the harness ${path.join(output, file)}. It reads the code${values.from || values.to ? ` and the commits ${values.from ?? "…"}..${values.to ?? "HEAD"}` : " and the commit history"}, and writes RuleProposals.json (schema: ${path.join(output, "rules/schemas/RuleProposals.schema.json")}) with "taskId": "${context.task.id}".`,
+        `Then: pathcompiler rules import RuleProposals.json ${first ?? "."}`,
+      ].join("\n")}\n`;
+    }
+    // discover: the model route.
+    const { id, complete } = await (async () => {
+      if (values["explain-context"])
+        return { id: "dry run", complete: undefined };
+      return configuredCompletion(modelConfig);
+    })();
+    const provider = completionRuleProvider(
+      id,
+      complete ??
+        (async () => {
+          throw new Error("A dry run sends nothing.");
+        }),
+    );
+    const content = new Map(
+      context.files.map((file) => [file.path, file.content]),
+    );
+    const commits = [];
+    if (context.git)
+      for (const file of context.task.readFiles)
+        try {
+          const history = await context.git.getCommitsForPath(file, {
+            ...(values.to ? { revision: values.to } : {}),
+            limit: 20,
+          });
+          for (const commit of history.commits) {
+            const [subject = "", ...body] = commit.message.split("\n");
+            commits.push({
+              sha: commit.sha,
+              subject,
+              body: body.join("\n").trim(),
+            });
+          }
+        } catch {
+          // A file with no history in this checkout simply contributes no commits.
+        }
+    const unique = [
+      ...new Map(commits.map((item) => [item.sha, item])).values(),
+    ];
+    const request = {
+      task: context.task,
+      excerpts: buildExcerpts(context.task, (file) => content.get(file)),
+      commits: trimCommits(unique),
+    };
+    if (values["explain-context"]) {
+      const described = describeDiscoveryContext(request);
+      return `${[
+        `Nothing was sent. A model would receive ${described.bytes} characters:`,
+        ...described.files.map(
+          (item) =>
+            `  ${item.file}: ${item.chars} characters${item.truncated ? " (truncated)" : ""}`,
+        ),
+        `  ${described.commits} commit message(s), the discovery task (${context.task.operations.length} operation(s), ${context.task.existingRules.length} known rule(s)), and no other file.`,
+        "The full request follows.",
+        described.json,
+      ].join("\n")}\n`;
+    }
+    let proposals: ReturnType<typeof parseProposalList>;
+    try {
+      proposals = parseProposalList(await provider.discoverRules(request));
+    } catch (error) {
+      throw new Error(
+        `The model's answer is not a valid list of rule proposals: ${(error as Error).message.split("\n")[0]}. Nothing was stored.`,
+        { cause: error },
+      );
+    }
+    return storeProposals(
+      context,
+      proposals,
+      `model: ${id}`,
+      context.task,
+      output,
+    );
+  }
+
+  if (sub === "import") {
+    if (!first) throw usage;
+    const directory = path.resolve(cwd, second ?? ".");
+    const raw = await readJsonFile(cwd, first, "rule proposals");
+    const parsed = RuleProposalsSchema.safeParse(raw);
+    if (!parsed.success)
+      throw new Error(
+        `${first} is not valid rule proposals:\n${parsed.error.issues
+          .slice(0, 8)
+          .map(
+            (item) => `  ${item.path.join(".") || "(root)"}: ${item.message}`,
+          )
+          .join("\n")}`,
+      );
+    const taskFile = path.join(
+      output,
+      "rules",
+      "tasks",
+      `${parsed.data.taskId}.json`,
+    );
+    let task: DiscoveryTask;
+    try {
+      task = JSON.parse(await readFile(taskFile, "utf8")) as DiscoveryTask;
+    } catch (error) {
+      throw new Error(
+        `No exported task ${parsed.data.taskId} under ${path.join(output, "rules", "tasks")}. Import proposals only for tasks created with pathcompiler rules task.`,
+        { cause: error },
+      );
+    }
+    const context = await prepareRules(directory, values);
+    const drift =
+      task.specHash !== context.task.specHash
+        ? "The specification changed since the task was exported; known rules were taken from the task.\n"
+        : "";
+    return `${drift}${await storeProposals(
+      context,
+      parsed.data.proposals,
+      `${parsed.data.producer.kind}: ${parsed.data.producer.name}`,
+      task,
+      output,
+    )}`;
+  }
+
+  if (sub === "list") {
+    const directory = path.resolve(cwd, first ?? ".");
+    if (second) throw usage;
+    const file = await loadCandidates(directory);
+    if (values.json) return `${JSON.stringify(file, null, 2)}\n`;
+    return file.rules.length === 0
+      ? `No candidate rules in ${path.join(directory, CANDIDATE_FILE)}.\n`
+      : `${file.rules
+          .map(
+            (rule) =>
+              `${rule.id} ${rule.kind} (${rule.confidence} confidence, ${rule.producer}): ${rule.rationale}`,
+          )
+          .join("\n")}\n`;
+  }
+
+  if (sub === "approve" || sub === "reject") {
+    if (!first) throw usage;
+    const directory = path.resolve(cwd, second ?? ".");
+    const by = reviewer(values.by);
+    const candidates = await loadCandidates(directory);
+    if (sub === "reject") {
+      if (!values.reason)
+        throw new Error("rules reject needs --reason <text>.");
+      await writeArtifacts(directory, [
+        [
+          CANDIDATE_FILE,
+          serializeCandidates(
+            rejectRuleCandidate({
+              candidates,
+              id: first,
+              by,
+              reason: values.reason,
+            }),
+          ),
+        ],
+      ]);
+      return `Rejected ${first}; it will not be proposed again.\n`;
+    }
+    let approved = null;
+    try {
+      approved = JSON.parse(
+        await readFile(path.join(directory, APPROVED_FILE), "utf8"),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        throw new Error(
+          `${path.join(directory, APPROVED_FILE)} is not valid JSON.`,
+          {
+            cause: error,
+          },
+        );
+    }
+    if (approved)
+      for (const key of ["invariants", "businessRules", "permissions"] as const)
+        approved[key] ??= [];
+    const result = approveRuleCandidate({
+      candidates,
+      approved,
+      id: first,
+      by,
+    });
+    await writeArtifacts(directory, [
+      [CANDIDATE_FILE, serializeCandidates(result.candidates)],
+      [APPROVED_FILE, `${JSON.stringify(result.approved, null, 2)}\n`],
+    ]);
+    return `Approved ${first} as ${by}. It is now in ${path.join(directory, APPROVED_FILE)}; review the diff and commit it. A pull request is checked against the approved rules of its base branch, so the rule applies once this change is merged.\n`;
   }
   throw usage;
 }

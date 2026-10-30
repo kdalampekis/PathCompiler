@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "taskId": "rd-000000000000",
+  "producer": { "kind": "harness", "name": "your-harness", "version": "1.0.0" },
+  "proposals": [
+    {
+      "kind": "invariant",
+      "id": "refunds.processed_implies_approved",
+      "expression": "refund_requests.processed == false || refund_requests.approved == true",
+      "rationale": "processRefund refuses an unapproved request before it marks the request processed, and nothing else sets processed.",
+      "evidence": [
+        {
+          "type": "code",
+          "file": "src/refunds.ts",
+          "lines": "40",
+          "quote": "Not approved."
+        }
+      ],
+      "confidence": "medium"
+    },
+    {
+      "kind": "business_rule",
+      "when": "refund.amount > 10000",
+      "must": "actor.role == \"manager\"",
+      "appliesTo": ["refund"],
+      "rationale": "The commit that introduced the limit says large refunds are for managers only.",
+      "evidence": [
+        {
+          "type": "commit",
+          "commit": "0123abc",
+          "quote": "large refunds are for managers only"
+        }
+      ]
+    }
+  ]
+}
