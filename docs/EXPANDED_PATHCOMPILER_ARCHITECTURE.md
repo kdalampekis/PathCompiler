@@ -413,11 +413,18 @@ Useful comparisons:
 
 ## 16. Non-goals
 
-Not built in this expansion: arbitrary-program verification, semantic
-equivalence across languages, autonomous deployment, continuous
-fine-tuning, DPO pipelines, universal policy or agent-framework support,
-and verification of free-form model output. Scope stays narrow enough for a
-credible prototype.
+Superseded in part by [PRODUCT_NORTH_STAR.md](PRODUCT_NORTH_STAR.md), which
+sets the end goal: any business, any codebase, harness-integrated. As of
+2026-10-30:
+
+- **In scope now (BX10–BX14):** universal change assessment, tools for
+  harnesses (MCP, function-calling schemas, SDK), agentic software as a rule
+  source, checking an answer before it renders, **datasets for alignment and
+  post-training**, and downloadable packages.
+- **Still out of scope:** arbitrary-program verification (proof of an entire
+  program), semantic equivalence across languages, autonomous deployment, and
+  the **training loop** itself (fine-tuning, DPO and RL runs). The datasets
+  that such a loop would consume are in scope; running the loop is not.
 
 ## 17. What was built, and where it differs from the design
 

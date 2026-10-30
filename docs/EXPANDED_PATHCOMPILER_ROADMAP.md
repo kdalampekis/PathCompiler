@@ -184,8 +184,10 @@ fixture, the trace is auditable, and human approval remains required.
 ## After BX7
 
 Considered only later: arbitrary invariant inference, temporal and
-model-checking backends, autonomous PR generation, deployment, and
-fine-tuning datasets.
+model-checking backends, autonomous merging and deployment, and the training
+loop itself. (Fine-tuning *datasets*, harness tools, agentic software and
+downloadable packages moved into scope: see
+[PRODUCT_NORTH_STAR.md](PRODUCT_NORTH_STAR.md), BX10–BX14.)
 
 ## Evaluation plan
 
