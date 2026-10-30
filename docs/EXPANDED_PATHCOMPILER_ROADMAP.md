@@ -187,7 +187,7 @@ Considered only later: arbitrary invariant inference, temporal and
 model-checking backends, autonomous merging and deployment, and the training
 loop itself. (Fine-tuning *datasets*, harness tools, agentic software and
 downloadable packages moved into scope: see
-[PRODUCT_NORTH_STAR.md](PRODUCT_NORTH_STAR.md), BX10–BX14.)
+[PRODUCT_NORTH_STAR.md](PRODUCT_NORTH_STAR.md), BX10–BX16.)
 
 ## Evaluation plan
 

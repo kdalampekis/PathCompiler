@@ -2,7 +2,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createActionGate } from "@pathcompiler/agent-gate";
-import { readSourceFiles } from "@pathcompiler/behavior-extraction";
+import {
+  CONTRACT_FILE,
+  contractDrift,
+  findContract,
+  listRepositoryFiles,
+  readSourceFiles,
+} from "@pathcompiler/behavior-extraction";
 import { formatExpression } from "@pathcompiler/behavior-ir";
 import { openGitRepository } from "@pathcompiler/git-intelligence";
 import type { MutationResult } from "@pathcompiler/harness-contracts";
@@ -13,16 +19,21 @@ import {
   mergeAssessment,
   workingTreeDiff,
 } from "@pathcompiler/harness-runner";
+import { assessReadiness } from "@pathcompiler/onboarding";
 import {
   formatPrGuardMarkdown,
   verifyPullRequest,
 } from "@pathcompiler/pr-guard";
 import {
+  assessContract,
   assessProposals,
+  buildContractTask,
   buildDiscoveryTask,
+  ContractProposalSchema,
   mergeCandidates,
   ProposalListSchema,
   serializeCandidates,
+  serializeContract,
 } from "@pathcompiler/rule-discovery";
 import {
   createSmtVerifier,
@@ -72,6 +83,22 @@ const take = <T>(items: readonly T[], limit: number) => ({
 
 export const TOOLS: ToolDefinition[] = [
   define({
+    name: "pathcompiler_readiness",
+    title: "Where does this repository stand?",
+    description:
+      "Start here in a repository you have not used PathCompiler on. Returns the languages found, how many operations and approved rules are known, whether the code needs describing in the behavior contract, and the next steps in order, with the exact commands. Reads files only; runs nothing.",
+    readOnly: true,
+    input: z.strictObject({}),
+    async run(context) {
+      const report = await assessReadiness(context.directory, {
+        exclude: context.exclude ?? [],
+        bindings: context.bindings ?? {},
+      });
+      return { summary: report.summary, data: report };
+    },
+  }),
+
+  define({
     name: "pathcompiler_describe",
     title: "Describe the behavior of this codebase",
     description:
@@ -91,7 +118,7 @@ export const TOOLS: ToolDefinition[] = [
         .describe("At most this many rules"),
     }),
     async run(context, input) {
-      const { extraction, candidates } = await loadWorkspace(context);
+      const { files, extraction, candidates } = await loadWorkspace(context);
       const spec = extraction.spec;
       const task = buildDiscoveryTask({
         spec,
@@ -110,6 +137,7 @@ export const TOOLS: ToolDefinition[] = [
           rules: rules.items,
           rulesOmitted: rules.omitted,
           unmodeled: take(extraction.unsupported, 20),
+          contract: contractStatus(files, extraction.spec.operations.length),
           note: "Extracted rules are candidates; only 'approved' ones were declared by a person. Constructs under 'unmodeled' are where a harness reading the code adds the most (see pathcompiler_rule_task).",
         },
       };
@@ -376,6 +404,9 @@ export const TOOLS: ToolDefinition[] = [
         unmodeled: extraction.unsupported,
         commits: { from: input.from ?? null, to: input.to ?? null },
         rejected: candidates.rejected,
+        paths: (
+          await listRepositoryFiles(context.directory, context.exclude ?? [])
+        ).map((item) => item.path),
       });
       return {
         summary: `Task ${task.id}: ${task.operations.length} operation(s) in ${task.readFiles.join(", ") || "no source file"}, ${task.unmodeled.length} construct(s) not modeled.`,
@@ -459,6 +490,91 @@ export const TOOLS: ToolDefinition[] = [
   }),
 
   define({
+    name: "pathcompiler_contract_task",
+    title: "How do I describe this code?",
+    description:
+      "For a repository in any language (Python, Go, Java, Ruby, PHP, Rust, ...): the task of describing what its operations do in PathCompiler's language-neutral behavior contract, so business rules can be checked against them without a parser for the language. Returns the files, the operations already described (and which are stale because their code changed), the variables, and the instructions. Read the code, then answer with pathcompiler_submit_contract.",
+    readOnly: true,
+    input: z.strictObject({}),
+    async run(context) {
+      const { files, extraction, commit } = await loadWorkspace(context);
+      const found = findContract(files);
+      const task = buildContractTask({
+        spec: extraction.spec,
+        repositoryCommit: commit,
+        files: await listRepositoryFiles(
+          context.directory,
+          context.exclude ?? [],
+        ),
+        contract: found?.contract ?? null,
+        fileContents: new Map(files.map((file) => [file.path, file.content])),
+      });
+      const stale = task.existing.filter((item) => item.stale).length;
+      return {
+        summary: `Task ${task.id}: ${task.files.length} file(s), ${task.existing.length} operation(s) described${stale ? `, ${stale} stale` : ""}, ${task.extracted.length} read deterministically.`,
+        data: task,
+      };
+    },
+  }),
+
+  define({
+    name: "pathcompiler_submit_contract",
+    title: "Describe operations in the behavior contract",
+    description:
+      "Submit descriptions of operations (parameters, preconditions the code enforces, effects on state, and anchors: file, line range and a verbatim quote) in the language-neutral behavior contract. Each is checked: the anchor lines must exist and contain the quote, expressions must parse, variables must be declared, and the result must be a valid specification. Accepted operations are stored (with a fingerprint of their code, so PathCompiler notices when the code changes) as inferred until a person approves them. Without write permission this is a dry run. Resubmit rejected operations after fixing what the reasons say.",
+    readOnly: false,
+    input: z.strictObject({
+      operations: ContractProposalSchema.shape.operations,
+      variables: ContractProposalSchema.shape.variables.optional(),
+      language: z
+        .string()
+        .optional()
+        .describe("The language of the described code"),
+      producer: z
+        .string()
+        .default("harness")
+        .describe("Who is describing, for the record"),
+    }),
+    async run(context, input) {
+      const workspace = await loadWorkspace(context);
+      const found = findContract(workspace.files);
+      const producer = `harness: ${input.producer}`;
+      const assessed = await assessContract({
+        proposal: {
+          schemaVersion: 1,
+          taskId: "tool",
+          producer: { kind: "harness", name: input.producer },
+          ...(input.language ? { language: input.language } : {}),
+          variables: input.variables ?? [],
+          operations: input.operations,
+        },
+        producer,
+        spec: workspace.extraction.spec,
+        existing: found?.contract ?? null,
+        loadFile: workspaceLoader(context.directory),
+      });
+      const accepted = assessed.operations.filter(
+        (item) => item.status === "accepted",
+      ).length;
+      let stored = false;
+      if (context.allowWrite && assessed.contract) {
+        const file = path.join(context.directory, CONTRACT_FILE);
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, serializeContract(assessed.contract));
+        stored = true;
+      }
+      return {
+        summary: `${accepted} of ${assessed.operations.length} operation(s) accepted${stored ? ` and stored in ${CONTRACT_FILE}` : context.allowWrite ? "" : " (dry run: this server does not allow writes)"}.`,
+        data: {
+          stored,
+          operations: assessed.operations,
+          next: "Fix the rejected ones using their reasons and resubmit only those. Then propose business rules over these variables with pathcompiler_submit_rules; a person approves the contract and the rules.",
+        },
+      };
+    },
+  }),
+
+  define({
     name: "pathcompiler_list_rules",
     title: "List the known rules",
     description:
@@ -493,6 +609,27 @@ export const TOOLS: ToolDefinition[] = [
     },
   }),
 ];
+
+function contractStatus(
+  files: readonly { path: string; content: string }[],
+  operations: number,
+) {
+  const found = findContract(files);
+  if (!found) return { present: false, operationsInSpecification: operations };
+  const drift = contractDrift(found.contract, files);
+  return {
+    present: true,
+    operations: found.contract.operations.length,
+    approvedBy: found.contract.approvedBy ?? null,
+    producer: found.contract.producer,
+    stale: drift.map((item) => ({
+      operation: item.operation,
+      where: item.stale.map(
+        (entry) => `${entry.anchor.file}:${entry.anchor.lines}`,
+      ),
+    })),
+  };
+}
 
 function relevantValues(counterexample: {
   state: Record<string, unknown>;

@@ -11,6 +11,11 @@ import {
   mergeFragments,
   type SourceFile,
 } from "./common.js";
+import {
+  CONTRACT_PATH,
+  type ContractExtractionOptions,
+  extractContract,
+} from "./contract.js";
 import { collectTypes, extractGuards, type TypeIndex } from "./guards.js";
 import { extractOpenApi } from "./openapi.js";
 import { extractSql } from "./sql.js";
@@ -20,6 +25,7 @@ export * from "./approved.js";
 export * from "./assertions.js";
 export * from "./candidates.js";
 export * from "./common.js";
+export * from "./contract.js";
 export * from "./evaluate.js";
 export * from "./files.js";
 export * from "./guards.js";
@@ -34,7 +40,8 @@ export type ExtractorName =
   | "assertions"
   | "guards"
   | "approved"
-  | "candidates";
+  | "candidates"
+  | "contract";
 export type ExtractionResult = MergeResult & {
   specHash: string;
   /** Files each extractor looked at. */
@@ -52,6 +59,7 @@ export function classify(file: SourceFile): ExtractorName[] {
   if (/(^|\/)approved-rules[^/]*\.json$/.test(file.path)) return ["approved"];
   if (/(^|\/)candidate-rules[^/]*\.json$/.test(file.path))
     return ["candidates"];
+  if (CONTRACT_PATH.test(file.path)) return ["contract"];
   if (
     OPENAPI_NAME.test(file.path) ||
     /["']?openapi["']?\s*:\s*["']3\./.test(file.content)
@@ -71,10 +79,11 @@ export function classify(file: SourceFile): ExtractorName[] {
  */
 export function extractBehavior(
   files: readonly SourceFile[],
-  options: ExtractionOptions & {
-    id?: string;
-    repositoryCommit?: string | null;
-  } = {},
+  options: ExtractionOptions &
+    ContractExtractionOptions & {
+      id?: string;
+      repositoryCommit?: string | null;
+    } = {},
 ): ExtractionResult {
   const inputs: Record<ExtractorName, string[]> = {
     sql: [],
@@ -84,6 +93,7 @@ export function extractBehavior(
     guards: [],
     approved: [],
     candidates: [],
+    contract: [],
   };
   const fragments: ExtractedFragment[] = [];
   const types: TypeIndex = collectTypes(files);
@@ -101,9 +111,11 @@ export function extractBehavior(
                 ? extractApprovedRules(file)
                 : name === "candidates"
                   ? extractCandidateRules(file)
-                  : name === "guards"
-                    ? extractGuards(file, options, types)
-                    : extractAssertions(file, options),
+                  : name === "contract"
+                    ? extractContract(file, options)
+                    : name === "guards"
+                      ? extractGuards(file, options, types)
+                      : extractAssertions(file, options),
       );
     }
   }

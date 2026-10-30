@@ -24,6 +24,7 @@
     "@pathcompiler/git-intelligence": "workspace:*",
     "@pathcompiler/harness-contracts": "workspace:*",
     "@pathcompiler/harness-runner": "workspace:*",
+    "@pathcompiler/onboarding": "workspace:*",
     "@pathcompiler/pr-guard": "workspace:*",
     "@pathcompiler/rule-discovery": "workspace:*",
     "@pathcompiler/solver-provider": "workspace:*",

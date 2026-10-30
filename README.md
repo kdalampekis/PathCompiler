@@ -47,6 +47,21 @@ or network service unless a model provider is explicitly configured. Run
 `pathcompiler --help` for the command list. Alpha validation on real
 repositories (C6) is the next step.
 
+## Start here
+
+```bash
+pnpm install && pnpm build
+pnpm pathcompiler start <your repository>      # where you stand, what to do next, in any language
+pnpm pathcompiler ci <your repository> --report-only   # watch pull requests before it can block
+```
+
+[docs/QUICKSTART.md](docs/QUICKSTART.md) is the five-minute path;
+[docs/ADOPTION_AUDIT.md](docs/ADOPTION_AUDIT.md) says honestly what works at a
+company and what does not yet; [docs/PRODUCT_NORTH_STAR.md](docs/PRODUCT_NORTH_STAR.md)
+is the end goal every decision is checked against. Code in a language with no
+extractor is described once in the language-neutral behavior contract
+(`pathcompiler contract task`, [ADR 0099](docs/decisions/0099-behavior-contract.md)).
+
 ## Development
 
 Use Node.js 22.12+ and the pinned pnpm version. With nvm and Corepack installed:
@@ -2106,6 +2121,7 @@ Analysis packages:
 | `@pathcompiler/counterexamples` | `createRecord`, `recordCounterexample`, `listCounterexamples`, `resolveCounterexample`, `generateEval`, `runEval`, `contractExecutor`, `runSpecEval` (BX6) |
 | `@pathcompiler/rule-discovery` | `buildDiscoveryTask`, `RuleProposalsSchema`, `assessProposals`, `completionRuleProvider`, `buildExcerpts`, `describeContext`, `mergeCandidates`, `approveCandidate`, `rejectCandidate` (BX8) |
 | `@pathcompiler/harness-runner` | `executeHarness`, `commandAgent`, `scriptedAgent`, `startRun`, `approveRun`, `rejectRun`, `decideNext`, `mergeAssessment`, `behaviorCheck`, `gitPublisher`, `runJsonCommand`, `commandCompletion`, `commandRepairProvider`, `createCommandModelProvider`, `checkSafety` (BX9) |
+| `@pathcompiler/onboarding` | `assessReadiness`, `formatReadiness`, `githubWorkflow`, `mcpConfig`, `suggestBindings` (BX13) |
 | `@pathcompiler/agent-tools` | `TOOLS`, `createToolbox`, `createAgentToolsMcpServer`, `serveAgentToolsStdio`, `toOpenAITools`, `toAnthropicTools`, `inputJsonSchema` (BX11) |
 | `@pathcompiler/repair-loop` | `runRepairLoop`, `RepairProvider`, `fixtureRepairProvider`, `unifiedDiff`, `RepairReport` (BX7) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
@@ -2118,7 +2134,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import/run/runs/status/approve/reject`, `tools list/call`, `mcp-agent`, `behavior export/extract/verify/validate/show`, `verify-pr`, `agent check/audit/eval`, `counterexamples list/record/eval/run`, `rules task/import/discover/list/approve/reject`, `repair propose`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import/run/runs/status/approve/reject`, `tools list/call`, `mcp-agent`, `start`, `ci`, `contract task/status/import/approve`, `behavior export/extract/verify/validate/show`, `verify-pr`, `agent check/audit/eval`, `counterexamples list/record/eval/run`, `rules task/import/discover/list/approve/reject`, `repair propose`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against

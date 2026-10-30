@@ -417,7 +417,7 @@ Superseded in part by [PRODUCT_NORTH_STAR.md](PRODUCT_NORTH_STAR.md), which
 sets the end goal: any business, any codebase, harness-integrated. As of
 2026-10-30:
 
-- **In scope now (BX10–BX14):** universal change assessment, tools for
+- **In scope now (BX10–BX16):** universal change assessment, tools for
   harnesses (MCP, function-calling schemas, SDK), agentic software as a rule
   source, checking an answer before it renders, **datasets for alignment and
   post-training**, and downloadable packages.

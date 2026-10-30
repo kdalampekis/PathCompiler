@@ -1,6 +1,9 @@
 import {
+  CONTRACT_VERSION,
+  contractDrift,
   type ExtractionOptions,
   extractBehavior,
+  findContract,
   type SourceFile,
 } from "@pathcompiler/behavior-extraction";
 import type { SolverProvider } from "@pathcompiler/solver-provider";
@@ -27,6 +30,8 @@ export type FindingKind =
   /** Verified at base, UNKNOWN or UNSUPPORTED at head. */
   | "coverage_lost"
   | "approved_rules_changed"
+  /** The code a behavior contract describes changed and the contract was not re-derived. */
+  | "contract_stale"
   | "rule_removed"
   | "limitation_added";
 export type Finding = {
@@ -104,8 +109,12 @@ export async function verifyPullRequest(
     id: "behavior",
     repositoryCommit: input.baseCommit ?? null,
   });
+  // Facts a contract describes count as approved only if they are identical
+  // to what a person approved at the base; the change cannot approve itself.
+  const baseContract = findContract(input.base);
   const headResult = extractBehavior(headFiles, {
     ...options,
+    contractApproval: baseContract?.contract ?? null,
     id: "behavior",
     repositoryCommit: input.headCommit ?? null,
   });
@@ -125,6 +134,18 @@ export async function verifyPullRequest(
   const findings: Finding[] = [];
   const humanBacked = (result: VerificationResult) =>
     result.rule?.humanBacked === true;
+  const derivedFromContract = (property: VerificationProperty) => {
+    const operation = headResult.spec.operations.find(
+      (item) => item.id === property.operation,
+    );
+    return (
+      operation?.provenance.some(
+        (item) =>
+          item.extractorVersion.startsWith(CONTRACT_VERSION) &&
+          item.origin !== "HUMAN_APPROVED",
+      ) === true
+    );
+  };
   for (const result of headReport.results) {
     const before = baseByKey.get(key(result.property));
     const label = propertyLabel(result.property);
@@ -143,7 +164,7 @@ export async function verifyPullRequest(
         severity:
           kind === "preexisting_violation"
             ? "info"
-            : humanBacked(result)
+            : humanBacked(result) && !derivedFromContract(result.property)
               ? "fail"
               : "review",
         message:
@@ -156,7 +177,14 @@ export async function verifyPullRequest(
         ...(result.counterexample
           ? { counterexample: result.counterexample }
           : {}),
-        caveats: result.caveats,
+        caveats: [
+          ...result.caveats,
+          ...(derivedFromContract(result.property)
+            ? [
+                "The operation's behavior comes from a behavior contract that a harness or model wrote from the code and a person has not approved, so this needs a person's judgment before it can fail the change.",
+              ]
+            : []),
+        ],
       });
     } else if (before?.status === "VIOLATED" && result.status === "VERIFIED") {
       findings.push({
@@ -184,6 +212,40 @@ export async function verifyPullRequest(
         severity: "review",
         message: `${change.operation}: ${change.limitationsAdded.length} construct(s) the extractor cannot model were added (${change.limitationsAdded.slice(0, 2).join("; ")}), so its rules are checked against weaker preconditions.`,
       });
+  // Code a contract describes changed, and the change did not re-derive it.
+  if (baseContract) {
+    const headContract = findContract(input.head);
+    const headFilesByPath = new Map(
+      input.head.map((file) => [file.path, file.content]),
+    );
+    const rederived = new Set(
+      (headContract?.contract.operations ?? [])
+        .filter((item) => {
+          const before = baseContract.contract.operations.find(
+            (candidate) => candidate.id === item.id,
+          );
+          return (
+            before !== undefined &&
+            JSON.stringify(before.anchors) !== JSON.stringify(item.anchors)
+          );
+        })
+        .map((item) => item.id),
+    );
+    for (const drift of contractDrift(baseContract.contract, headFilesByPath)) {
+      if (rederived.has(drift.operation)) continue;
+      const where = drift.stale
+        .map(
+          (item) =>
+            `${item.anchor.file}:${item.anchor.lines}${item.state === "file_missing" ? " (file removed)" : ""}`,
+        )
+        .join(", ");
+      findings.push({
+        kind: "contract_stale",
+        severity: "review",
+        message: `${drift.operation}: the code its behavior contract describes changed (${where}) and the contract was not re-derived, so the rules for this operation were checked against the old description. Ask a harness to re-derive it (pathcompiler_contract_task).`,
+      });
+    }
+  }
   const removed = [
     ...diff.invariants.removed.map((item) => `invariant ${item}`),
     ...diff.businessRules.removed.map((item) => `business rule ${item}`),

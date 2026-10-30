@@ -5648,7 +5648,7 @@ because no specification exists for Python yet (BX13).
 
 - Heuristics are crude; the reviewer and the project's tests are not measured
   on real repositories (ISSUES_LOG #71).
-- Next: BX11 (done below), then BX12 (feedback and alignment datasets).
+- Next: BX11 (done below), BX12 (behavior contract) and BX13 (adoption layer).
 
 ## Expansion BX11 — Tools for harnesses
 
@@ -5693,3 +5693,71 @@ unit tests (new: 10 in `agent-tools`, 3 in the CLI) and e2e (50 passed).
 - The behavior check is only as strong as the specification: none exists for
   Python or Go until a harness submits rules (BX13).
 - Calls are not recorded for datasets yet (BX12).
+
+## Expansion BX12 — The behavior contract: one format for any language
+
+Complete — verified locally on 2026-10-30. At the user's request ("instead of a
+language barrier, give it a specific format that works no matter the framework").
+Phase numbers after BX11 were reassigned: datasets and agentic work are now
+BX14 and BX15, packaging BX16.
+
+- **Format:** `spec/behavior-contract.json` (`behavior-contract/1`): variables
+  and operations (parameters, preconditions, postconditions, effects,
+  limitations) with anchors (file, lines, quote, fingerprint). Facts about code,
+  never rules. Extractor `contract`, provenance INFERRED / `LLM_ASSISTED` until
+  `contract approve`.
+- **Drift without a parser:** `anchorStatus` / `contractDrift` find the anchored
+  lines intact, moved or changed in any language; the PR guard reports
+  `contract_stale` when the code changed and the description was not re-derived.
+- **Trust in pull requests:** facts count as approved only if identical to the
+  base's approved contract; a violation found through unapproved facts is capped
+  at `review`. A test caught `contractApproval: null` being treated as "self",
+  which would have let a head approve itself; fixed.
+- **Conversation:** `contract task|status|import|approve`, tools
+  `pathcompiler_contract_task` and `pathcompiler_submit_contract`; per-operation
+  validation (anchors exist and contain the quote, expressions parse, variables
+  declared, the merged specification is valid).
+- **Reading:** `readSourceFiles` reads the files a contract is anchored to in any
+  language; `listRepositoryFiles` and `createFileLoader` are new.
+- ADR 0099.
+
+### Result on a Python repository (no extractor exists for it)
+
+A harness described `refund`, `approve_refund` and `process_refund`; a person
+approved them; the base's approved refund rules then applied to Python. An
+unrelated state is clean. The support-agent fast path (tests still pass) is
+reported as `contract_stale` (review); once the harness re-derives the operation,
+the rule `refunds.manager_approval_over_limit` is reported with the values that
+break it, still as `review` because the new facts are unapproved. Citing code that
+is not there, or undeclared variables, are rejected with reasons.
+
+### Verification
+
+`pnpm lint`, `pnpm typecheck`, `pnpm build` passed; 754 unit tests passed across 125 files (new: contract anchors and extraction, the Python contract scenario, contract and start/ci CLI tests, readiness); e2e 50 passed.
+
+### Scope notes
+
+- The description's correctness is not checked (ISSUES_LOG #73); the expression
+  language limits what can be said (#74).
+
+## Expansion BX13 — The adoption layer
+
+Complete — verified locally on 2026-10-30. A product-management audit of whether
+this works at any company ([docs/ADOPTION_AUDIT.md](../ADOPTION_AUDIT.md)).
+
+- **`@pathcompiler/onboarding`:** `assessReadiness` reads languages, project
+  checks, known operations and rules, the contract and its drift, and returns a
+  stage and ordered next steps with commands; also suggests `--bind` pairs and
+  prints the MCP config and a GitHub Actions workflow.
+- **`pathcompiler start`** and the tool **`pathcompiler_readiness`**.
+- **`pathcompiler ci`:** `verify-pr` with CI defaults (finds the base branch,
+  writes the Actions step summary), `--report-only` (report what would fail
+  without failing) and `--print-workflow`.
+- **Documents** are listed in the rule-discovery task as evidence sources.
+- Docs: ADOPTION_AUDIT.md, QUICKSTART.md, ADR 0100.
+
+### Barriers still open (from the audit)
+
+Installation without a JavaScript toolchain (BX16), no real-software trial
+(#57), the rule language's limits (#74), monorepo namespaces (#75), no value
+history view.

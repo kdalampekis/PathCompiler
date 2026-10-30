@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CandidateRulesFileSchema,
+  createFileLoader,
   type ExtractionResult,
   extractBehavior,
   readSourceFiles,
@@ -59,21 +60,7 @@ export async function loadWorkspace(context: ToolContext): Promise<Workspace> {
   return { files, extraction, commit, candidates };
 }
 
-/** Reads a file inside the workspace; anything outside it, or missing, is undefined. */
-export function workspaceLoader(directory: string) {
-  const root = path.resolve(directory);
-  return async (relative: string): Promise<string | undefined> => {
-    const target = path.resolve(root, relative);
-    if (target !== root && !target.startsWith(`${root}${path.sep}`))
-      return undefined;
-    try {
-      const content = await readFile(target, "utf8");
-      return content.length <= 2_000_000 ? content : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-}
+export const workspaceLoader = createFileLoader;
 
 export async function commitExists(
   directory: string,

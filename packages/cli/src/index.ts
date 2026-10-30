@@ -1,4 +1,5 @@
 import {
+  appendFile,
   link,
   mkdir,
   mkdtemp,
@@ -39,8 +40,13 @@ import {
 } from "@pathcompiler/agent-tools";
 import {
   CandidateRulesFileSchema,
+  CONTRACT_FILE,
+  contractDrift,
+  createFileLoader,
   type ExtractionResult,
   extractBehavior,
+  findContract,
+  listRepositoryFiles,
   readSourceFiles,
 } from "@pathcompiler/behavior-extraction";
 import {
@@ -233,6 +239,12 @@ import {
   readEventDirectory,
 } from "@pathcompiler/observed-graph";
 import {
+  assessReadiness,
+  formatReadiness,
+  githubWorkflow,
+  mcpConfig,
+} from "@pathcompiler/onboarding";
+import {
   type AdoptionDecision,
   decideAdoption,
   measureOutcome,
@@ -289,11 +301,16 @@ import {
 } from "@pathcompiler/review-priority";
 import {
   type Assessment,
+  approveContract,
   approveCandidate as approveRuleCandidate,
+  assessContract,
   assessProposals,
+  buildContractTask,
   buildDiscoveryTask,
   buildExcerpts,
+  ContractProposalSchema,
   completionRuleProvider,
+  contractProposalJsonSchema,
   type DiscoveryTask,
   describeContext as describeDiscoveryContext,
   emptyCandidates,
@@ -303,6 +320,7 @@ import {
   rejectCandidate as rejectRuleCandidate,
   ruleProposalsJsonSchema,
   serializeCandidates,
+  serializeContract,
   trimCommits,
 } from "@pathcompiler/rule-discovery";
 import { createStaticTransport, PathCompiler } from "@pathcompiler/sdk-js";
@@ -410,6 +428,9 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler github-app manifest --name <name> --url <url> --webhook <https-url>
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
+       pathcompiler contract task|status [directory] | contract import <ContractProposal.json> [directory] | contract approve --by <name> [directory]
+       pathcompiler start [directory] [--json] [--bind <name>=<entity> ...]
+       pathcompiler ci [directory] [--base <ref>] [--candidate <ref>] [--report-only] [--print-workflow]
        pathcompiler mcp-reasoning [directory] [--model <json-file>]
        pathcompiler mcp-agent [directory] [--allow-write] [--bind <name>=<entity> ...] [--exclude <directory> ...]
        pathcompiler tools list [--format text|json|openai|anthropic]
@@ -873,6 +894,8 @@ const CLI_OPTIONS = {
   baseline: { type: "string" },
   input: { type: "string" },
   "allow-write": { type: "boolean" },
+  "report-only": { type: "boolean" },
+  "print-workflow": { type: "boolean" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -1028,6 +1051,16 @@ export async function runCli(
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (values["model-fixtures"] !== undefined && positionals[0] !== "analyze")
     throw new Error("--model-fixtures is only supported by analyze.");
+  if (positionals[0] === "start") return runStart(positionals, values, cwd);
+  if (positionals[0] === "ci") return runCi(positionals, values, cwd);
+  if (
+    (values["report-only"] !== undefined ||
+      values["print-workflow"] !== undefined) &&
+    positionals[0] !== "ci"
+  )
+    throw new Error(
+      "--report-only and --print-workflow are only supported by ci.",
+    );
   if (positionals[0] === "verify-pr")
     return runVerifyPr(positionals, values, cwd);
   if (values.base !== undefined && positionals[0] !== "diagnose")
@@ -1101,6 +1134,8 @@ export async function runCli(
   if (positionals[0] === "behavior")
     return runBehavior(positionals, values, cwd);
   if (positionals[0] === "agent") return runAgent(positionals, values, cwd);
+  if (positionals[0] === "contract")
+    return runContract(positionals, values, cwd);
   if (positionals[0] === "repair") return runRepair(positionals, values, cwd);
   if (positionals[0] === "rules")
     return runRules(
@@ -6357,6 +6392,147 @@ type RulesContext = {
 };
 
 /** Extracts the specification as it is now and builds the discovery task from it. */
+/**
+ * The behavior contract: a language-neutral description of what the code does,
+ * written by a harness, model or person for a language no extractor reads.
+ */
+async function runContract(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, sub, first, second, ...rest] = positionals;
+  const usage = new Error(
+    "Expected: pathcompiler contract task|status [directory], contract import <ContractProposal.json> [directory], or contract approve --by <name> [directory]. Use --help for options.",
+  );
+  if (rest.length > 0) throw usage;
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const directory = path.resolve(
+    cwd,
+    (sub === "import" ? second : first) ?? ".",
+  );
+  if (
+    sub !== "task" &&
+    sub !== "status" &&
+    sub !== "import" &&
+    sub !== "approve"
+  )
+    throw usage;
+  if ((sub === "task" || sub === "status" || sub === "approve") && second)
+    throw usage;
+  const files = await readSourceFiles(directory, values.exclude ?? []);
+  const found = findContract(files);
+  const contentOf = new Map(files.map((file) => [file.path, file.content]));
+
+  if (sub === "status") {
+    if (!found)
+      return `No behavior contract at ${CONTRACT_FILE}. Run pathcompiler contract task ${first ?? "."} and give the task to a harness.\n`;
+    const drift = new Map(
+      contractDrift(found.contract, contentOf).map((item) => [
+        item.operation,
+        item,
+      ]),
+    );
+    return `${[
+      `${found.contract.operations.length} operation(s) described by ${found.contract.producer}; ${found.contract.approvedBy ? `approved by ${found.contract.approvedBy}` : "not approved by a person"}.`,
+      ...found.contract.operations.map((operation) => {
+        const stale = drift.get(operation.id);
+        return `  ${operation.id}: ${operation.anchors.map((a) => `${a.file}:${a.lines}`).join(", ")} — ${stale ? "STALE: the code changed since it was described" : "up to date"}`;
+      }),
+    ].join("\n")}\n`;
+  }
+
+  if (sub === "approve") {
+    if (!found)
+      throw new Error(`There is no contract at ${CONTRACT_FILE} to approve.`);
+    const by = reviewer(values.by);
+    const stale = contractDrift(found.contract, contentOf);
+    if (stale.length > 0)
+      throw new Error(
+        `The code of ${stale.map((item) => item.operation).join(", ")} changed since it was described. Re-derive the contract before approving it.`,
+      );
+    await writeArtifacts(directory, [
+      [
+        CONTRACT_FILE,
+        serializeContract(
+          approveContract(found.contract, by, new Date().toISOString()),
+        ),
+      ],
+    ]);
+    return `${by} approved ${found.contract.operations.length} operation(s) in ${CONTRACT_FILE}. Approve means: you checked these descriptions against the code.\n`;
+  }
+
+  if (sub === "task") {
+    const result = extractBehavior(files, {
+      bindings: parseBindings(values.bind),
+      id: "behavior",
+    });
+    const task = buildContractTask({
+      spec: result.spec,
+      repositoryCommit: null,
+      files: await listRepositoryFiles(directory, values.exclude ?? []),
+      contract: found?.contract ?? null,
+      fileContents: contentOf,
+    });
+    const file = `contract/tasks/${task.id}.json`;
+    await writeArtifacts(output, [
+      [file, `${JSON.stringify(task, null, 2)}\n`],
+      [
+        "contract/schemas/ContractProposal.schema.json",
+        `${JSON.stringify(contractProposalJsonSchema(), null, 2)}\n`,
+      ],
+    ]);
+    if (values.json) return `${JSON.stringify(task, null, 2)}\n`;
+    return `${[
+      `Task ${task.id}: ${task.files.length} file(s), ${task.existing.length} operation(s) already described${task.existing.some((item) => item.stale) ? ` (${task.existing.filter((item) => item.stale).length} stale)` : ""}, ${task.extracted.length} read deterministically.`,
+      `Give the harness ${path.join(output, file)}. It reads the code and writes ContractProposal.json (schema: ${path.join(output, "contract/schemas/ContractProposal.schema.json")}) with "taskId": "${task.id}".`,
+      `Then: pathcompiler contract import ContractProposal.json ${first ?? "."}`,
+    ].join("\n")}\n`;
+  }
+
+  // import
+  if (!first) throw usage;
+  const proposal = ContractProposalSchema.safeParse(
+    await readJsonFile(cwd, first, "a contract proposal"),
+  );
+  if (!proposal.success)
+    throw new Error(
+      `${first} is not a valid contract proposal:\n${proposal.error.issues
+        .slice(0, 8)
+        .map((item) => `  ${item.path.join(".") || "(root)"}: ${item.message}`)
+        .join("\n")}`,
+    );
+  const spec = extractBehavior(files, {
+    bindings: parseBindings(values.bind),
+    id: "behavior",
+  }).spec;
+  const assessed = await assessContract({
+    proposal: proposal.data,
+    producer: `${proposal.data.producer.kind}: ${proposal.data.producer.name}`,
+    spec,
+    existing: found?.contract ?? null,
+    loadFile: createFileLoader(directory),
+  });
+  if (assessed.contract)
+    await writeArtifacts(directory, [
+      [CONTRACT_FILE, serializeContract(assessed.contract)],
+    ]);
+  const accepted = assessed.operations.filter(
+    (item) => item.status === "accepted",
+  );
+  return `${[
+    `${accepted.length} of ${assessed.operations.length} operation(s) accepted${assessed.contract ? ` and stored in ${CONTRACT_FILE} (not approved)` : ""}.`,
+    ...assessed.operations.flatMap((item) => [
+      `  ${item.status === "accepted" ? "+" : "-"} ${item.id}`,
+      ...item.reasons.map((reason) => `      ${reason}`),
+      ...item.warnings.map((warning) => `      note: ${warning}`),
+    ]),
+    accepted.length > 0
+      ? `Check the descriptions against the code, then: pathcompiler contract approve --by <name> ${first ? (second ?? ".") : "."}`
+      : "Fix the rejected operations using the reasons and import again.",
+  ].join("\n")}\n`;
+}
+
 async function prepareRules(
   directory: string,
   values: Values,
@@ -6382,6 +6558,9 @@ async function prepareRules(
     unmodeled: result.unsupported,
     commits: { from: values.from ?? null, to: values.to ?? null },
     rejected: candidates.rejected,
+    paths: (await listRepositoryFiles(directory, values.exclude ?? [])).map(
+      (item) => item.path,
+    ),
   });
   return { directory, files, result, task, git };
 }
@@ -7080,6 +7259,103 @@ function parseBindings(entries: readonly string[] | undefined) {
     bindings[name] = target;
   }
   return bindings;
+}
+
+/** Where a repository stands and what to do next, in any language. */
+async function runStart(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length > 2)
+    throw new Error("Expected: pathcompiler start [directory] [--json].");
+  const directory = positionals[1] ?? ".";
+  const report = await assessReadiness(path.resolve(cwd, directory), {
+    exclude: values.exclude ?? [],
+    bindings: parseBindings(values.bind),
+  });
+  const bindings = Object.entries(parseBindings(values.bind)).map(
+    ([name, target]) => `${name}=${target}`,
+  );
+  const config = mcpConfig(
+    bindings.length > 0 ? bindings : report.suggestedBindings,
+  );
+  if (values.json)
+    return `${JSON.stringify({ ...report, mcpConfig: config }, null, 2)}\n`;
+  return `${formatReadiness(report)}
+To connect a harness (Claude Code, Cursor, Codex or any MCP client), add this to its MCP settings:
+${JSON.stringify(config, null, 2)}
+`;
+}
+
+/**
+ * Checks a pull request with sensible defaults for CI. `--report-only` shows
+ * what would be blocked without failing the build, so a team can watch it
+ * before trusting it.
+ */
+async function runCi(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (values["print-workflow"]) return githubWorkflow();
+  if (positionals.length > 2)
+    throw new Error(
+      "Expected: pathcompiler ci [directory] [--base <ref>] [--candidate <ref>] [--report-only] [--bind ...]. Use pathcompiler ci --print-workflow for a GitHub Actions file.",
+    );
+  const directory = path.resolve(cwd, positionals[1] ?? ".");
+  const exists = async (ref: string) =>
+    runGit(directory, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `${ref}^{commit}`,
+    ]).then(
+      () => true,
+      () => false,
+    );
+  const candidates = [
+    values.base,
+    process.env.GITHUB_BASE_REF
+      ? `origin/${process.env.GITHUB_BASE_REF}`
+      : undefined,
+    "origin/main",
+    "origin/master",
+    "main",
+    "master",
+  ].filter((item): item is string => item !== undefined);
+  let base: string | undefined;
+  for (const ref of candidates)
+    if (await exists(ref)) {
+      base = ref;
+      break;
+    }
+  if (!base)
+    throw new Error(
+      "Cannot find the branch to compare with. Pass --base <ref> (with a full checkout: fetch-depth 0).",
+    );
+  const { json: _json, ...rest } = values;
+  const run = () =>
+    runVerifyPr(
+      ["verify-pr", positionals[1] ?? "."],
+      { ...rest, base, candidate: values.candidate ?? "HEAD" },
+      cwd,
+    );
+  let text: string;
+  try {
+    text = await run();
+  } catch (error) {
+    if (!values["report-only"]) throw error;
+    text = `${(error as Error).message}\nReport-only: this would have failed the build; it did not.\n`;
+  }
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const markdown = await readFile(
+      path.resolve(cwd, values.out ?? ".pathcompiler", "reports/pr-guard.md"),
+      "utf8",
+    ).catch(() => text);
+    await appendFile(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`);
+  }
+  return `Compared ${values.candidate ?? "HEAD"} with ${base}${values["report-only"] ? " (report-only)" : ""}.\n${text}`;
 }
 
 async function runVerifyPr(

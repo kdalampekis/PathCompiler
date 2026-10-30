@@ -201,6 +201,9 @@ importers:
       "@pathcompiler/harness-runner":
         specifier: workspace:*
         version: link:../harness-runner
+      "@pathcompiler/onboarding":
+        specifier: workspace:*
+        version: link:../onboarding
       "@pathcompiler/pr-guard":
         specifier: workspace:*
         version: link:../pr-guard
@@ -467,6 +470,9 @@ importers:
       "@pathcompiler/observed-graph":
         specifier: workspace:*
         version: link:../observed-graph
+      "@pathcompiler/onboarding":
+        specifier: workspace:*
+        version: link:../onboarding
       "@pathcompiler/outcome-analysis":
         specifier: workspace:*
         version: link:../outcome-analysis
@@ -1136,6 +1142,21 @@ importers:
       "@pathcompiler/observability-core":
         specifier: workspace:*
         version: link:../observability-core
+
+  packages/onboarding:
+    dependencies:
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
+      "@pathcompiler/behavior-ir":
+        specifier: workspace:*
+        version: link:../behavior-ir
+      "@pathcompiler/harness-runner":
+        specifier: workspace:*
+        version: link:../harness-runner
+      "@pathcompiler/rule-discovery":
+        specifier: workspace:*
+        version: link:../rule-discovery
 
   packages/outcome-analysis:
     dependencies:
