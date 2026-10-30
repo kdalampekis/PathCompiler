@@ -14,6 +14,7 @@ import {
 } from "@pathcompiler/behavior-ir";
 import type { SolverProvider, SolverTerm } from "@pathcompiler/solver-provider";
 import { Encoding, FRAGMENT, int, UnsupportedFragment } from "./encode.js";
+import { findRoleVariable } from "./roles.js";
 import type {
   Counterexample,
   RuleBasis,
@@ -25,7 +26,6 @@ import type {
 } from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
-const ROLE_PROPERTIES = ["role"];
 
 type Valuation = Record<string, Literal>;
 /** A property compiled to a satisfiability question plus a way to replay its answer. */
@@ -213,22 +213,13 @@ function plan(
         throw new UnsupportedFragment(
           "An unconstrained allow permission grants access; there is nothing to enforce.",
         );
-      const candidates = spec.variables.filter(
-        (variable) =>
-          variable.scope === "context" &&
-          variable.type === "enum" &&
-          variable.values.includes(permission.role) &&
-          (options.roleVariable
-            ? variable.id === options.roleVariable
-            : ROLE_PROPERTIES.includes(variable.id.split(".").pop() as string)),
+      const found = findRoleVariable(
+        spec,
+        permission.role,
+        options.roleVariable,
       );
-      if (candidates.length !== 1)
-        throw new UnsupportedFragment(
-          candidates.length === 0
-            ? `No context enum variable holds the role ${permission.role} (name one with roleVariable).`
-            : `Several context variables could hold the role ${permission.role}: ${candidates.map((item) => item.id).join(", ")}.`,
-        );
-      const roleVariable = (candidates[0] as { id: string }).id;
+      if (!found.id) throw new UnsupportedFragment(found.reason);
+      const roleVariable = found.id;
       const isRole = (state: Valuation) =>
         state[roleVariable] === permission.role;
       const text =

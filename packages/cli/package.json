@@ -22,6 +22,7 @@
   "dependencies": {
     "@pathcompiler/adapter-github": "workspace:*",
     "@pathcompiler/adapter-nextjs": "workspace:*",
+    "@pathcompiler/agent-gate": "workspace:*",
     "@pathcompiler/behavior-reconciliation": "workspace:*",
     "@pathcompiler/candidate-evaluator": "workspace:*",
     "@pathcompiler/behavior-extraction": "workspace:*",

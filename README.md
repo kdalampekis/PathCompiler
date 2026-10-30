@@ -1493,6 +1493,21 @@ approved rules are read from the base branch, so a change cannot weaken a
 rule by editing it. It exits nonzero when an approved rule is newly violated.
 See [ADR 0091](docs/decisions/0091-behavior-diff-and-pr-guard.md).
 
+```bash
+pnpm pathcompiler agent check .pathcompiler/reports/behavior-spec.json --request action.json
+pnpm pathcompiler agent eval  .pathcompiler/reports/behavior-spec.json --cases fixtures/refunds/spec/action-cases.json
+```
+
+`agent check` is the same specification used as an **action gate**: before an
+agent runs a tool, the action (operation, inputs, acting context, relevant
+state) is evaluated against the preconditions, permissions, business rules
+and invariants. It prints PASS or BLOCK, the violated rule, the values that
+violate it and what is missing, and blocks by default when it cannot decide.
+`guardTool` in `@pathcompiler/agent-gate` wraps any tool function. The gate
+only knows the rules in the specification; `agent eval` reports the unsafe
+actions it misses. See
+[ADR 0092](docs/decisions/0092-agent-action-gate.md).
+
 BehaviorIR describes what the system does (transitions, operations), what the
 specification requires (invariants, permissions, temporal rules, data
 policies, business rules) and how far to trust each requirement. Rules use a

@@ -21,6 +21,14 @@ import {
   suggestTargets,
 } from "@pathcompiler/adapter-nextjs";
 import {
+  type ActionDecision,
+  type ActionRequest,
+  createActionGate,
+  evaluateGate,
+  type GateOptions,
+  type LabeledAction,
+} from "@pathcompiler/agent-gate";
+import {
   type ExtractionResult,
   extractBehavior,
   readSourceFiles,
@@ -349,6 +357,8 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler memory list [--json] [--out <directory>]
        pathcompiler behavior export [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler verify-pr --base <ref> --candidate <ref> [directory] [--bind <name>=<entity> ...] [--strict] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler agent check <behavior-spec.json> --request <action.json> [--enforce all|approved_only] [--on-unknown block|allow] [--json]
+       pathcompiler agent eval <behavior-spec.json> --cases <labeled-actions.json> [--json]
        pathcompiler behavior extract [directory] [--bind <name>=<entity> ...] [--commit <sha>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler behavior verify <behavior-spec.json> [--operation <id> ...] [--json] [--out <directory>]
        pathcompiler behavior validate <behavior-spec.json> [--json]
@@ -590,6 +600,16 @@ rule of which carries provenance (source type, explicit/inferred/human-approved,
 method, confidence). behavior validate checks a specification file (references, scopes, types,
 mandatory provenance) and behavior show lists its rules with their provenance. Rules extracted
 automatically are candidates, not business ground truth.
+agent check decides whether an agent's action may run: the request names an operation with its
+inputs, the acting context and the relevant stored state, and the specification is evaluated on
+those concrete values (no solver): the operation's preconditions, the actor's permissions, every
+applicable business rule and data policy, and the invariants of the state the action would
+produce. It prints PASS or BLOCK with the violated rule, the values that violate it and the
+missing precondition, and exits nonzero on BLOCK. A rule it cannot evaluate for lack of a value
+is reported as missing, and the default is to block (--on-unknown allow changes that);
+--enforce approved_only blocks only on rules a person approved. agent eval runs a labeled set of
+safe and unsafe actions and reports the unsafe block rate, the safe allow rate and the false
+block rate; an unsafe action that no rule describes is reported as missed.
 verify-pr extracts the behavior at two Git revisions (--base, --candidate), verifies the rules at
 both and reports only what the change introduces: a rule that held at the base and is violated at
 the candidate (a new reachable violation, with a counterexample), the behavior that changed
@@ -683,6 +703,10 @@ const CLI_OPTIONS = {
   "allow-origin": { type: "string", multiple: true },
   bind: { type: "string", multiple: true },
   candidate: { type: "string" },
+  request: { type: "string" },
+  cases: { type: "string" },
+  enforce: { type: "string" },
+  "on-unknown": { type: "string" },
   strict: { type: "boolean" },
   operation: { type: "string", multiple: true },
   browser: { type: "string" },
@@ -831,6 +855,16 @@ export async function runCli(
     throw new Error(
       "--candidate and --strict are only supported by verify-pr.",
     );
+  if (
+    (values.request !== undefined ||
+      values.cases !== undefined ||
+      values.enforce !== undefined ||
+      values["on-unknown"] !== undefined) &&
+    positionals[0] !== "agent"
+  )
+    throw new Error(
+      "--request, --cases, --enforce and --on-unknown are only supported by agent.",
+    );
   if (values.impact !== undefined && positionals[0] !== "review")
     throw new Error("--impact is only supported by review queue.");
   if (positionals[0] === "review") return runReview(positionals, values, cwd);
@@ -843,6 +877,7 @@ export async function runCli(
   if (positionals[0] === "memory") return runMemory(positionals, values, cwd);
   if (positionals[0] === "behavior")
     return runBehavior(positionals, values, cwd);
+  if (positionals[0] === "agent") return runAgent(positionals, values, cwd);
   if (positionals[0] === "harness") return runHarness(positionals, values, cwd);
   if (positionals[0] === "gate")
     return runGate(
@@ -5489,6 +5524,90 @@ function behaviorRules(spec: BehaviorSpec) {
       provenance: item.provenance,
     })),
   ];
+}
+
+async function runAgent(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, sub, argument, ...rest] = positionals;
+  if ((sub !== "check" && sub !== "eval") || !argument || rest.length > 0)
+    throw new Error(
+      "Expected: pathcompiler agent check <behavior-spec.json> --request <action.json>, or agent eval <behavior-spec.json> --cases <labeled-actions.json>. Use --help for options.",
+    );
+  const enforce = values.enforce ?? "all";
+  const onUnknown = values["on-unknown"] ?? "block";
+  if (enforce !== "all" && enforce !== "approved_only")
+    throw new Error("--enforce must be all or approved_only.");
+  if (onUnknown !== "block" && onUnknown !== "allow")
+    throw new Error("--on-unknown must be block or allow.");
+  const options: GateOptions = { enforce, onUnknown };
+  const gate = createActionGate(await readBehaviorSpec(cwd, argument), options);
+  if (sub === "check") {
+    if (!values.request)
+      throw new Error("agent check needs --request <action.json>.");
+    const request = (await readJsonFile(
+      cwd,
+      values.request,
+      "action request",
+    )) as ActionRequest;
+    if (!request || typeof request.operation !== "string")
+      throw new Error(
+        `${values.request} must be a JSON object with an "operation" and optional "inputs", "context" and "state".`,
+      );
+    const decision = gate.check(request);
+    const text = values.json
+      ? `${JSON.stringify(decision, null, 2)}\n`
+      : formatDecision(decision);
+    if (decision.decision === "BLOCK") throw new Error(text);
+    return text;
+  }
+  if (!values.cases)
+    throw new Error("agent eval needs --cases <labeled-actions.json>.");
+  const file = (await readJsonFile(cwd, values.cases, "labeled actions")) as {
+    cases?: LabeledAction[];
+  };
+  if (!Array.isArray(file.cases))
+    throw new Error(
+      `${values.cases} must be a JSON object with a "cases" array.`,
+    );
+  const result = evaluateGate(gate, file.cases);
+  if (values.json) return `${JSON.stringify(result, null, 2)}\n`;
+  const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
+  return `${[
+    `Gate on ${result.safe + result.unsafe} labeled actions (${result.unsafe} unsafe, ${result.safe} safe):`,
+    `  unsafe block rate ${percent(result.unsafeBlockRate)}; safe allow rate ${percent(result.safeAllowRate)}; false block rate ${percent(result.falseBlockRate)}; mean ${result.meanLatencyMs.toFixed(2)} ms per check`,
+    `  blocked with the expected rule named: ${result.rightReason}`,
+    ...result.missedUnsafe.map((id) => `  missed unsafe action: ${id}`),
+    ...result.falseBlocks.map(
+      (item) => `  blocked a safe action: ${item.id}: ${item.summary}`,
+    ),
+    ...result.wrongReason.map(
+      (item) =>
+        `  blocked ${item.id} for another reason (expected ${item.expected}; named ${item.got.join(", ")})`,
+    ),
+    "The gate only knows the rules in the specification: an unsafe action no rule describes is not blocked.",
+  ].join("\n")}\n`;
+}
+
+function formatDecision(decision: ActionDecision): string {
+  const lines = [decision.summary];
+  for (const item of decision.violations) {
+    lines.push(
+      `  ${item.enforced ? "violated" : "not enforced"} ${item.kind}${item.id ? ` ${item.id}` : ""}: ${item.explanation}`,
+    );
+    if (item.basis)
+      lines.push(
+        `    rule trust: ${item.basis.humanBacked ? "human-approved" : "extracted"}, ${item.basis.confidence} confidence (${item.basis.sources.join("; ")})`,
+      );
+  }
+  for (const item of decision.unresolved)
+    lines.push(
+      `  cannot check ${item.rule}: missing ${item.missing.join(", ") || "a value"}`,
+    );
+  for (const item of decision.warnings) lines.push(`  note: ${item}`);
+  return `${lines.join("\n")}\n`;
 }
 
 function parseBindings(entries: readonly string[] | undefined) {

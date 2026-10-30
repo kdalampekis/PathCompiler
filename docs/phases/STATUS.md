@@ -5225,3 +5225,59 @@ pull requests.
 - Not built: GitHub check runs or comments, running the project's own tests
   inside the guard, counterexample storage (BX6).
 - Next: BX5 — the agent action gate.
+
+## Expansion BX5 — Agent action gate
+
+Complete — verified locally on 2026-10-29.
+
+- **New `@pathcompiler/agent-gate`:** `createActionGate`, `guardTool`,
+  `ActionBlockedError`, `evaluateGate`. Concrete evaluation of
+  preconditions, permissions, business rules, data policies and the
+  invariants an action could break; explicit policies for missing values and
+  unmodeled operations (default: block); `approved_only` enforcement.
+- **CLI `agent check` (nonzero on BLOCK) and `agent eval`.**
+- **`findRoleVariable`** shared between the verifier and the gate.
+- **Fixture:** `spec/action-cases.json`, 28 labeled actions.
+- Recorded in ADR 0092.
+
+### Results on the labeled refund set
+
+| Metric | Result |
+| --- | --- |
+| Safe actions allowed | 10 / 10 (false block rate 0%) |
+| Unsafe actions blocked | 16 / 18 (88.9%) |
+| Blocked with the expected rule named | 15 / 16 (the other has no expected rule: missing state) |
+| Missed | a refund against another customer's payment; a repeated identical refund (no rule describes either) |
+| Latency | well under 1 ms per check |
+
+The two misses are deliberate: they show that the gate cannot see what the
+specification does not say. The labeled set was written by the fixture's
+author, so this is evidence the mechanism behaves, not a measurement on real
+agent traffic.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 624 tests passed across 109 suites (all 109 test files; 11 agent-gate and 2 CLI agent tests are new) |
+
+### Errors found during the phase
+
+- An unconstrained `allow` permission (extracted from a role check) crashed
+  the gate while building the rule text; the tests caught it. Such a
+  permission grants access and has nothing to check; it is now skipped.
+- Violations were first listed in discovery order, so the code's own
+  precondition was reported before the approved rule that explains it;
+  approved rules now come first.
+- Checking every invariant made a complete refund request `UNKNOWN` for
+  lack of an unrelated column; only invariants that mention something the
+  action updates are checked (the others are unaffected).
+
+### Scope notes
+
+- Not built: an HTTP or MCP adapter for the gate, temporal rules, building
+  the request's state from a live system (the caller supplies it).
+- Next: BX6 — counterexample to regression eval.
