@@ -149,11 +149,13 @@ export function generateEval(
       request: { ...reproduction, [scope]: { ...values, [variable]: value } },
     });
   };
+  // Vary what the violation depends on; an unrelated field would only add noise.
+  const focus = new Set(record.relevant ?? []);
   for (const scope of ["inputs", "context"] as const) {
     const values = reproduction[scope] ?? {};
     for (const [id, current] of Object.entries(values)) {
       const variable = variables.get(id);
-      if (!variable) continue;
+      if (!variable || (focus.size > 0 && !focus.has(id))) continue;
       if (variable.type === "boolean") vary(scope, values, id, !current);
       else if (variable.type === "enum")
         for (const option of variable.values) vary(scope, values, id, option);

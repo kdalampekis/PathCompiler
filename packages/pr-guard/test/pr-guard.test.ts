@@ -204,6 +204,23 @@ describe("what the guard refuses to be fooled by", () => {
     expect(report.findings[0]?.message).toContain("audit(actor)");
   });
 
+  it("does not pass when the guarded function is renamed away", async () => {
+    // The API contract still describes `refund`, but the guards now belong to
+    // a different operation, so the approved rules are no longer enforced.
+    const renamed = read("src/refunds.ts").content.replace(
+      "export function refund(",
+      "export function issueRefund(",
+    );
+    const report = await guard(withService(renamed));
+    expect(report.verdict).toBe("fail");
+    expect(
+      important(report).map((item) => [item.kind, item.rule?.id]),
+    ).toContainEqual(["regression", "refunds.manager_approval_over_limit"]);
+    expect(
+      report.diff.operations.map((item) => [item.operation, item.status]),
+    ).toContainEqual(["issue_refund", "added"]);
+  });
+
   it("is deterministic", async () => {
     const head = withService(variant("support-fast-path"));
     expect(JSON.stringify(await guard(head))).toBe(
@@ -221,6 +238,9 @@ describe("pull request comment", () => {
     expect(markdown).toContain("refunds.manager_approval_over_limit");
     expect(markdown).toContain("confirmed");
     expect(markdown).toContain('actor.role="support_agent"');
+    // Only the variables that matter to the violation are shown.
+    expect(markdown).toContain("refund.amount=");
+    expect(markdown).not.toContain("refund_requests.requester_id");
     expect(markdown).toContain("no longer requires");
     expect(markdown).toContain("not business ground truth");
     expect(formatPrGuardMarkdown(await guard(BASE_FILES))).toContain(

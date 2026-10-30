@@ -26,6 +26,14 @@ What the repository implements today (details per phase in
   event ingestion, an observed graph, workflow analytics, reconciliation of
   possible versus observed behavior, path efficiency, drop-offs, a Markov
   model, release behavior diffs and probabilistic checks.
+- **Specify and verify behavior (new):** a solver-neutral behavioral
+  specification (BehaviorIR, every rule with provenance) extracted without a
+  model from SQL schemas, Zod models, OpenAPI documents, tests and guard
+  clauses, plus rules a person approves; a verifier with counterexamples that
+  are re-evaluated before they are shown; a pull-request guard that reports
+  only what a change newly breaks; an action gate for agents; counterexamples
+  kept as regression evals; and a conservative, human-approved repair loop
+  (prototype). See [docs/BEHAVIOR_SPEC_GUIDE.md](docs/BEHAVIOR_SPEC_GUIDE.md).
 - **Recommend and evaluate:** model providers (opt-in), probabilistic
   interpretation and diagnosis, change-risk scoring, findings, an improvement
   gate, recommendations, candidate evaluation with browser verification,
@@ -1447,7 +1455,11 @@ whether completion increased only when the bounds do not overlap. The
 results are estimates about observed users, not about what the product
 allows. See [ADR 0076](docs/decisions/0076-probabilistic-model-checking.md).
 
-## BehaviorIR: a behavioral specification (`pathcompiler behavior`)
+## Behavioral specification: extract, verify, guard, gate (`behavior`, `verify-pr`, `agent`, `counterexamples`, `repair`)
+
+A step-by-step walkthrough on the bundled refund fixture, and a protocol for
+trying this on your own software, is in
+[docs/BEHAVIOR_SPEC_GUIDE.md](docs/BEHAVIOR_SPEC_GUIDE.md).
 
 PathCompiler is also a compiler from software artifacts to an explicit,
 solver-neutral behavioral specification. The workflows, journeys and
@@ -1996,6 +2008,12 @@ Analysis packages:
 | `@pathcompiler/improvement-memory` | `buildMemoryRecord`, `historyFactor`, `rankWithMemory`, `ImprovementMemoryRecordSchema` (I8) |
 | `@pathcompiler/harness-contracts` | `HarnessTaskSpecSchema`, `MutationResultSchema`, `createHarnessTask`, `parseMutationResult`, `evaluationCriteria`, `runFixtureHarness`, `contractJsonSchemas` (I2) |
 | `@pathcompiler/behavior-ir` | `BehaviorSpecSchema`, `parseBehaviorSpec`, `serializeBehaviorSpec`, `behaviorSpecHash`, `ProvenanceSchema`, `parseExpression`, `formatExpression`, `evaluateExpression`, `fromFormalModel`, `toFormalModel` (BX1) |
+| `@pathcompiler/behavior-extraction` | `extractBehavior`, `extractSql`, `extractZod`, `extractOpenApi`, `extractAssertions`, `extractGuards`, `extractApprovedRules`, `mergeFragments`, `readSourceFiles`, `scoreExtraction` (BX2) |
+| `@pathcompiler/verification` | `createSmtVerifier`, `createVerificationRouter`, `verifySpec`, `propertiesOf`, `relateConditions`, `findRoleVariable`, `VerificationResult`, `Counterexample` (BX3) |
+| `@pathcompiler/pr-guard` | `verifyPullRequest`, `diffBehavior`, `formatPrGuardMarkdown`, `PrGuardReport` (BX4) |
+| `@pathcompiler/agent-gate` | `createActionGate`, `guardTool`, `ActionBlockedError`, `evaluateGate`, `auditActions`, `ActionDecision` (BX5) |
+| `@pathcompiler/counterexamples` | `createRecord`, `recordCounterexample`, `listCounterexamples`, `resolveCounterexample`, `generateEval`, `runEval`, `contractExecutor`, `runSpecEval` (BX6) |
+| `@pathcompiler/repair-loop` | `runRepairLoop`, `RepairProvider`, `fixtureRepairProvider`, `unifiedDiff`, `RepairReport` (BX7) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
 | `@pathcompiler/probabilistic-evidence` | `fuseEvidence`, `interpretCandidates` (P1), `selectInterpretations`, `candidateWeight` (P2), `ConfidenceAssessment`, `EvidenceClaim`, `EvidenceItem`, `EvidenceConflict`, `RELIABILITY`, `calibrate`, `graphEvidenceItems` |
@@ -2006,7 +2024,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import`, `behavior export/validate/show`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import`, `behavior export/extract/verify/validate/show`, `verify-pr`, `agent check/audit/eval`, `counterexamples list/record/eval/run`, `repair propose`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
@@ -2023,7 +2041,12 @@ and changed nodes/edges. Inputs must use unique IDs and existing edge endpoints.
 
 - [Build specification](CODEX_BUILD_SPEC.md)
 - [Product architecture](PRODUCT_ARCHITECTURE.md)
-- [Phase status](docs/phases/STATUS.md)
+- [Phase status](docs/phases/STATUS.md) and the [master roadmap](docs/phases/MASTER_ROADMAP.md)
+- [Issues log](docs/phases/ISSUES_LOG.md): bugs, limits and deferred items
+- [Behavioral specification guide](docs/BEHAVIOR_SPEC_GUIDE.md), the
+  [expanded architecture](docs/EXPANDED_PATHCOMPILER_ARCHITECTURE.md) and its
+  [roadmap with results](docs/EXPANDED_PATHCOMPILER_ROADMAP.md)
+- Architecture decision records in [docs/decisions/](docs/decisions/) (0001–0094)
 - [Workflow and graph decisions](docs/decisions/0001-foundation-contracts.md)
 - [Fixture state decision](docs/decisions/0002-fixture-session-state.md)
 

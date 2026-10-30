@@ -53,8 +53,10 @@ rejects everything.
 
 ## Consequences
 
-- On the refund fixture the eval for the support-agent fast path has 13 cases
-  (1 reproduction, 8 variants, 4 neighbors). It fails the violating candidate
+- On the refund fixture the eval for the support-agent fast path has 9 cases
+  (1 reproduction, 4 variants, 4 neighbors). Variants change only what the
+  violation depends on: the variables of the violated rule and of the
+  preconditions connected to it, so an unrelated field is not perturbed. It fails the violating candidate
   — the real code, its extracted contract and the verifier all agree — and
   passes the repaired code; a behavior-preserving refactor passes; the
   stricter limit passes with the stricter neighbors reported.

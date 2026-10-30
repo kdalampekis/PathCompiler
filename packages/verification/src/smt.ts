@@ -10,6 +10,7 @@ import {
   type Operation,
   type Permission,
   type Provenance,
+  variableUses,
   weakestConfidence,
 } from "@pathcompiler/behavior-ir";
 import type { SolverProvider, SolverTerm } from "@pathcompiler/solver-provider";
@@ -434,6 +435,31 @@ export function createSmtVerifier(
           ...common,
           caveats: note(false),
         });
+      // The variables the violated rule talks about, plus those of any
+      // precondition or effect connected to them (sharing a variable): the
+      // rest of the valuation is noise for whoever reads the counterexample.
+      const mentions = (text: string, id: string) =>
+        new RegExp(
+          `(^|[^a-z0-9_.])${id.replace(/\./g, "\\.")}($|[^a-z0-9_])`,
+        ).test(text);
+      const core = new Set(
+        spec.variables
+          .map((variable) => variable.id)
+          .filter((id) => mentions(compiled.violated, id)),
+      );
+      const connected: string[][] = [
+        ...compiled.operation.preconditions.map((item) =>
+          variableUses(item).map((use) => use.id),
+        ),
+        ...compiled.operation.effects.map((effect) => [
+          effect.variable,
+          ...variableUses(effect.value).map((use) => use.id),
+        ]),
+      ];
+      const relevant = new Set(core);
+      for (const group of connected)
+        if (group.some((id) => core.has(id)))
+          for (const id of group) relevant.add(id);
       const counterexample: Counterexample = {
         operation: compiled.operation.id,
         state,
@@ -442,6 +468,7 @@ export function createSmtVerifier(
         ...(compiled.withPost ? { after } : {}),
         violated: compiled.violated,
         replayed: true,
+        relevant: [...relevant].sort(),
       };
       return finish({
         status: "VIOLATED",

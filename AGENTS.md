@@ -10,6 +10,7 @@ Read:
 1. `PRODUCT_ARCHITECTURE.md` for product vision and architectural rationale.
 2. `CODEX_BUILD_SPEC.md` for implementation phases, contracts and acceptance criteria.
 3. `docs/phases/STATUS.md` for current progress.
+4. `docs/EXPANDED_PATHCOMPILER_ARCHITECTURE.md` and `docs/EXPANDED_PATHCOMPILER_ROADMAP.md` for the behavioral-specification expansion (BehaviorIR, verification, PR guard, agent gate), and `docs/BEHAVIOR_SPEC_GUIDE.md` to use it.
 
 ## Core architectural rules
 

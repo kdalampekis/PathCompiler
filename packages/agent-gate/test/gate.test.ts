@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   ActionBlockedError,
   type ActionRequest,
+  auditActions,
   createActionGate,
   evaluateGate,
   guardTool,
   type LabeledAction,
+  type RecordedAction,
 } from "../src/index.js";
 
 const root = resolve(import.meta.dirname, "../../../fixtures/refunds");
@@ -288,5 +290,84 @@ describe("gate evaluation", () => {
     expect(result.unsafeBlockRate).toBe(0.5);
     expect(result.safeAllowRate).toBe(0);
     expect(evaluateGate(gate, []).unsafeBlockRate).toBe(1);
+  });
+});
+
+describe("audit of recorded actions (observed but not allowed)", () => {
+  const logged = (
+    id: string,
+    request: ActionRequest,
+    at = "2026-10-01",
+  ): RecordedAction => ({
+    id,
+    at,
+    ...request,
+  });
+  it("finds the actions that already broke a rule, per rule, and the ones it cannot judge", () => {
+    const log: RecordedAction[] = [
+      logged(
+        "a",
+        refund({
+          inputs: { payment_id: 1, amount: 200, manager_approval: false },
+        }),
+      ),
+      logged("b", refund()),
+      logged(
+        "c",
+        refund({
+          inputs: { payment_id: 1, amount: 9000, manager_approval: false },
+        }),
+      ),
+      logged(
+        "d",
+        refund({
+          context: { "actor.role": "customer", "actor.id": "c1" },
+          inputs: { payment_id: 1, amount: 100, manager_approval: false },
+        }),
+      ),
+      logged(
+        "e",
+        refund({
+          state: {},
+          inputs: { payment_id: 1, amount: 100, manager_approval: false },
+        }),
+      ),
+    ];
+    const report = auditActions(gate, log);
+    expect(report).toMatchObject({
+      total: 5,
+      clean: 1,
+      violating: 3,
+      unresolved: 1,
+    });
+    expect(
+      report.findings.map((item) => [item.index, item.id, item.at]),
+    ).toEqual([
+      [2, "b", "2026-10-01"],
+      [3, "c", "2026-10-01"],
+      [4, "d", "2026-10-01"],
+    ]);
+    expect(
+      report.byRule.find(
+        (item) => item.rule === "refunds.manager_approval_over_limit",
+      ),
+    ).toEqual({ rule: "refunds.manager_approval_over_limit", actions: 2 });
+    expect(report.byRule.map((item) => item.rule)).toContain(
+      "refunds.customers_cannot_refund",
+    );
+    expect(report.missingValues.map((item) => item.id)).toContain(
+      "payments.original_amount",
+    );
+  });
+  it("is empty and clean for an empty log", () => {
+    expect(auditActions(gate, [])).toEqual({
+      total: 0,
+      clean: 0,
+      violating: 0,
+      unresolved: 0,
+      missingValues: [],
+      byRule: [],
+      findings: [],
+    });
   });
 });

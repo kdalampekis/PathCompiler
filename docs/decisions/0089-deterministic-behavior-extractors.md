@@ -54,7 +54,9 @@ rules most directly and treats every result as a candidate with provenance.
 - **Ledger and evaluation:** each fact keeps its own provenance in a ledger
   (operation preconditions merge into one contract, so the ledger is how
   per-rule provenance stays visible). `scoreExtraction` computes precision,
-  recall and provenance correctness against a hand-written ground truth.
+  recall and provenance correctness against a ground truth (for the refund
+  fixture: generated from the extractors' output once and then reviewed
+  against the files, so it is not independent evidence).
 - **CLI:** `pathcompiler behavior extract [directory] --bind payment=payments`
   writes `reports/behavior-spec.json` and `reports/behavior-extraction.json`.
   `--bind` maps a code identifier to the entity or operation prefix; without

@@ -1,6 +1,12 @@
 # PathCompiler master roadmap
 
-Status as of 2026-10-23 (R0 complete). This document is dependency-ordered, not sequential.
+Status as of 2026-10-30. Every phase in this document is complete except C6
+(alpha validation, which needs the user's repositories). The behavioral
+specification expansion (BX0–BX7: BehaviorIR, extraction, verification, PR
+guard, agent gate, counterexample evals, repair loop) was added after these
+phases and is tracked in
+[the expanded roadmap](../EXPANDED_PATHCOMPILER_ROADMAP.md). This document is
+dependency-ordered, not sequential.
 
 Sources: `CODEX_BUILD_SPEC.md` (original phases 0–30 and cross-cutting contracts
 §§43–96), `REASONING_ENGINE_BUILD_SPEC.md` (R, P, O and I tracks) and
@@ -38,7 +44,7 @@ Experience and Improvement depend on Product Intelligence and never on each
 other. Chatbots and agents are Experience consumers, not part of the improvement
 loop.
 
-| Plane | Existing packages | Future packages |
+| Plane | Packages from the original build | Packages added by the later tracks (all now implemented) |
 | --- | --- | --- |
 | Product Intelligence | `graph-core`, `source-model`, `adapter-nextjs`, `test-miner-playwright`, `git-intelligence`, `adapter-github`, `evidence`, `capability-engine`, `workflow-discovery`, `workflow-validator`, `workflow-review`, `workflow-compiler`, `graph-delta`, `impact-analysis`, `workflow-proposals` (artifact proposals) | `config`, `evaluation`, `model-provider` (+adapters), `formal-model`, `formal-abstraction`, `solver-provider`, `reasoner-core`, `trace-clustering`, `probabilistic-evidence`, `observability-core`, observed-model and reconciliation packages |
 | Experience | `resolver`, `sdk-js`, `runtime-core`, `react`, `ui`, `mcp-server`, `http-service`, `assistant-tools`, docs/static export, `examples/custom-assistant` | `analytics-sdk` (emits into Intelligence), React analytics integration |
@@ -50,11 +56,12 @@ loop.
 | Mode | Customer outcome | Delivered by | State |
 | --- | --- | --- | --- |
 | 1 Understand | "What can users do?" | Phases 0–12, 19–23; enhanced by R0–R11, C9 | ✅ deterministic, reasoning (R0–R11) and opt-in model assistance (C9 `analyze`) |
-| 2 Guide | Help users complete tasks in their own UI, chatbot or assistant | Phases 13–18, 26–29; C1 aligns contracts | ✅ (contract alignment pending in C1) |
-| 3 Observe | "What do users actually do?" | O0–O7, O11; O8 needs R2 | 🔒 starts after C1 |
-| 4 Recommend | Diagnosed, gated, human-facing recommendations | I0, IG, I1; O8–O10, R-track findings | 🔒 |
-| 5 Evaluate | "Did this PR (human or harness) preserve what it should?" | R11 + R8 + C8 + I3 (no harness contract needed); today partially via phases 19–24 impact and checks | 🟡 non-formal version exists |
-| 6 Self-improvement | Recommendation → external harness → evaluation → experiment → learning | I2, I4–I9 | 🔒 opt-in, off by default |
+| 2 Guide | Help users complete tasks in their own UI, chatbot or assistant | Phases 13–18, 26–29; C1 aligns contracts | ✅ |
+| 3 Observe | "What do users actually do?" | O0–O7, O11; O8 needs R2 | ✅ |
+| 4 Recommend | Diagnosed, gated, human-facing recommendations | I0, IG, I1; O8–O10, R-track findings | ✅ |
+| 5 Evaluate | "Did this PR (human or harness) preserve what it should?" | R11 + R8 + C8 + I3 (no harness contract needed) | ✅ |
+| 6 Self-improvement | Recommendation → external harness → evaluation → experiment → learning | I2, I4–I9 | ✅ opt-in, off by default |
+| 7 Specify and verify (expansion) | "Which rules does the software follow, and did this change or this agent action break one?" | BX0–BX7 | ✅ prototype; real-repository validation pending |
 
 Mode 6 is an optional escalation of the same intelligence, never a prerequisite.
 PathCompiler must stay fully useful for a customer who never enables a harness,
@@ -839,7 +846,7 @@ Shared rules:
 | F — evaluate (mode 5) | I3 after R1, R8, R11 (+C8) | Independent of observability and harness. |
 | G — recommend and self-improve (modes 4, 6) | I0 → IG → I1 → (I2 → I9 only if mode 6 enabled); I5–I8 after observability | Selective by design; never forced. |
 
-## 7. Next step: issue fixes, documentation review, then C6 on real repositories
+## 7. Remaining work: C6 on real repositories
 
 Every planned phase except C6 is complete (I9: ADR 0087). PathCompiler now:
 - understands a product statically, formally and probabilistically;
@@ -848,11 +855,14 @@ Every planned phase except C6 is complete (I9: ADR 0087). PathCompiler now:
 - runs the improvement loop through experiments, decisions and memory,
   with an optional, file-based harness boundary for mode 6.
 
-The remaining work, in order:
-1. fix the open ISSUES_LOG entries where the fix is clear, and verify each
-   one;
-2. re-read every Markdown document for gaps;
-3. C6: alpha validation on the user's real repositories.
+Since then the behavioral-specification expansion (BX0–BX7) was added, the
+ISSUES_LOG entries with a clear fix were resolved, and the documents were
+re-read for gaps (2026-10-30; see the "Documentation and issue pass" record in
+STATUS.md for what that covered and what it did not). The remaining work:
+1. C6: alpha validation on the user's real repositories, for the original
+   product and for the expansion (protocol in
+   [BEHAVIOR_SPEC_GUIDE.md](../BEHAVIOR_SPEC_GUIDE.md));
+2. the open ISSUES_LOG entries that real code is needed to settle.
 
 ### 7.1 Original rationale for choosing R0 first (2026-10-22)
 

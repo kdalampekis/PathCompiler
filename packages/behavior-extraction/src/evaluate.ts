@@ -1,7 +1,7 @@
 import type { LedgerEntry } from "./common.js";
 
 /**
- * Extraction quality against a hand-written ground truth (RQ1). A fact is
+ * Extraction quality against a ground truth (RQ1). A fact is
  * matched by kind and canonical text. For matched facts, provenance is
  * correct when the source type and file agree (and the lines, when the
  * ground truth gives them).

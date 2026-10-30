@@ -10,8 +10,10 @@ const TITLE = {
 function counterexample(finding: Finding): string[] {
   const cex = finding.counterexample;
   if (!cex) return [];
+  const shown = new Set(cex.relevant);
   const show = (values: Record<string, unknown>) =>
     Object.entries(values)
+      .filter(([id]) => shown.size === 0 || shown.has(id))
       .map(([id, value]) => `${id}=${JSON.stringify(value)}`)
       .join(", ") || "-";
   return [

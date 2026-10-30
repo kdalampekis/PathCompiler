@@ -5,6 +5,47 @@ Phases are named **BX0–BX7** (behavior expansion) because P0–P5 already
 exist in the probabilistic track of
 [phases/MASTER_ROADMAP.md](phases/MASTER_ROADMAP.md).
 
+## Status
+
+All eight phases are complete (2026-10-30). Each has an ADR and a record in
+[phases/STATUS.md](phases/STATUS.md); the as-built differences from the design
+are in [the architecture document](EXPANDED_PATHCOMPILER_ARCHITECTURE.md#17-what-was-built-and-where-it-differs-from-the-design);
+usage is in [BEHAVIOR_SPEC_GUIDE.md](BEHAVIOR_SPEC_GUIDE.md).
+
+| Phase | Delivered | ADR | CLI |
+| --- | --- | --- | --- |
+| BX0 | Audit and design | — | — |
+| BX1 | `behavior-ir`: rule kinds, expressions, mandatory provenance, lossless Formal Product Model conversion | 0088 | `behavior export`, `validate`, `show` |
+| BX2, BX2b | `behavior-extraction`: SQL, Zod, OpenAPI, test assertions, approved rules, guard clauses; ledger and scoring | 0089 | `behavior extract` |
+| BX3 | `verification`: router, SMT backend with replayed counterexamples, `solver-z3` arithmetic | 0090 | `behavior verify` |
+| BX4 | `pr-guard`: behavior diff, base-versus-head verification | 0091 | `verify-pr` |
+| BX5 | `agent-gate`: concrete action checks, tool wrapper, labeled evaluation, log audit | 0092 | `agent check`, `eval`, `audit` |
+| BX6 | `counterexamples`: records, store, regression evals | 0093 | `counterexamples …` |
+| BX7 | `repair-loop`: bounded, logged, human-approved prototype | 0094 | `repair propose` |
+
+## Results on the evaluation plan
+
+Measured on `fixtures/refunds`, a fixture written alongside the features. The
+numbers show the mechanisms behave as designed; none is an estimate of
+performance on a real repository.
+
+| Question | Result | Not measured |
+| --- | --- | --- |
+| RQ1 extraction | 53 facts from 6 files, generated from the extractors and then reviewed against the files: precision 1.0, recall 1.0, provenance correct, all 4 constructs it must refuse reported. **Circular by construction**: it shows consistency, not that a person would find the same facts | An independently written ground truth; any repository the author did not write; rules in called helpers or ORMs |
+| RQ2 mechanical share | All 23 extracted-and-approved properties of the base service are in the supported fragment (`UNSUPPORTED` 0) | The fraction of a real codebase's rules that fits the fragment |
+| RQ3 regressions tests miss | 3 of 3 seeded regressions found while the example tests pass; 0 of 2 benign changes flagged; about 0.5 s per check | False-negative and false-positive rates on real pull requests |
+| RQ4 agent gate | 10 of 10 safe actions allowed; 16 of 18 unsafe blocked (88.9%), 15 with the expected rule named; the 2 missed are described by no rule; 0.09 ms per check | Behavior on real agent traffic; the effect of state supplied by the model |
+| RQ5 counterexample evals | The eval fails the violating code, its extracted contract and the verifier, and passes after the repair; a harmless refactor passes | Recurrence of the counterexample and its variants over later commits |
+| RQ6 four sets | OBSERVED ∧ ¬ALLOWED via `agent audit`; POSSIBLE ∧ ¬ALLOWED via `verify` | The four-way comparison as a control loop: **not evaluated** |
+
+## Open items for the expansion
+
+Recorded as issues #50–#57 in [phases/ISSUES_LOG.md](phases/ISSUES_LOG.md):
+decimals and null in the IR; helper calls and conditionals in the guard
+extractor; temporal rules and reachability in the verifier; GitHub and MCP
+transports; recurrence measurement; a model-backed repair provider; the thin
+ground truth; and the real-software trial.
+
 Rules for every phase (from AGENTS.md):
 - one coherent commit per milestone, after lint, typecheck, tests and build;
 - `docs/phases/STATUS.md` updated; deviations and errors recorded;
@@ -67,8 +108,8 @@ Every rule is `EXPLICIT` only when it was read verbatim from a declaration;
 rules lifted from assertions or conditions are `INFERRED`. Extraction is
 conservative: unsupported constructs are listed, not guessed.
 
-Acceptance: precision and recall against a hand-written ground truth for the
-refund fixture; provenance (file, lines, type) is correct for every rule.
+Acceptance: precision and recall against a ground truth for the
+refund fixture (as built: generated from the extractors' output, then reviewed); provenance (file, lines, type) is correct for every rule.
 
 ## BX3 — Verification router and SMT backend
 

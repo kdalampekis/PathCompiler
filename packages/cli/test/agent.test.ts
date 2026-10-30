@@ -95,6 +95,37 @@ describe("agent", () => {
       ]),
     ).toContain("PASS refund");
 
+    // A log of actions that already happened: which would the rules have blocked?
+    const trace = [
+      { id: "t1", at: "2026-10-01", ...request(200, "support_agent") },
+      { id: "t2", at: "2026-10-02", ...request(9000, "support_agent") },
+      { id: "t3", at: "2026-10-03", ...request(300, "customer") },
+      { id: "t4", at: "2026-10-04", ...request(100, "manager"), state: {} },
+    ];
+    await writeFile(
+      path.join(cwd, "log.jsonl"),
+      trace.map((item) => JSON.stringify(item)).join("\n"),
+    );
+    const audit = await run(["agent", "audit", spec, "--trace", "log.jsonl"]);
+    expect(audit).toContain(
+      "Replayed 4 logged action(s): 1 clean, 2 would have been blocked, 1 could not be judged.",
+    );
+    expect(audit).toContain("#2 t2 (2026-10-02) refund:");
+    expect(audit).toContain("1 action(s) lack payments.original_amount");
+    await writeFile(path.join(cwd, "log.json"), JSON.stringify(trace));
+    expect(
+      JSON.parse(
+        await run(["agent", "audit", spec, "--trace", "log.json", "--json"]),
+      ),
+    ).toMatchObject({ total: 4, violating: 2, unresolved: 1 });
+    await writeFile(path.join(cwd, "bad.jsonl"), "not json");
+    await expect(
+      run(["agent", "audit", spec, "--trace", "bad.jsonl"]),
+    ).rejects.toThrow("neither JSON Lines nor a JSON array");
+    await expect(run(["agent", "audit", spec])).rejects.toThrow(
+      "needs --trace",
+    );
+
     const evaluated = await run([
       "agent",
       "eval",

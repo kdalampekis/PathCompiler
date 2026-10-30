@@ -1,8 +1,11 @@
 # Expanded PathCompiler architecture
 
-Status: audit and design (BX0), 2026-10-29. Implementation starts with
-BehaviorIR and provenance (BX1); see
-[EXPANDED_PATHCOMPILER_ROADMAP.md](EXPANDED_PATHCOMPILER_ROADMAP.md).
+Status: designed in BX0 (2026-10-29) and implemented through BX7
+(2026-10-30). Sections 1–3 describe the repository **before** the expansion
+and are kept as the audit; section 17 records what was built and where it
+differs from the design below. Phases, results and open items are in
+[EXPANDED_PATHCOMPILER_ROADMAP.md](EXPANDED_PATHCOMPILER_ROADMAP.md); how to use
+it is in [BEHAVIOR_SPEC_GUIDE.md](BEHAVIOR_SPEC_GUIDE.md).
 
 > **PathCompiler reconstructs how software is allowed to behave from code,
 > tests, schemas, policies and runtime traces, then uses that specification
@@ -36,7 +39,7 @@ sections are numbered to match.
 
 ## 1. Summary of the current architecture
 
-PathCompiler is a TypeScript (strict, ESM) pnpm monorepo of 59 packages with
+Before the expansion PathCompiler was a TypeScript (strict, ESM) pnpm monorepo of 56 packages with
 no dependency cycles. Facts are derived deterministically wherever possible;
 models are optional and always behind a provider interface. Seven tracks
 exist:
@@ -84,7 +87,8 @@ Invariants that carry over unchanged:
 
 ## 3. Gaps
 
-Against the expanded vision, the repository lacks:
+Against the expanded vision, the repository lacked the following. Items 1–9
+were closed by BX1–BX7; item 10 is closed only in part (section 17):
 
 1. **A general rule language.** `FormalExpr` compares variables with
    constants or other variables, but has no arithmetic (`balance - amount`),
@@ -221,7 +225,7 @@ fragment the model already uses):
                                                     eval          observed
    └──────────────┴────────────────┴───────────────┴─────────────┴────────────┘
                                           ↓
-                         Counterexample store (BX4/BX5)
+                         Counterexample store (BX6)
                                           ↓
                     Candidate repair (BX7) → verification → human review
 ```
@@ -324,9 +328,9 @@ One narrow, fully modeled domain, refunds, with hand-checked ground truth:
 A fixture application, `fixtures/refunds`, a small TypeScript service (no
 framework) with:
 - roles: `support_agent`, `manager`, `customer`;
-- operations: `refund`, `approve_refund`;
-- state: payments with `original_payment`, `refunded_total`, a `processed`
-  flag, and an approval record.
+- operations: `refund`, `approve_refund`, `process_refund`;
+- state: payments with `originalAmount` and `refundedAmount`, and refund
+  requests with `approved` and `processed` flags.
 
 Invariants:
 
@@ -341,12 +345,15 @@ a processed refund cannot be processed twice
 Act 1, **existing service:** all invariants hold (VERIFIED).
 Act 2, **AI-generated PR:** adds a "fast refund" path that skips the
 approval check when a flag is set. The existing tests pass.
-`pathcompiler verify-pr --base main --candidate HEAD` reports
-`support_agent`, `refund = 7000`, `manager_approval = false` as reachable in
-the candidate and unreachable at base, with provenance of the violated rule.
+`pathcompiler verify-pr --base main --candidate HEAD` reports a
+`support_agent` refunding more than 5000 without `manager_approval` as a
+violation that holds in the candidate and not at the base, with the
+provenance of the violated rule. (The implemented demo uses an exemption
+`actor.role !== "support_agent"` in the approval guard; the counterexample the
+solver returns is `refund.amount = 5001`.)
 Act 3, **runtime:** an agent proposes `refund(7000)` as `support_agent`.
-The gate returns `BLOCK` with the missing precondition
-`manager_approval == true` and the same counterexample shape.
+The gate returns `BLOCK` and names the violated rule, the values that violate
+it and the precondition that fails.
 Act 4, **learning:** the counterexample becomes a regression eval. It
 fails on the candidate and passes after a verified repair. The repair is
 proposed, never merged automatically.
@@ -411,3 +418,32 @@ equivalence across languages, autonomous deployment, continuous
 fine-tuning, DPO pipelines, universal policy or agent-framework support,
 and verification of free-form model output. Scope stays narrow enough for a
 credible prototype.
+
+## 17. What was built, and where it differs from the design
+
+All eight phases are implemented and merged; each has an ADR (0088–0094) and a
+verification record in [phases/STATUS.md](phases/STATUS.md). The design above
+held, with these differences, which matter if you rely on it:
+
+| Design | As built |
+| --- | --- |
+| The router fronts several backends: SMT, reachability, policy evaluation | The router has **one** verifier, the SMT backend. Policy evaluation on concrete values is the **agent gate**, a separate API and not a router backend. The reachability reasoner stays on the Formal Product Model and is not routed. |
+| `verification` has a rule-evaluation backend | That lives in `agent-gate`. |
+| PR differential verification reuses `semantic-change` and `graph-delta` | The PR guard extracts BehaviorIR at both revisions and compares **properties and extracted contracts**. `semantic-change` and `graph-delta` still serve the UX track and were not reused. |
+| Counterexamples → evals reuse `test-generator` | Evals are concrete action cases run against an executor (code behind an adapter, the extracted contract, or the verifier); `test-generator` (Playwright) was not reused. |
+| The repair loop reuses `harness-contracts` and `improvement-memory` | It has its own provider boundary (`RepairProvider`) and report; the harness contracts were not reused. |
+| An authorization extractor reusing Next.js permission edges | Role checks are read from guard clauses (`if (actor.role !== …) throw`) and become `allow` permissions; the Next.js permission edges are not used. |
+| Ground truth written by hand per fixture file (section 13) | Generated from the extractors' output, then reviewed fact by fact. Precision and recall of 1.0 are therefore weak evidence; an independent ground truth is an open item. |
+| `ALLOWED` and `DESIRED` as separate objects (section 15) | **Partly.** POSSIBLE ∧ ¬ALLOWED is `verify` / `verify-pr`; OBSERVED ∧ ¬ALLOWED is `agent audit` (replay a log of actions). ALLOWED ∧ ¬OBSERVED, DESIRED ∧ ¬POSSIBLE and OBSERVED ∧ ¬POSSIBLE for the new rules are not built; RQ6 is therefore **not evaluated**. |
+| Verification of the transition system from the initial state | One execution of one operation from **any state satisfying the invariants** (inductive). A `VIOLATED` counterexample may start in an unreachable state; the result says so. Temporal rules exist in the IR but no verifier checks them. |
+
+Additions the design did not list: `dataConstraints` in the IR (null,
+uniqueness, keys: recorded, not verified); `appliesTo` on rules and
+`limitations` on operations (so a verifier knows when extracted preconditions
+may be weaker than the code); a vacuity check on proofs; the `relevant` field
+that keeps counterexamples readable; `approved_only` enforcement in the gate;
+the rule that a PR is judged against the base's approved rules.
+
+Package count after the expansion: 63 (seven new: `behavior-ir`,
+`behavior-extraction`, `verification`, `pr-guard`, `agent-gate`,
+`counterexamples`, `repair-loop`).

@@ -94,6 +94,16 @@ describe("refund specification (RQ2, RQ3)", () => {
     ]);
     const cex = violated[0]?.counterexample;
     expect(cex?.replayed).toBe(true);
+    // The counterexample says which variables matter; the rest of the valuation is noise.
+    expect(cex?.relevant).toEqual(
+      expect.arrayContaining([
+        "actor.role",
+        "refund.amount",
+        "refund.manager_approval",
+        "payments.original_amount",
+      ]),
+    );
+    expect(cex?.relevant).not.toContain("refund_requests.requester_id");
     expect(cex?.context["actor.role"]).toBe("support_agent");
     expect(cex?.inputs["refund.manager_approval"]).toBe(false);
     expect(Number(cex?.inputs["refund.amount"])).toBeGreaterThan(5000);

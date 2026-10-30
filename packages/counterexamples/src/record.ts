@@ -26,6 +26,8 @@ export type CounterexampleRecord = {
   state: Record<string, Literal>;
   /** The state the action would have produced, when it was computed. */
   after?: Record<string, Literal>;
+  /** The variables that matter to this violation, when known. */
+  relevant?: string[];
   /** What is wrong, in words. */
   violation: string;
   /** The commit the problem was observed at. */
@@ -96,6 +98,7 @@ export function createRecord(input: RecordInput): CounterexampleRecord {
     action: { inputs: cex.inputs, context: cex.context },
     state: cex.state,
     ...(cex.after ? { after: cex.after } : {}),
+    ...(cex.relevant ? { relevant: cex.relevant } : {}),
     violation: input.violation ?? `${cex.operation} violates ${cex.violated}`,
     commit: input.commit ?? null,
     specHash: input.specHash ?? null,

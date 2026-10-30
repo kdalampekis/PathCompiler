@@ -518,6 +518,11 @@ export function createActionGate(
               : {}),
             violated: first.rule,
             replayed: true,
+            relevant: [
+              ...new Set(
+                violations.flatMap((item) => Object.keys(item.because)),
+              ),
+            ].sort(),
           },
         });
       }

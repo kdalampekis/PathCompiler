@@ -14,7 +14,7 @@ real payments system.
 | `tests/refunds.test.ts` | Test assertions (documentation fixtures; not run by the repository's test runner) |
 | `tests/scenarios.ts` | The same kind of example tests as plain functions; they pass on the base service and on **every** variant |
 | `spec/approved-rules.json` | The rules a human approved (BehaviorIR) |
-| `spec/ground-truth.json` | Hand-written expected extraction results, for precision and recall |
+| `spec/ground-truth.json` | Expected extraction results, for precision and recall. Generated from the extractor's output once, then reviewed fact by fact against the files, so a score of 1.0 shows the extractors are consistent on this fixture, not that they would find what a person would |
 | `variants/*.ts` | Candidate versions of `src/refunds.ts`: three break a rule the tests do not cover, two are benign |
 
 Roles: `support_agent`, `manager`, `customer`.

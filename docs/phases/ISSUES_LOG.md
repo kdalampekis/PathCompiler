@@ -4,17 +4,17 @@ Errors, bugs and deferred items found during phase work, kept so they can be
 retried or fixed later. Newest first. Mark entries **resolved** with the fixing
 commit instead of deleting them.
 
-## Entries deliberately left open (2026-10-29)
+## Entries deliberately left open (2026-10-30)
 
 After the phase run, every entry with a clear, testable fix was resolved. The
 rest stay open for a stated reason:
 
 | Why | Entries |
 | --- | --- |
-| Needs the user's API key or real repositories (C6, alpha validation) | #34, #35, #43 (thresholds), #44, #47 |
-| Modeling limits that need data-flow analysis or a finer abstraction, best judged on real code | #4, #5, #30, #31 |
-| Evaluation-quality limits that are measured and by design today | #17, #18, #20 |
-| Feature gaps outside the current scope (UI views, templates needing new evidence classes, hypothesis review) | #7, #42, #45 |
+| Needs the user's API key or real repositories (C6, alpha validation) | #34, #35, #43 (thresholds), #44, #47, #56, #57 |
+| Modeling limits that need data-flow analysis or a finer abstraction, best judged on real code | #4, #5, #30, #31, #51, #52, #53 |
+| Evaluation-quality limits that are measured and by design today | #17, #18, #20, #54, #55 |
+| Feature gaps outside the current scope (UI views, templates needing new evidence classes, hypothesis review) | #7, #42, #45, #50 |
 | Design work: cost-bounded plan search with the new `optimize`, and stronger handler association | #28, #37 |
 | Environment fault | #9 |
 
@@ -22,6 +22,19 @@ Entries marked **Resolved** below were fixed and verified with a test.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 62 | Doc pass | Bug, resolved | Documents had fallen behind the work: the master roadmap said "R0 complete" with modes 3–6 blocked, the README package table and command list lacked the seven new packages and commands, the architecture document still described the expansion as a design to start (and a package count that did not match), and several documents called the extraction ground truth "hand-written" when it was generated from the extractors and then reviewed. | **Resolved** in the BX documentation pass: those documents were rewritten; the ground-truth wording is corrected everywhere it appears (README of the fixture, ADR 0089, the roadmap, STATUS). The pass covered the entry-point documents, not every one of the 112 files (see STATUS). |
+| 61 | BX4 | Bug, resolved | The PR comment printed every state variable of a counterexample (ten columns, placeholder strings for unconstrained values) while `behavior verify` printed only the relevant ones. | **Resolved**: counterexamples carry `relevant` (the variables of the violated rule and of the preconditions and effects connected to it); the CLI and the Markdown use it. |
+| 60 | BX6 | Bug, resolved | Eval variants changed unrelated fields (for example `payment_id`), so half of the cases tested nothing about the rule. | **Resolved**: variants change only the record's `relevant` variables; the fast-path eval shrank from 13 to 9 cases without losing the role and boundary variants. |
+| 59 | BX5 | Gap, resolved | The OBSERVED ∧ ¬ALLOWED comparison from the original brief had no implementation. | **Resolved**: `agent audit` replays logged actions through the gate (#50 keeps the rest of the four-set comparison open). |
+| 58 | BX3 | Bug, resolved | `behavior verify --operation <unknown>` started Z3 and verified nothing before reporting the unknown operation. | **Resolved**: the operation is checked first. |
+| 57 | BX | Gap | **The expansion has not met real software.** Every number in the expansion records comes from `fixtures/refunds`, written alongside the features: extraction ground truth generated from the extractors and reviewed (not independent), seeded regressions written to be detectable, labeled actions written with the rules. No false-positive or false-negative rate on real pull requests, no extraction precision on a repository the author did not write, and no model-backed repair has been measured. | Open; this is the real-software trial (protocol in docs/BEHAVIOR_SPEC_GUIDE.md). |
+| 56 | BX7 | Limitation | The repair loop has only a scripted fixture provider (no model adapter), the CLI does not run the project's tests (the library has a `runTests` hook), and it repairs one violation per run. | Open; a model-backed provider needs an API key and a prompt evaluation, tests need a per-project command and a sandbox. |
+| 55 | BX6 | Limitation | Recurrence (RQ5) is not measured: stored evals are not re-run on later commits automatically. Variants perturb one value at a time from a fixed set, so a violation needing two values to change together is not generated. Evals are labeled by the specification, so a wrong rule gives a wrong eval. | Open. |
+| 54 | BX5 | Gap | The action gate has no HTTP or MCP transport, does not check temporal rules (idempotency, ordering) and trusts the state it is handed: a wrong balance from the caller checks the wrong thing. `agent eval` measures only labeled actions the author wrote; two unsafe ones no rule describes are missed by design. | Open; transport follows the `http-service` and `mcp-server` patterns when a user needs it. |
+| 53 | BX3/BX4 | Limitation | Verification is one execution of one operation from any state satisfying the invariants (inductive), so a counterexample may start in an unreachable state; temporal rules exist in the IR but no verifier checks them; the router has one verifier. The PR guard does not post to GitHub and judges a renamed function as a removed and an added operation. | Open; reachability from an initial state and a temporal verifier are separate work. |
+| 52 | BX2b | Limitation | The guard extractor reads only top-level `if (…) throw` guards and updates to bound entities in exported TypeScript functions. Helper calls, conditionals that do not throw, loops, `return` guards and cross-file call following are recorded as limitations and not modeled. A TypeScript `number` is modeled as an integer, which is wrong for decimal money. | Open; best judged on real code (see #57). |
+| 51 | BX2 | Limitation | The IR has no decimals, null, string length, collections or quantifiers. SQL `IS NULL`, `DECIMAL` columns, response status contracts and string-length bounds are listed as unsupported; ORMs other than raw SQL and languages other than TypeScript are not read. | Open. |
+| 50 | BX | Gap | RQ6 (POSSIBLE / ALLOWED / OBSERVED / DESIRED as a control loop) is not evaluated. Only POSSIBLE ∧ ¬ALLOWED (`verify`, `verify-pr`) and OBSERVED ∧ ¬ALLOWED (`agent audit`) exist for the new rules. | Open. |
 | 49 | BX6 | Bug, resolved | The CLI test "serves the token-protected HTTP API" takes about 11 s alone but exceeded its 30 s timeout whenever the whole suite ran in parallel, once the suite had grown by the behavior-specification packages (it analyzes the Next.js fixture three times). It failed the same way on a rerun, so it was contention, not a logic error. | **Resolved** in BX6: the test's timeout is 120 s. The suite is CPU-bound on a laptop; if it grows further, consider limiting worker count. |
 | 48 | I9 | Limitation, resolved | Opportunities, and so recommendations and harness tasks, group findings by capability. One root cause affecting several capabilities, such as renaming the editor role check (5 capabilities), becomes 5 tasks. A harness fixing the cause once then fails each task's evaluation with "unexpected" changes for the other capabilities. | **Resolved** after the phase run (2026-10-25): findings keep their R11 root-cause files, and opportunities whose findings share one merge (`subjects`), so one recommendation and harness task cover them all. Verified by an Integration V0 test where the editor-to-owner rename (5 capabilities) becomes one task and the revert evaluates PASS. |
 | 47 | I6 | Gap | Outcome measurement covers only goal-reach shares and guided completion rates. Path efficiency, the unexpected-observation guardrail, duration and action counts are reported as gaps, because they need the formal model (O9, O8) or are not compared yet. Arms are releases, so concurrent assignment and before/after look the same. | Open; pass the candidate's formal model to measure efficiency and discrepancies per arm, and read arm assignment from events once an experiment adapter exists (I10). |

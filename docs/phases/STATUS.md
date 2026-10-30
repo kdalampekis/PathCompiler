@@ -5059,7 +5059,8 @@ guard-clause source extractor follows as BX2b).
 On the refund fixture the extraction matches the ground truth (37 facts from
 five files): precision 1.0, recall 1.0, provenance correct for every fact,
 and all four constructs it must refuse to guess are reported. The ground
-truth is small and was reviewed by its author, so these numbers say the
+truth was generated from the extractors' output and then reviewed against the
+files by the author, so it is not independent: these numbers say the
 extractors are consistent on supported constructs, not how they do on a
 real repository.
 
@@ -5297,7 +5298,7 @@ Complete — verified locally on 2026-10-30.
 
 ### Results on the refund fixture
 
-The support-agent fast path yields an eval of 13 cases. It **fails** on the
+The support-agent fast path yields an eval of 9 cases (1 reproduction, 4 variants, 4 neighbors). It **fails** on the
 violating code, on the contract extracted from it and on the verifier
 (`VIOLATED`), and **passes** on the repaired code, its contract and the
 verifier (`VERIFIED`). The behavior-preserving refactor passes. The stricter
@@ -5388,3 +5389,68 @@ repositories.
   patch.
 - All expansion phases (BX0–BX7) are done. Next: fix the issues noted, then
   re-read every document for gaps.
+
+## Documentation and issue pass (after BX7)
+
+Complete — 2026-10-30. The loop you set: finish every phase, fix the issues
+noted, re-read the documents for gaps, then test on real software.
+
+### Issues fixed (ISSUES_LOG #58–#62)
+
+- `agent audit` (OBSERVED but not ALLOWED), the one comparison from the
+  original brief that had no implementation.
+- Counterexamples carry the variables that matter (`relevant`), so the PR
+  comment and `behavior verify` show the same focused counterexample, and
+  eval variants stop changing unrelated fields (the fast-path eval is 9 cases).
+- `behavior verify` rejects an unknown `--operation` before starting Z3.
+- A renamed guarded function is checked: the guard reports the approved
+  rules as newly violated (a test now covers it).
+- The CLI HTTP-API test timeout (ISSUES_LOG #49), found earlier in BX6.
+
+### What the document re-read covered, and what it did not
+
+Checked mechanically across all 113 Markdown files: every relative link
+resolves, ADR numbers 0001–0094 are contiguous, and the CLI `--help` lists
+every new command. Searched all entry-point documents for stale status
+language.
+
+Read end to end and corrected: `EXPANDED_PATHCOMPILER_ARCHITECTURE.md`
+(status, gaps now closed, demo numbers, a new section 17 listing every place
+the build differs from the design), `EXPANDED_PATHCOMPILER_ROADMAP.md`
+(status, results and what was not measured), the README overview, the
+behavior section, the package table, the CLI list and the document list,
+the master roadmap (header said "R0 complete", modes 3–6 were shown as
+blocked, "future packages" column), `AGENTS.md`'s reading list, and the top
+of the issues log. New: `BEHAVIOR_SPEC_GUIDE.md` (a demo with real output and
+a protocol for the first real-software trial).
+
+Corrected for honesty: the extraction ground truth was described as
+hand-written in four places; it was generated from the extractors' output
+and then reviewed, so its 1.0 precision and recall are circular and the
+documents now say so.
+
+**Not re-read line by line:** the five original specifications
+(`PRODUCT_ARCHITECTURE.md`, `CODEX_BUILD_SPEC.md`,
+`REASONING_ENGINE_BUILD_SPEC.md`, `HARNESS_ENGINEERING_HANDOFF.md`,
+`self_maintaining_executable_product_workflows.md`; about 21,000 lines), the
+history sections of this file, ADRs 0001–0087 (records of past decisions,
+deliberately not rewritten), and the README sections written before the
+expansion (about 1,400 lines): their commands were not re-run one by one.
+Gaps there would most likely be in claims about test counts and package
+lists that changed after they were written.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 649 tests passed across 113 suites (all 113 test files; 2 agent-audit and 1 PR-guard rename tests, plus focused-counterexample assertions, are new) |
+| `pnpm test:e2e` | 50 browser tests passed across 6 suites |
+
+### What is next
+
+The real-software trial (C6 and the expansion's equivalent): protocol in
+[../BEHAVIOR_SPEC_GUIDE.md](../BEHAVIOR_SPEC_GUIDE.md), questions it should
+answer in ISSUES_LOG #57.

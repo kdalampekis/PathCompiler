@@ -23,10 +23,12 @@ import {
 import {
   type ActionDecision,
   type ActionRequest,
+  auditActions,
   createActionGate,
   evaluateGate,
   type GateOptions,
   type LabeledAction,
+  type RecordedAction,
 } from "@pathcompiler/agent-gate";
 import {
   type ExtractionResult,
@@ -377,6 +379,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler counterexamples list|record <report.json>|eval <id> --spec <behavior-spec.json>|run <eval.json> --spec <behavior-spec.json> [--strict-neighbors] [--json] [--out <directory>]
        pathcompiler repair propose [directory] --fixture <proposals.json> [--max-attempts <n>] [--bind <name>=<entity> ...] [--exclude <directory> ...] [--json] [--out <directory>]
        pathcompiler agent check <behavior-spec.json> --request <action.json> [--enforce all|approved_only] [--on-unknown block|allow] [--json]
+       pathcompiler agent audit <behavior-spec.json> --trace <actions.jsonl> [--enforce all|approved_only] [--json]
        pathcompiler agent eval <behavior-spec.json> --cases <labeled-actions.json> [--json]
        pathcompiler behavior extract [directory] [--bind <name>=<entity> ...] [--commit <sha>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler behavior verify <behavior-spec.json> [--operation <id> ...] [--json] [--out <directory>]
@@ -643,7 +646,11 @@ applicable business rule and data policy, and the invariants of the state the ac
 produce. It prints PASS or BLOCK with the violated rule, the values that violate it and the
 missing precondition, and exits nonzero on BLOCK. A rule it cannot evaluate for lack of a value
 is reported as missing, and the default is to block (--on-unknown allow changes that);
---enforce approved_only blocks only on rules a person approved. agent eval runs a labeled set of
+--enforce approved_only blocks only on rules a person approved.
+agent audit replays a log of actions that already happened (JSON Lines or a JSON array of the same
+request objects, optionally with "id" and "at") and reports which of them break a rule, per rule,
+and which it could not judge for lack of values: violations that occurred, found from a log.
+agent eval runs a labeled set of
 safe and unsafe actions and reports the unsafe block rate, the safe allow rate and the false
 block rate; an unsafe action that no rule describes is reported as missed.
 verify-pr extracts the behavior at two Git revisions (--base, --candidate), verifies the rules at
@@ -744,6 +751,7 @@ const CLI_OPTIONS = {
   "max-attempts": { type: "string" },
   "strict-neighbors": { type: "boolean" },
   request: { type: "string" },
+  trace: { type: "string" },
   cases: { type: "string" },
   enforce: { type: "string" },
   "on-unknown": { type: "string" },
@@ -912,12 +920,13 @@ export async function runCli(
   if (
     (values.request !== undefined ||
       values.cases !== undefined ||
+      values.trace !== undefined ||
       values.enforce !== undefined ||
       values["on-unknown"] !== undefined) &&
     positionals[0] !== "agent"
   )
     throw new Error(
-      "--request, --cases, --enforce and --on-unknown are only supported by agent.",
+      "--request, --cases, --trace, --enforce and --on-unknown are only supported by agent.",
     );
   if (values.impact !== undefined && positionals[0] !== "review")
     throw new Error("--impact is only supported by review queue.");
@@ -5875,9 +5884,13 @@ async function runAgent(
   cwd: string,
 ): Promise<string> {
   const [, sub, argument, ...rest] = positionals;
-  if ((sub !== "check" && sub !== "eval") || !argument || rest.length > 0)
+  if (
+    (sub !== "check" && sub !== "eval" && sub !== "audit") ||
+    !argument ||
+    rest.length > 0
+  )
     throw new Error(
-      "Expected: pathcompiler agent check <behavior-spec.json> --request <action.json>, or agent eval <behavior-spec.json> --cases <labeled-actions.json>. Use --help for options.",
+      "Expected: pathcompiler agent check <behavior-spec.json> --request <action.json>, agent audit <behavior-spec.json> --trace <actions.jsonl>, or agent eval <behavior-spec.json> --cases <labeled-actions.json>. Use --help for options.",
     );
   const enforce = values.enforce ?? "all";
   const onUnknown = values["on-unknown"] ?? "block";
@@ -5905,6 +5918,60 @@ async function runAgent(
       : formatDecision(decision);
     if (decision.decision === "BLOCK") throw new Error(text);
     return text;
+  }
+  if (sub === "audit") {
+    if (!values.trace)
+      throw new Error("agent audit needs --trace <actions.jsonl>.");
+    let raw: string;
+    try {
+      raw = await readFile(path.resolve(cwd, values.trace), "utf8");
+    } catch (error) {
+      throw new Error(`Cannot read the action log from ${values.trace}.`, {
+        cause: error,
+      });
+    }
+    let actions: RecordedAction[];
+    try {
+      actions = raw.trimStart().startsWith("[")
+        ? (JSON.parse(raw) as RecordedAction[])
+        : raw
+            .split("\n")
+            .filter((line) => line.trim() !== "")
+            .map((line) => JSON.parse(line) as RecordedAction);
+    } catch (error) {
+      throw new Error(
+        `${values.trace} is neither JSON Lines nor a JSON array of actions.`,
+        { cause: error },
+      );
+    }
+    if (
+      !Array.isArray(actions) ||
+      actions.some((item) => !item || typeof item.operation !== "string")
+    )
+      throw new Error(
+        `Every action in ${values.trace} needs an "operation" (and the "inputs", "context" and "state" the rules read).`,
+      );
+    const report = auditActions(gate, actions);
+    if (values.json) return `${JSON.stringify(report, null, 2)}\n`;
+    return `${[
+      `Replayed ${report.total} logged action(s): ${report.clean} clean, ${report.violating} would have been blocked, ${report.unresolved} could not be judged.`,
+      ...report.byRule.map(
+        (item) => `  ${item.actions} action(s) break ${item.rule}`,
+      ),
+      ...report.findings
+        .slice(0, 20)
+        .map(
+          (item) =>
+            `  #${item.index}${item.id ? ` ${item.id}` : ""}${item.at ? ` (${item.at})` : ""} ${item.operation}: ${item.rules.join(", ")}`,
+        ),
+      ...(report.findings.length > 20
+        ? [`  … ${report.findings.length - 20} more (use --json)`]
+        : []),
+      ...report.missingValues
+        .slice(0, 5)
+        .map((item) => `  ${item.actions} action(s) lack ${item.id}`),
+      "The log is judged by the rules as they are now, and only on the values it carries.",
+    ].join("\n")}\n`;
   }
   if (!values.cases)
     throw new Error("agent eval needs --cases <labeled-actions.json>.");
@@ -6127,21 +6194,8 @@ function formatVerification(
     if (result.reason) lines.push(`  ${result.reason}`);
     const cex = result.counterexample;
     if (cex) {
-      const operation = spec.operations.find(
-        (item) => item.id === cex.operation,
-      );
-      const mentioned = new Set<string>();
-      const text = [
-        cex.violated,
-        ...(operation?.preconditions.map((item) => formatExpression(item)) ??
-          []),
-        ...(operation?.effects.map(
-          (item) => `${item.variable} ${formatExpression(item.value)}`,
-        ) ?? []),
-      ].join(" ");
-      for (const variable of spec.variables)
-        if (text.includes(variable.id)) mentioned.add(variable.id);
-      const relevant = (id: string) => mentioned.has(id);
+      const shown = new Set(cex.relevant);
+      const relevant = (id: string) => shown.size === 0 || shown.has(id);
       lines.push(
         `  counterexample (re-evaluated ${cex.replayed ? "and confirmed" : "but NOT confirmed"}):`,
         `    inputs: ${show(cex.inputs, relevant) || "-"}`,
@@ -6180,6 +6234,13 @@ async function runBehavior(
   }
   if (sub === "verify" && argument && rest.length === 0) {
     const spec = await readBehaviorSpec(cwd, argument);
+    const unknownOperation = (values.operation ?? []).filter(
+      (id) => !spec.operations.some((item) => item.id === id),
+    );
+    if (unknownOperation.length > 0)
+      throw new Error(
+        `No operation ${unknownOperation.join(", ")} in ${argument}. Operations: ${spec.operations.map((item) => item.id).join(", ") || "none"}.`,
+      );
     const solver = await createZ3SolverProvider();
     let report: VerificationReport;
     try {
@@ -6191,13 +6252,6 @@ async function runBehavior(
     } finally {
       await solver.close();
     }
-    const unknownOperation = (values.operation ?? []).filter(
-      (id) => !spec.operations.some((item) => item.id === id),
-    );
-    if (unknownOperation.length > 0)
-      throw new Error(
-        `No operation ${unknownOperation.join(", ")} in ${argument}. Operations: ${spec.operations.map((item) => item.id).join(", ") || "none"}.`,
-      );
     const output = path.resolve(cwd, values.out ?? ".pathcompiler");
     const file = "reports/behavior-verification.json";
     await writeArtifacts(output, [

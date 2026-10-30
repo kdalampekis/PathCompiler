@@ -39,6 +39,12 @@ export type Counterexample = {
   violated: string;
   /** True when re-evaluating the specification on these values confirms it. */
   replayed: boolean;
+  /**
+   * The variables that matter to this violation (those the violated rule and
+   * the operation's contract mention), so a report can show them and leave out
+   * the rest of the valuation.
+   */
+  relevant?: string[];
 };
 
 /** How far a rule can be trusted, from its provenance. */
