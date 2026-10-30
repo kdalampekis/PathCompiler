@@ -17,7 +17,7 @@ import {
   VariableSchema,
 } from "@pathcompiler/behavior-ir";
 import { z } from "zod";
-import { EXPRESSION_SYNTAX } from "./task.js";
+import { ENCODING_HINTS, EXPRESSION_SYNTAX } from "./task.js";
 
 /**
  * Describing code in any language. The contract is the format (see
@@ -138,9 +138,10 @@ export function buildContractTask(input: {
         ],
       })),
     instructions: CONTRACT_INSTRUCTIONS,
-    expressionSyntax: EXPRESSION_SYNTAX.filter(
-      (line) => !line.startsWith("old("),
-    ),
+    expressionSyntax: [
+      ...EXPRESSION_SYNTAX.filter((line) => !line.startsWith("old(")),
+      ...ENCODING_HINTS,
+    ],
     output: "ContractProposal.json" as const,
   };
   const id = `ct-${createHash("sha256").update(JSON.stringify(body)).digest("hex").slice(0, 12)}`;

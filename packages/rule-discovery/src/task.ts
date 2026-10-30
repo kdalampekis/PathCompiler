@@ -25,6 +25,19 @@ export const DISCOVERY_INSTRUCTIONS = [
   "Answer with JSON matching the output schema. An empty list is a correct answer when nothing is supported.",
 ].join("\n");
 
+/**
+ * The language is small on purpose (it is what a solver can decide), but much
+ * of what businesses say fits it once values are encoded the way a database
+ * would store them.
+ */
+export const ENCODING_HINTS = [
+  "Money and decimals: use integer minor units (cents), so 49.99 is 4999.",
+  "Percentages and rates: multiply instead of dividing: 'fee is 2% of amount' is fee * 100 == amount * 2 (or fee * 100 <= amount * 2 for a cap).",
+  "Dates and times: use integer epoch seconds or days; 'within 30 days' is now - created_at <= 2592000 with now as a context variable.",
+  "Collections: use a count (items.count <= 10) or a boolean for membership (user.is_admin); name what you encode.",
+  "Anything else (floating point, regular expressions, loops, calls into code you did not read): leave it out and say so in the rationale or limitations. A rule that is not stated is better than one that is wrong.",
+];
+
 export const EXPRESSION_SYNTAX = [
   "Variables are written by ID, for example refund.amount or actor.role.",
   "Literals: integers, double-quoted strings (enum values), true, false.",
@@ -162,7 +175,7 @@ export function buildDiscoveryTask(input: {
       .filter((item) => DOCUMENT.test(item))
       .slice(0, 100),
     instructions: DISCOVERY_INSTRUCTIONS,
-    expressionSyntax: EXPRESSION_SYNTAX,
+    expressionSyntax: [...EXPRESSION_SYNTAX, ...ENCODING_HINTS],
     output: "RuleProposals.json" as const,
   };
   const id = `rd-${createHash("sha256").update(JSON.stringify(withoutId)).digest("hex").slice(0, 12)}`;
