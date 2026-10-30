@@ -23,6 +23,13 @@ rules most directly and treats every result as a candidate with provenance.
     `authentication_required`.
   - **Test assertions:** `expect(a.b).toBeGreaterThanOrEqual(0)` and
     relations between two fields; INFERRED, MEDIUM confidence.
+  - **Source-code guard clauses (BX2b):** for an exported function, `if
+    (cond) throw …` at the top level is a precondition `!cond` (comparisons
+    flipped, De Morgan applied), `x.y += e` / `= e` / `++` on a state entity
+    is an effect, and an explicit role check also yields `allow`
+    permissions. SOURCE_CODE / INFERRED / MEDIUM: the code says what it
+    does, not what the business wants. Module-level literal constants are
+    inlined, so a refactor that names `5000` does not change the contract.
   - **Approved rules:** a JSON file of rules a person declares
     (HUMAN_DECLARATION / HUMAN_APPROVED, `declaredBy` required).
 - **IR extensions (additive):** `dataConstraints` (null, uniqueness, keys,
@@ -53,6 +60,17 @@ rules most directly and treats every result as a candidate with provenance.
   `--bind` maps a code identifier to the entity or operation prefix; without
   it a name is used as written, and an assertion on an unbound entity is
   reported, not guessed.
+
+### What the guard extractor refuses
+
+Calls, loops, conditionals that do not simply throw, `return` guards, locals,
+and any condition that reads a value updated earlier in the function (effects
+are evaluated in the pre-state) are not modeled. Each one becomes a
+**limitation** of the operation and an `unsupported` entry, so the extracted
+preconditions are known to be possibly weaker than the code. A TypeScript
+`number` is modeled as an integer, which is wrong for decimal money.
+The same operation defined in two source files is reported as a conflict
+instead of silently merged (analyze one version at a time with `--exclude`).
 
 ## Alternatives
 

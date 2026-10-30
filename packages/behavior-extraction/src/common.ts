@@ -185,6 +185,15 @@ export function mergeFragments(
       operations.set(operation.id, operation);
       continue;
     }
+    const codeFiles = new Set(
+      [...known.provenance, ...operation.provenance]
+        .filter((item) => item.sourceType === "SOURCE_CODE")
+        .map((item) => item.sourceFile),
+    );
+    if (codeFiles.size > 1)
+      conflicts.push(
+        `Operation ${operation.id} is defined in more than one source file (${[...codeFiles].join(", ")}); their guards were combined, which is rarely what was meant. Analyze one version at a time (--exclude).`,
+      );
     const seen = new Set(known.preconditions.map(formatExpression));
     const limitations = [
       ...new Set([

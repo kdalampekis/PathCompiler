@@ -575,7 +575,8 @@ method, confidence). behavior validate checks a specification file (references, 
 mandatory provenance) and behavior show lists its rules with their provenance. Rules extracted
 automatically are candidates, not business ground truth.
 behavior extract reads SQL DDL, Zod models, OpenAPI documents, test assertions and an optional
-approved-rules.json from the directory and writes reports/behavior-spec.json plus
+approved-rules.json from the directory (and if (…) throw guard clauses of exported
+functions as operation contracts) and writes reports/behavior-spec.json plus
 reports/behavior-extraction.json (every extracted fact with its source, and every construct it
 could not model). It uses no model. --bind payment=payments maps a code identifier to the
 entity or operation prefix its variables use (also applied to OpenAPI operation IDs).

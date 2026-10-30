@@ -1465,7 +1465,9 @@ pnpm pathcompiler behavior extract fixtures/refunds --bind payment=payments --bi
 
 `behavior extract` reads SQL DDL, Zod models, OpenAPI documents, test
 assertions and an optional `approved-rules.json` from a directory, with no
-model, and lists every construct it could not model instead of guessing. See
+model, and lists every construct it could not model instead of guessing. It also reads
+`if (…) throw` guard clauses of exported functions as operation preconditions, effects and role
+permissions, and marks what it skipped as limitations. See
 [ADR 0089](docs/decisions/0089-deterministic-behavior-extractors.md).
 
 BehaviorIR describes what the system does (transitions, operations), what the

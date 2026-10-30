@@ -10,6 +10,7 @@ import {
   mergeFragments,
   type SourceFile,
 } from "./common.js";
+import { collectTypes, extractGuards, type TypeIndex } from "./guards.js";
 import { extractOpenApi } from "./openapi.js";
 import { extractSql } from "./sql.js";
 import { extractZod } from "./zod.js";
@@ -18,6 +19,7 @@ export * from "./approved.js";
 export * from "./assertions.js";
 export * from "./common.js";
 export * from "./evaluate.js";
+export * from "./guards.js";
 export * from "./openapi.js";
 export * from "./sql.js";
 export * from "./zod.js";
@@ -27,6 +29,7 @@ export type ExtractorName =
   | "zod"
   | "openapi"
   | "assertions"
+  | "guards"
   | "approved";
 export type ExtractionResult = MergeResult & {
   specHash: string;
@@ -49,9 +52,11 @@ export function classify(file: SourceFile): ExtractorName[] {
   )
     return /\.(json|ya?ml)$/i.test(file.path) ? ["openapi"] : [];
   if (TEST_NAME.test(file.path)) return ["assertions"];
-  if (/\.tsx?$/.test(file.path) && /from\s+["']zod["']/.test(file.content))
-    return ["zod"];
-  return [];
+  if (!/\.tsx?$/.test(file.path) || /\.d\.ts$/.test(file.path)) return [];
+  const names: ExtractorName[] = [];
+  if (/from\s+["']zod["']/.test(file.content)) names.push("zod");
+  if (/\bthrow\b/.test(file.content)) names.push("guards");
+  return names;
 }
 
 /**
@@ -70,9 +75,11 @@ export function extractBehavior(
     zod: [],
     openapi: [],
     assertions: [],
+    guards: [],
     approved: [],
   };
   const fragments: ExtractedFragment[] = [];
+  const types: TypeIndex = collectTypes(files);
   for (const file of [...files].sort((a, b) => (a.path < b.path ? -1 : 1))) {
     for (const name of classify(file)) {
       inputs[name].push(file.path);
@@ -85,7 +92,9 @@ export function extractBehavior(
               ? extractOpenApi(file, options)
               : name === "approved"
                 ? extractApprovedRules(file)
-                : extractAssertions(file, options),
+                : name === "guards"
+                  ? extractGuards(file, options, types)
+                  : extractAssertions(file, options),
       );
     }
   }

@@ -31,8 +31,15 @@ const FIXTURE = [
   "api/openapi.json",
   "tests/refunds.test.ts",
   "spec/approved-rules.json",
+  "src/refunds.ts",
 ].map(read);
-const OPTIONS = { bindings: { payment: "payments", createRefund: "refund" } };
+const OPTIONS = {
+  bindings: {
+    payment: "payments",
+    createRefund: "refund",
+    request: "refund_requests",
+  },
+};
 const invariants = (spec: BehaviorSpec) =>
   spec.invariants.map((item) => formatExpression(item.expression));
 
@@ -99,20 +106,25 @@ describe("refund fixture extraction (RQ1)", () => {
     ).toHaveLength(1);
   });
 
-  it("marks only verbatim declarations EXPLICIT and assertions INFERRED", () => {
+  it("marks only verbatim declarations EXPLICIT; assertions and code guards are INFERRED", () => {
     for (const entry of result.ledger) {
       if (entry.provenance.sourceType === "TEST")
         expect(entry.provenance.origin).toBe("INFERRED");
       else if (entry.provenance.sourceType === "HUMAN_DECLARATION")
         expect(entry.provenance.origin).toBe("HUMAN_APPROVED");
+      else if (entry.provenance.sourceType === "SOURCE_CODE")
+        expect(entry.provenance.origin).toBe("INFERRED");
       else expect(entry.provenance.origin).toBe("EXPLICIT");
     }
   });
 
-  it("merges the input contract of the Zod model and the OpenAPI operation", () => {
+  it("merges the input contract of Zod, OpenAPI and the guards of the code", () => {
     const refund = result.spec.operations.find((item) => item.id === "refund");
     expect(refund?.preconditions.map(formatExpression).sort()).toEqual([
+      'actor.role == "support_agent" || actor.role == "manager"',
       "refund.amount <= 100000",
+      "refund.amount <= 5000 || refund.manager_approval",
+      "refund.amount <= payments.original_amount - payments.refunded_amount",
       "refund.amount > 0",
       "refund.amount >= 1",
       "refund.payment_id > 0",
@@ -120,6 +132,7 @@ describe("refund fixture extraction (RQ1)", () => {
     ]);
     expect(refund?.provenance.map((item) => item.sourceType).sort()).toEqual([
       "OPENAPI",
+      "SOURCE_CODE",
       "VALIDATION_MODEL",
     ]);
   });

@@ -243,6 +243,83 @@
       "lines": "7"
     },
     {
+      "kind": "permission",
+      "text": "manager allow refund",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "18-19"
+    },
+    {
+      "kind": "permission",
+      "text": "support_agent allow refund",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "18-19"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: actor.role == \"support_agent\" || actor.role == \"manager\"",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "18-19"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.amount > 0",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "20"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.amount <= payments.original_amount - payments.refunded_amount",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "21-22"
+    },
+    {
+      "kind": "precondition",
+      "text": "refund: refund.amount <= 5000 || refund.manager_approval",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "23-24"
+    },
+    {
+      "kind": "permission",
+      "text": "manager allow approve_refund",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "30-31"
+    },
+    {
+      "kind": "precondition",
+      "text": "approve_refund: actor.role == \"manager\"",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "30-31"
+    },
+    {
+      "kind": "precondition",
+      "text": "approve_refund: actor.id != refund_requests.requester_id",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "32-33"
+    },
+    {
+      "kind": "precondition",
+      "text": "process_refund: !refund_requests.processed",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "39"
+    },
+    {
+      "kind": "precondition",
+      "text": "process_refund: refund_requests.approved",
+      "sourceType": "SOURCE_CODE",
+      "file": "fixtures/refunds/src/refunds.ts",
+      "lines": "40"
+    },
+    {
       "kind": "invariant",
       "text": "payments.refunded_amount >= 0",
       "sourceType": "TEST",

@@ -5080,3 +5080,46 @@ real repository.
   status contracts, ORM models, source-code guards (BX2b).
 - Next: BX2b — guard-clause source extractor, then BX3 — the verification
   router.
+
+## Expansion BX2b — Guard-clause source extractor
+
+Complete — verified locally on 2026-10-29.
+
+- **`extractGuards`** in `@pathcompiler/behavior-extraction`: exported
+  functions become operations whose preconditions are their top-level
+  `if (…) throw` guards (negated), whose effects are updates to bound state
+  entities, and whose explicit role checks yield `allow` permissions. Types
+  resolve across the analyzed files; literal constants are inlined.
+- **Honest limits:** every statement it cannot model (calls, loops,
+  conditionals, `return` guards, reads of already-updated values, unknown
+  types) is recorded as an operation `limitation` and an `unsupported`
+  construct. The same operation in two files is reported as a conflict.
+- The refund fixture's three operations (`refund`, `approve_refund`,
+  `process_refund`) extract with the expected contracts, and the five
+  candidate variants differ from the base exactly as intended: the
+  behavior-preserving refactor yields an identical contract, the others each
+  weaken, tighten or drop one guard. The ground truth now has 48 facts
+  (11 from source code); precision, recall and provenance remain 1.0 on it,
+  with the same caveat as BX2 (a small fixture reviewed by its author).
+- Recorded in ADR 0089.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 578 tests passed across 104 suites (all 104 test files; 7 guard-extraction tests are new) |
+
+### Errors found during the phase
+
+- Nested `a && b && c` printed with parentheses because the parser builds
+  binary nodes; the extractor now flattens `and`/`or`/`add`/`mul`.
+- Running extraction on the whole fixture directory merged the base service
+  with its variants into one operation; the merge now reports this as a
+  conflict, and the CLI test excludes `variants`.
+
+### Scope notes
+
+- Next: BX3 — the verification router and SMT backend.
