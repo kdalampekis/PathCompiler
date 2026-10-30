@@ -5516,3 +5516,75 @@ unmeasured (ISSUES_LOG #63).
 - Not built: cost reporting for the model route, filtering the model route's
   commits by `--from`, and any way for PathCompiler to invoke a harness (by
   design it never does).
+
+## Expansion BX9 — Harness runner with approval and automatic modes
+
+Complete — verified locally on 2026-10-30. Added at your request: implement
+`HARNESS_ENGINEERING_HANDOFF.md`, in two versions (people approve the harness's
+changes and pull request, or it goes on automatically), controlled by the user,
+using the deterministic and harness paths together where a feature has both.
+
+- **New `@pathcompiler/harness-runner`:**
+  - `executeHarness` (Harness V0): validates the task first, isolated git
+    worktree and branch at the base commit, runs your harness command,
+    protected-path and secret checks on the diff, project checks, candidate
+    commit, valid `MutationResult`, exit codes 0/2/3/4, your own tree verified
+    unchanged;
+  - `mergeAssessment`: the harness's report plus product-model evaluation,
+    behavior check, checks and safety; worst verdict wins; nothing independent
+    means review;
+  - `decideNext` and the pipeline: `approval` and `automatic` modes with the
+    limits in `harness.automatic`, `improvement_policy.max_autonomous_mutations`
+    and `harness.limits`; run records with who decided what;
+  - `gitPublisher`: push the branch, open a draft pull request with `gh`; never
+    force, never the base branch, never a merge;
+  - the JSON-command protocol (`runJsonCommand`, `commandCompletion`,
+    `commandRepairProvider`, `createCommandModelProvider`).
+- **Configuration:** new `harness` section; `model_provider.provider: command`
+  with `command_env`. Automatic mode requires `autonomous_mutation: true` and
+  `modes.self_improvement: true` when the file loads. The harness command is
+  never read from the file.
+- **CLI:** `harness run | runs | status | approve | reject`; `--harness-command`
+  on `rules discover` and `repair propose`; `model_provider` `command` for
+  `analyze`.
+- **Documents:** ADR 0096; `docs/HARNESS_HANDOFF_STATUS.md` (every handoff
+  section with its status).
+
+### Results (scripted harnesses, local bare remote, stubbed `gh`)
+
+| Scenario | Outcome |
+| --- | --- |
+| Approval mode, harmless refactor | candidate branch, assessment pass, waits; nothing on the remote until `approve`; then the branch is pushed; the remote's main is untouched |
+| Approval mode, change that breaks an approved rule while the example tests pass | rejected, with the violated rule; nothing published |
+| Approval mode with `before_run` | no worktree or branch until a person approves the start |
+| Automatic mode, harmless refactor | published by policy; the pull request body says so |
+| Automatic mode, change over `max_changed_lines`, a reserved path, a review verdict, or past the daily automatic limit | waits for a person and names the condition |
+| Candidate touching `pathcompiler.yaml` or adding a secret | discarded, no branch, reported blocked, the secret not echoed |
+| Harness blocked, failed, timed out, or changing nothing | recorded, no candidate |
+| No Next.js model and no behavior specification | verdict review (never pass) |
+
+No real coding harness, GitHub remote or `gh` pull request has been exercised
+(ISSUES_LOG #65).
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 705 tests passed across 118 suites (all 118 test files; 32 harness-runner and 7 CLI harness tests are new) |
+| `pnpm test:e2e` | 50 browser tests passed across 6 suites |
+
+### Errors found during the phase
+
+- Approving a run that was waiting to start failed inside the pipeline when the
+  harness command was missing; the command is now resolved before anything is
+  recorded, and the error says how to supply it.
+- Tests listed a bare repository's branches with `git branch` in its directory,
+  which modern git refuses (`safe.bareRepository`); they use `--git-dir`.
+
+### Scope notes
+
+- Not built: auto-merge (by decision), deployment, multiple candidates,
+  harness quality metrics (handoff §53–§56), a bundled coding agent.

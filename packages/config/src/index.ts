@@ -98,10 +98,19 @@ export const PathCompilerConfigSchema = z.strictObject({
   model_provider: z
     .strictObject({
       provider: z
-        .enum(["none", "anthropic", "openai", "local"])
+        .enum(["none", "anthropic", "openai", "local", "command"])
         .default("none"),
       model: z.string().min(1).max(200).optional(),
       api_key_env: envName.optional(),
+      /**
+       * `command`: your own harness or script answers structured tasks. The
+       * command is read from this environment variable, never from the file: a
+       * repository's configuration is untrusted input and must not choose what
+       * to execute.
+       */
+      command_env: envName.optional(),
+      /** Time allowed for one `command` answer. */
+      timeout_ms: z.number().int().min(1000).max(3_600_000).optional(),
       /** OpenAI-compatible endpoint for `openai` or `local` (C9). */
       base_url: z.url({ protocol: /^https?$/ }).optional(),
     })
@@ -125,6 +134,79 @@ export const PathCompilerConfigSchema = z.strictObject({
       max_recommendations_per_period: 5,
       max_experiments: 1,
       max_autonomous_mutations: 0,
+    }),
+  /**
+   * The harness runner (ADR 0096). `approval` stops for a person before
+   * anything leaves the machine; `automatic` goes on by itself when the
+   * evaluation and the limits allow, and stops for a person when they do not.
+   * PathCompiler never merges or deploys in either mode.
+   */
+  harness: z
+    .strictObject({
+      mode: z.enum(["approval", "automatic"]).default("approval"),
+      /** The environment variable that holds the harness command (see `model_provider.command_env`). */
+      command_env: envName.default("PATHCOMPILER_HARNESS_COMMAND"),
+      /** Time allowed for one harness run. */
+      timeout_ms: z.number().int().min(1000).max(7_200_000).default(1_800_000),
+      /** Project checks run in the isolated worktree before the candidate is committed. */
+      checks: z.array(z.string().min(1).max(500)).max(10).default([]),
+      /** Worktree location; defaults to a temporary directory. */
+      worktree_dir: z.string().min(1).optional(),
+      approvals: z
+        .strictObject({
+          /** Ask a person before the harness starts (approval mode). */
+          before_run: z.boolean().default(false),
+        })
+        .default({ before_run: false }),
+      /** What happens to an approved (or automatically cleared) candidate. */
+      publish: z
+        .strictObject({
+          target: z
+            .enum(["none", "branch", "pull_request"])
+            .default("pull_request"),
+          remote: z.string().min(1).default("origin"),
+          draft: z.boolean().default(true),
+        })
+        .default({ target: "pull_request", remote: "origin", draft: true }),
+      /** Conditions for automatic mode; a candidate outside them waits for a person. */
+      automatic: z
+        .strictObject({
+          /** `pass` publishes only clean candidates; `review` also publishes ones flagged for review. */
+          allow_verdict: z.enum(["pass", "review"]).default("pass"),
+          max_files: z.number().int().min(1).max(500).default(20),
+          max_changed_lines: z.number().int().min(1).max(20_000).default(500),
+          /** Candidates touching these paths always wait for a person. */
+          require_approval_paths: z.array(z.string().min(1)).default([]),
+        })
+        .default({
+          allow_verdict: "pass",
+          max_files: 20,
+          max_changed_lines: 500,
+          require_approval_paths: [],
+        }),
+      /** Paths a harness may never change, in addition to the built-in ones. */
+      protected_paths: z.array(z.string().min(1)).default([]),
+      limits: z
+        .strictObject({
+          max_runs_per_day: z.number().int().min(1).max(100).default(5),
+        })
+        .default({ max_runs_per_day: 5 }),
+    })
+    .default({
+      mode: "approval",
+      command_env: "PATHCOMPILER_HARNESS_COMMAND",
+      timeout_ms: 1_800_000,
+      checks: [],
+      approvals: { before_run: false },
+      publish: { target: "pull_request", remote: "origin", draft: true },
+      automatic: {
+        allow_verdict: "pass",
+        max_files: 20,
+        max_changed_lines: 500,
+        require_approval_paths: [],
+      },
+      protected_paths: [],
+      limits: { max_runs_per_day: 5 },
     }),
   privacy: z
     .strictObject({ source_upload: z.literal(false).default(false) })
@@ -185,6 +267,26 @@ export function parseConfig(
   )
     throw new ConfigError(file, [
       "improvement_policy.max_autonomous_mutations must be 0 while autonomous_mutation is false",
+    ]);
+  const harness = parsed.data.harness;
+  if (harness.mode === "automatic") {
+    const issues: string[] = [];
+    if (!parsed.data.improvement_policy.autonomous_mutation)
+      issues.push(
+        "harness.mode is automatic, which needs improvement_policy.autonomous_mutation: true (and a max_autonomous_mutations above 0 to publish anything)",
+      );
+    if (!parsed.data.modes.self_improvement)
+      issues.push(
+        "harness.mode is automatic, which needs modes.self_improvement: true",
+      );
+    if (issues.length > 0) throw new ConfigError(file, issues);
+  }
+  if (
+    parsed.data.model_provider.provider === "command" &&
+    !parsed.data.model_provider.command_env
+  )
+    throw new ConfigError(file, [
+      "model_provider.provider is command: set model_provider.command_env to the environment variable that holds the command",
     ]);
   return parsed.data;
 }

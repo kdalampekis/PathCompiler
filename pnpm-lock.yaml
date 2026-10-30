@@ -391,6 +391,9 @@ importers:
       "@pathcompiler/harness-contracts":
         specifier: workspace:*
         version: link:../harness-contracts
+      "@pathcompiler/harness-runner":
+        specifier: workspace:*
+        version: link:../harness-runner
       "@pathcompiler/http-service":
         specifier: workspace:*
         version: link:../http-service
@@ -834,6 +837,43 @@ importers:
       "@pathcompiler/semantic-change":
         specifier: workspace:*
         version: link:../semantic-change
+
+  packages/harness-runner:
+    dependencies:
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
+      "@pathcompiler/candidate-evaluator":
+        specifier: workspace:*
+        version: link:../candidate-evaluator
+      "@pathcompiler/config":
+        specifier: workspace:*
+        version: link:../config
+      "@pathcompiler/git-intelligence":
+        specifier: workspace:*
+        version: link:../git-intelligence
+      "@pathcompiler/harness-contracts":
+        specifier: workspace:*
+        version: link:../harness-contracts
+      "@pathcompiler/model-provider":
+        specifier: workspace:*
+        version: link:../model-provider
+      "@pathcompiler/pr-guard":
+        specifier: workspace:*
+        version: link:../pr-guard
+      "@pathcompiler/repair-loop":
+        specifier: workspace:*
+        version: link:../repair-loop
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
 
   packages/http-service:
     dependencies:

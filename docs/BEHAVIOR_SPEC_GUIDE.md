@@ -182,6 +182,19 @@ verifier, PR guard and agent gate report them with the extracted-candidate
 caveat. Only `rules approve` makes one an approved rule. The contract for
 harness authors is in [../examples/rule-discovery/](../examples/rule-discovery/).
 
+### Act 8: let your harness make the change, under your control
+
+Everything above can also be driven by a harness. `harness run` gives your
+coding harness a task in an isolated worktree, assesses what it changed with
+checks it does not control (the behavior check among them), and then follows
+the mode you chose: `approval` (a person approves before anything leaves the
+machine) or `automatic` (publishes by itself inside limits you set, asks
+otherwise). It never merges. Configuration, commands and the section-by-section
+status of the harness handoff are in
+[HARNESS_HANDOFF_STATUS.md](HARNESS_HANDOFF_STATUS.md). The same harness
+command can answer rule discovery (`rules discover --harness-command`) and
+repair proposals (`repair propose --harness-command`).
+
 ## 2. Trying it on your own software
 
 This is the protocol for the first real-software trial. Its purpose is to

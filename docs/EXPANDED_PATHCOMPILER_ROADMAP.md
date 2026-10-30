@@ -7,7 +7,7 @@ exist in the probabilistic track of
 
 ## Status
 
-All nine phases are complete (2026-10-30). Each has an ADR and a record in
+All ten phases are complete (2026-10-30). Each has an ADR and a record in
 [phases/STATUS.md](phases/STATUS.md); the as-built differences from the design
 are in [the architecture document](EXPANDED_PATHCOMPILER_ARCHITECTURE.md#17-what-was-built-and-where-it-differs-from-the-design);
 usage is in [BEHAVIOR_SPEC_GUIDE.md](BEHAVIOR_SPEC_GUIDE.md).
@@ -23,6 +23,7 @@ usage is in [BEHAVIOR_SPEC_GUIDE.md](BEHAVIOR_SPEC_GUIDE.md).
 | BX6 | `counterexamples`: records, store, regression evals | 0093 | `counterexamples …` |
 | BX7 | `repair-loop`: bounded, logged, human-approved prototype | 0094 | `repair propose` |
 | BX8 | `rule-discovery`: a harness (file contract) or a model (provider adapters) proposes rules from code and history; validated, checked against the code, stored as candidates, approved by a person | 0095 | `rules task`, `import`, `discover`, `list`, `approve`, `reject` |
+| BX9 | `harness-runner`: the harness handoff implemented. A harness command runs in an isolated worktree; the candidate is assessed independently; **approval** and **automatic** modes decide what happens next; never merges or deploys; a JSON-command protocol lets a harness serve analysis, rule discovery and repair | 0096 | `harness run`, `runs`, `status`, `approve`, `reject`; `--harness-command` on `rules discover` and `repair propose` |
 
 ## Results on the evaluation plan
 

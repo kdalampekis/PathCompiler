@@ -1747,6 +1747,9 @@ The harness returns a `MutationResult`. The schemas and examples are in
 claims are never trusted: the candidate is evaluated independently. See
 [ADR 0086](docs/decisions/0086-harness-contract.md).
 
+`harness run` goes further: it runs your harness for you, locally, under a
+policy you set (see "Running a harness" below).
+
 `harness import <MutationResult.json> [directory]` brings a harness's
 result back. It checks the result against the exported task, stores it,
 and evaluates the candidate commit against the task's base, with criteria
@@ -1754,6 +1757,41 @@ frozen from the task. The harness's claim is checked, never trusted. A
 blocked result is recorded with its questions. PathCompiler never runs the
 harness itself. See
 [ADR 0087](docs/decisions/0087-external-harness-integration.md).
+
+## Running a harness (`pathcompiler harness run`)
+
+Implements the harness side of
+[HARNESS_ENGINEERING_HANDOFF.md](HARNESS_ENGINEERING_HANDOFF.md) (section by
+section status in [docs/HARNESS_HANDOFF_STATUS.md](docs/HARNESS_HANDOFF_STATUS.md)).
+Your coding harness is a command; PathCompiler gives it a task in an isolated
+git worktree at the base commit, checks what it changed, runs your project's
+checks, commits a candidate branch, and assesses the candidate with checks the
+harness does not control (product-model evaluation, the behavior check, its
+own checks and safety rules) before anything happens next. **Two modes**, set
+in the `harness` section of `pathcompiler.yaml` or per run with `--mode`:
+
+- `approval` (the default): a person approves before anything leaves the
+  machine (and, with `approvals.before_run`, before the harness starts).
+- `automatic`: the pipeline publishes by itself when the candidate is clean and
+  inside the limits you set (`allow_verdict`, `max_files`, `max_changed_lines`,
+  `require_approval_paths`, `max_autonomous_mutations` per day) and waits for a
+  person otherwise. It needs `improvement_policy.autonomous_mutation: true`.
+
+In both, a candidate whose assessment fails is rejected, and PathCompiler
+**never merges and never deploys**. Publishing pushes the branch and, with
+`publish.target: pull_request`, opens a draft pull request with `gh`.
+
+```bash
+export PATHCOMPILER_HARNESS_COMMAND='my-harness --task "{task}"'   # never read from the repository
+pnpm pathcompiler harness run task.json <repo> --bind payment=payments
+pnpm pathcompiler harness approve <run-id> <repo> --by you --publish pull_request
+```
+
+The same JSON-command protocol lets a harness answer the other structured
+tasks: `model_provider.provider: command` (analysis), `rules discover
+--harness-command`, `repair propose --harness-command`. Where a feature has a
+deterministic path and a harness path, both run and are merged (table in
+[ADR 0096](docs/decisions/0096-harness-runner-and-control-modes.md)).
 
 ## Evidence fusion (`@pathcompiler/probabilistic-evidence`)
 
@@ -2040,6 +2078,7 @@ Analysis packages:
 | `@pathcompiler/agent-gate` | `createActionGate`, `guardTool`, `ActionBlockedError`, `evaluateGate`, `auditActions`, `ActionDecision` (BX5) |
 | `@pathcompiler/counterexamples` | `createRecord`, `recordCounterexample`, `listCounterexamples`, `resolveCounterexample`, `generateEval`, `runEval`, `contractExecutor`, `runSpecEval` (BX6) |
 | `@pathcompiler/rule-discovery` | `buildDiscoveryTask`, `RuleProposalsSchema`, `assessProposals`, `completionRuleProvider`, `buildExcerpts`, `describeContext`, `mergeCandidates`, `approveCandidate`, `rejectCandidate` (BX8) |
+| `@pathcompiler/harness-runner` | `executeHarness`, `commandAgent`, `scriptedAgent`, `startRun`, `approveRun`, `rejectRun`, `decideNext`, `mergeAssessment`, `behaviorCheck`, `gitPublisher`, `runJsonCommand`, `commandCompletion`, `commandRepairProvider`, `createCommandModelProvider`, `checkSafety` (BX9) |
 | `@pathcompiler/repair-loop` | `runRepairLoop`, `RepairProvider`, `fixtureRepairProvider`, `unifiedDiff`, `RepairReport` (BX7) |
 | `@pathcompiler/review-priority` | `prioritizeReviews`, `collectReviewFeedback`, `calibrationFromReviews`, `confidenceBand` (P-RV) |
 | `@pathcompiler/model-provider-openai` | `createOpenAIModelProvider`, `createLocalModelProvider`, `createOpenAICompatibleModelProvider` (plain HTTP) |
@@ -2051,7 +2090,7 @@ Analysis packages:
 | `@pathcompiler/reasoning-discovery` | `discoverWorkflowsByReasoning`, `ReasoningDiscoveryReport`, `ReasoningCandidate` |
 | `@pathcompiler/evaluation` | `loadGroundTruth`, `analyzeFixture`, `evaluateCapabilityExtraction`, `evaluateWorkflowDiscovery` (`DiscoveryStrategy`, `baselineStrategy`, `reasoningStrategy`), `compareDiscoveryStrategies`, `evaluateResolverAccuracy`, `evaluateImpact`, `approveAllCandidates`, `loadReasoningCases`, `evaluateReasoningCases` |
 | `@pathcompiler/candidate-evaluator` | `evaluateCandidate`, `CandidateEvaluation`, `EvaluationCriteriaSchema`, `ExpectedChangeSchema`, `TestRunSchema`, `testRunFromPlaywrightJson` |
-| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import`, `behavior export/extract/verify/validate/show`, `verify-pr`, `agent check/audit/eval`, `counterexamples list/record/eval/run`, `rules task/import/discover/list/approve/reject`, `repair propose`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
+| `@pathcompiler/cli` | `pathcompiler init`, `config show`, `scan` (`--explain-model-context`, `--no-cache`), `analyze`, `diagnose`, `findings`, `gate`, `recommend`, `experiment create/measure/decide/approve/decline`, `memory record/list`, `harness task/import/run/runs/status/approve/reject`, `behavior export/extract/verify/validate/show`, `verify-pr`, `agent check/audit/eval`, `counterexamples list/record/eval/run`, `rules task/import/discover/list/approve/reject`, `repair propose`, `review queue/feedback`, `graph inspect`, `capabilities list`, `targets suggest`, `tests mine/generate`, `git inspect`, `github inspect`, `surfaces discover`, `capabilities discover`, `workflows discover/detect/validate/list/show/approve/reject`, `diff`, `impact`, `proposals generate/list/show/accept/reject/ignore`, `build`, `docs export`, `eval`, `evaluate`, `observe graph/workflows/transitions/reconcile/efficiency/drop-offs/release-diff`, `reason reachable/plan/why-not/enable/alternatives/optimize/dead-features/diff/verify`, `github-app manifest/serve`, `mcp`, `mcp-reasoning`, `serve`, `runCli` |
 
 Packages export ESM JavaScript and declarations from `dist/` after
 `pnpm build`. They are private until release contracts are ready. Tests run against
@@ -2070,10 +2109,11 @@ and changed nodes/edges. Inputs must use unique IDs and existing edge endpoints.
 - [Product architecture](PRODUCT_ARCHITECTURE.md)
 - [Phase status](docs/phases/STATUS.md) and the [master roadmap](docs/phases/MASTER_ROADMAP.md)
 - [Issues log](docs/phases/ISSUES_LOG.md): bugs, limits and deferred items
+- [Harness handoff status](docs/HARNESS_HANDOFF_STATUS.md): what of the harness handoff is implemented
 - [Behavioral specification guide](docs/BEHAVIOR_SPEC_GUIDE.md), the
   [expanded architecture](docs/EXPANDED_PATHCOMPILER_ARCHITECTURE.md) and its
   [roadmap with results](docs/EXPANDED_PATHCOMPILER_ROADMAP.md)
-- Architecture decision records in [docs/decisions/](docs/decisions/) (0001–0095)
+- Architecture decision records in [docs/decisions/](docs/decisions/) (0001–0096)
 - [Workflow and graph decisions](docs/decisions/0001-foundation-contracts.md)
 - [Fixture state decision](docs/decisions/0002-fixture-session-state.md)
 

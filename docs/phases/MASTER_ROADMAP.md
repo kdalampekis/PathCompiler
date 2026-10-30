@@ -2,7 +2,7 @@
 
 Status as of 2026-10-30. Every phase in this document is complete except C6
 (alpha validation, which needs the user's repositories). The behavioral
-specification expansion (BX0–BX8: BehaviorIR, extraction, verification, PR
+specification expansion (BX0–BX9: BehaviorIR, extraction, verification, PR
 guard, agent gate, counterexample evals, repair loop, rule discovery) was added after these
 phases and is tracked in
 [the expanded roadmap](../EXPANDED_PATHCOMPILER_ROADMAP.md). This document is
@@ -61,7 +61,7 @@ loop.
 | 4 Recommend | Diagnosed, gated, human-facing recommendations | I0, IG, I1; O8–O10, R-track findings | ✅ |
 | 5 Evaluate | "Did this PR (human or harness) preserve what it should?" | R11 + R8 + C8 + I3 (no harness contract needed) | ✅ |
 | 6 Self-improvement | Recommendation → external harness → evaluation → experiment → learning | I2, I4–I9 | ✅ opt-in, off by default |
-| 7 Specify and verify (expansion) | "Which rules does the software follow, and did this change or this agent action break one?" | BX0–BX8 | ✅ prototype; real-repository validation pending |
+| 7 Specify and verify (expansion) | "Which rules does the software follow, and did this change or this agent action break one?" | BX0–BX9 | ✅ prototype; real-repository validation pending |
 
 Mode 6 is an optional escalation of the same intelligence, never a prerequisite.
 PathCompiler must stay fully useful for a customer who never enables a harness,
@@ -823,7 +823,7 @@ Shared rules:
   `MutationResult.json` out).
 - **Acceptance:** handoff Integration V0 (handoff §79) works without manual
   format conversion.
-- **Status:** ✅ complete (2026-10-25): CLI `harness import`, Integration V0 proven end to end, ADR 0087.
+- **Status:** ✅ complete (2026-10-25): CLI `harness import`, Integration V0 proven end to end, ADR 0087. Extended 2026-10-30 (BX9, ADR 0096): `harness run` executes a harness command in an isolated worktree under `approval` or `automatic` mode; see [HARNESS_HANDOFF_STATUS.md](../HARNESS_HANDOFF_STATUS.md).
 
 #### I10 — Deployment and experiment adapters
 - ⏸ Deferred (read-only coordination only, after the loop works manually).
@@ -857,7 +857,7 @@ Every planned phase except C6 is complete (I9: ADR 0087). PathCompiler now:
 - runs the improvement loop through experiments, decisions and memory,
   with an optional, file-based harness boundary for mode 6.
 
-Since then the behavioral-specification expansion (BX0–BX8) was added, the
+Since then the behavioral-specification expansion (BX0–BX9) was added, the
 ISSUES_LOG entries with a clear fix were resolved, and the documents were
 re-read for gaps (2026-10-30; see the "Documentation and issue pass" record in
 STATUS.md for what that covered and what it did not). The remaining work:

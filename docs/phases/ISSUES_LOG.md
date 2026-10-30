@@ -11,8 +11,8 @@ rest stay open for a stated reason:
 
 | Why | Entries |
 | --- | --- |
-| Needs the user's API key or real repositories (C6, alpha validation) | #34, #35, #43 (thresholds), #44, #47, #56, #57, #63, #64 |
-| Modeling limits that need data-flow analysis or a finer abstraction, best judged on real code | #4, #5, #30, #31, #51, #52, #53 |
+| Needs the user's API key or real repositories (C6, alpha validation) | #34, #35, #43 (thresholds), #44, #47, #56, #57, #63, #64, #65, #66, #67 |
+| Modeling limits that need data-flow analysis or a finer abstraction, best judged on real code | #4, #5, #30, #31, #51, #52, #53, #68, #69, #70 |
 | Evaluation-quality limits that are measured and by design today | #17, #18, #20, #54, #55 |
 | Feature gaps outside the current scope (UI views, templates needing new evidence classes, hypothesis review) | #7, #42, #45, #50 |
 | Design work: cost-bounded plan search with the new `optimize`, and stronger handler association | #28, #37 |
@@ -22,6 +22,12 @@ Entries marked **Resolved** below were fixed and verified with a test.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
+| 70 | BX9 | Limitation | Automatic mode's safeguards depend on the checks that apply. On a repository without a Next.js product model and without a behavior specification, no independent source runs and the verdict is `review`, so automatic mode never publishes there. The product-model evaluation is Next.js only. | Open; by design, but it limits where automatic mode is useful. |
+| 69 | BX9 | Gap | Harness quality metrics (handoff §53–§56: unexpected-change rate, human edit distance, constraint-violation rate) are not computed; the run records contain their inputs. Multiple candidates, candidate search and feasibility checks (handoff §63–§69) are not built. | Open. |
+| 68 | BX9 | Limitation | `harness.checks` are commands from the repository's `pathcompiler.yaml`, run in the worktree against the candidate's code. That is what a test command does, but it means `harness run` must not be run on branches you do not trust (for example in CI on forks). The harness command itself is deliberately not read from the file. | Open; documented in ADR 0096. |
+| 67 | BX9 | Gap | The pull-request path (`gh pr create`) has only been run against a stub; a real GitHub remote and a real draft pull request have not been exercised, and no GitHub App or token flow exists (it uses the person's `gh`). | Open; part of the real-software trial. |
+| 66 | BX9 | Gap | No real coding harness has been run through `harness run`; the tests use node scripts. How long real harnesses take, how they behave with the environment variables and the notes file, and how often their candidates pass the assessment is unmeasured. | Open; part of the real-software trial (#57). |
+| 65 | BX9 | Gap | Auto-merge is not offered, by decision: the handoff forbids it for the first version, and automatic mode is untested on real repositories. | Open; revisit after the trial if wanted. |
 | 64 | BX8 | Limitation | Evidence checking is textual: a quote found in the cited lines proves the passage exists, not that it supports the rule, so a plausible misreading passes. The model route has never been run against a real API (no key), and takes up to 20 recent commits per file up to `--to`, ignoring `--from`. Candidate rules are checked against the code only by the same one-step verifier. | Open; a person approves every rule, which is the real control. |
 | 63 | BX8 | Gap | No real harness or model has proposed rules yet: how many valid rules it finds, how many bugs it encodes as requirements, what it costs. | Open; part of the real-software trial (#57). |
 | 62 | Doc pass | Bug, resolved | Documents had fallen behind the work: the master roadmap said "R0 complete" with modes 3–6 blocked, the README package table and command list lacked the seven new packages and commands, the architecture document still described the expansion as a design to start (and a package count that did not match), and several documents called the extraction ground truth "hand-written" when it was generated from the extractors and then reviewed. | **Resolved** in the BX documentation pass: those documents were rewritten; the ground-truth wording is corrected everywhere it appears (README of the fixture, ADR 0089, the roadmap, STATUS). The pass covered the entry-point documents, not every one of the 112 files (see STATUS). |

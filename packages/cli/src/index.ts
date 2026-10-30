@@ -154,6 +154,25 @@ import {
   parseMutationResult,
 } from "@pathcompiler/harness-contracts";
 import {
+  approveRun,
+  behaviorCheck,
+  type CodingAgent,
+  commandAgent,
+  commandCompletion,
+  commandRepairProvider,
+  createCommandModelProvider,
+  type EvaluationSummary,
+  gitPublisher,
+  listRuns,
+  loadRun,
+  type PipelineDeps,
+  parseCommandLine,
+  type RunRecord,
+  rejectRun,
+  runDirectory,
+  startRun,
+} from "@pathcompiler/harness-runner";
+import {
   createFileEventSink,
   createHttpService,
 } from "@pathcompiler/http-service";
@@ -247,6 +266,7 @@ import {
 } from "@pathcompiler/recommendation-engine";
 import {
   fixtureRepairProvider,
+  type RepairProvider,
   runRepairLoop,
 } from "@pathcompiler/repair-loop";
 import {
@@ -411,6 +431,8 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler behavior validate <behavior-spec.json> [--json]
        pathcompiler behavior show <behavior-spec.json> [--json]
        pathcompiler harness task <recommendation-id> <base-commit> [--json] [--out <directory>]
+       pathcompiler harness run <task-id|task.json> [directory] [--mode approval|automatic] [--harness-command "<cmd>"] [--previous <run-id>] [--bind <name>=<entity> ...] [--exclude <directory> ...] [--json] [--out <directory>]
+       pathcompiler harness runs [directory] | status <run-id> [directory] | approve <run-id> [directory] --by <name> [--publish none|branch|pull_request] | reject <run-id> [directory] --by <name> --reason <text>
        pathcompiler harness import <mutation-result.json> [directory] [--tests <json-file>] [--browser <json-file>] [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
        pathcompiler review feedback [--json] [--out <directory>]
@@ -715,6 +737,21 @@ functions as operation contracts) and writes reports/behavior-spec.json plus
 reports/behavior-extraction.json (every extracted fact with its source, and every construct it
 could not model). It uses no model. --bind payment=payments maps a code identifier to the
 entity or operation prefix its variables use (also applied to OpenAPI operation IDs).
+harness run executes a task with your harness, locally, and decides what happens next by mode (the
+harness section of pathcompiler.yaml; mode 6 must be on). The harness is a command you choose
+(--harness-command, or the environment variable named by harness.command_env; never read from the
+repository's file) that runs in an isolated git worktree at the task's base commit, on a new branch,
+with PATHCOMPILER_TASK, PATHCOMPILER_WORKTREE and PATHCOMPILER_NOTES set, and exits 0 completed, 2
+partial, 3 blocked or 4 failed. Your own working tree is never touched. PathCompiler checks the diff
+(protected paths, secrets, size), runs the project's checks, commits the candidate and emits a
+MutationResult; then it assesses the candidate independently of the harness (product-model
+evaluation where the repository is a Next.js app, the behavior check where it has a specification,
+the project's checks, the harness's own questions). In approval mode a person approves the
+publication (and, with harness.approvals.before_run, the start). In automatic mode it publishes by
+itself when the candidate is clean and inside harness.automatic limits and improvement_policy
+max_autonomous_mutations, and waits for a person otherwise. A failed assessment is rejected in both
+modes. Publishing pushes the branch and, for pull_request, opens a draft pull request with gh. It
+never merges and never deploys. harness runs, status, approve and reject manage the runs.
 harness task (mode 6 only) writes a provider-neutral HarnessTaskSpec for a recommendation the
 gate made eligible_for_harness, which needs improvement_policy.autonomous_mutation and
 modes.self_improvement: objective, intended semantic changes, protected behaviors, acceptance
@@ -789,6 +826,10 @@ const CLI_OPTIONS = {
   spec: { type: "string" },
   fixture: { type: "string" },
   from: { type: "string" },
+  mode: { type: "string" },
+  "harness-command": { type: "string" },
+  publish: { type: "string" },
+  previous: { type: "string" },
   to: { type: "string" },
   "explain-context": { type: "boolean" },
   "max-attempts": { type: "string" },
@@ -947,6 +988,22 @@ export async function runCli(
       "--candidate and --strict are only supported by verify-pr.",
     );
   if (
+    (values.mode !== undefined ||
+      values.publish !== undefined ||
+      values.previous !== undefined) &&
+    positionals[0] !== "harness"
+  )
+    throw new Error(
+      "--mode, --publish and --previous are only supported by harness.",
+    );
+  if (
+    values["harness-command"] !== undefined &&
+    !["harness", "repair", "rules"].includes(positionals[0] ?? "")
+  )
+    throw new Error(
+      "--harness-command is only supported by harness run, repair propose and rules discover.",
+    );
+  if (
     (values.from !== undefined ||
       values.to !== undefined ||
       values["explain-context"] !== undefined) &&
@@ -1003,7 +1060,8 @@ export async function runCli(
     );
   if (positionals[0] === "counterexamples")
     return runCounterexamples(positionals, values, cwd);
-  if (positionals[0] === "harness") return runHarness(positionals, values, cwd);
+  if (positionals[0] === "harness")
+    return runHarness(positionals, values, cwd, configured?.config ?? null);
   if (positionals[0] === "gate")
     return runGate(
       positionals,
@@ -4429,6 +4487,19 @@ const ModelFixturesSchema = z.array(
   }),
 );
 
+/** The command of `model_provider.provider: command`: from the environment variable the config names. */
+function commandFromConfig(
+  config: PathCompilerConfig["model_provider"],
+): string[] {
+  const name = config.command_env as string;
+  const value = process.env[name];
+  if (!value)
+    throw new Error(
+      `model_provider.provider is command but $${name} is not set. Export the command of your harness there; it is never read from pathcompiler.yaml.`,
+    );
+  return parseCommandLine(value);
+}
+
 /** The configured provider; keys come only from the environment. */
 async function configuredModelProvider(
   config: PathCompilerConfig["model_provider"],
@@ -4465,6 +4536,11 @@ async function configuredModelProvider(
         apiKey: key(DEFAULT_OPENAI_KEY_ENV) as string,
         model: model(),
         ...(config.base_url ? { baseUrl: config.base_url } : {}),
+      });
+    case "command":
+      return createCommandModelProvider({
+        argv: commandFromConfig(config),
+        ...(config.timeout_ms ? { timeoutMs: config.timeout_ms } : {}),
       });
     case "local": {
       const apiKey = key(undefined);
@@ -5436,9 +5512,16 @@ async function runHarness(
   positionals: string[],
   values: Values,
   cwd: string,
+  cwdConfig: PathCompilerConfig | null,
 ): Promise<string> {
   if (positionals[1] === "import")
     return runHarnessImport(positionals, values, cwd);
+  if (
+    ["run", "runs", "status", "approve", "reject"].includes(
+      positionals[1] ?? "",
+    )
+  )
+    return runHarnessRuns(positionals, values, cwd, cwdConfig);
   const [, sub, recommendationId, baseCommit, ...rest] = positionals;
   if (sub !== "task" || !recommendationId || !baseCommit || rest.length > 0)
     throw new Error(
@@ -5496,6 +5579,251 @@ async function runHarness(
     `Task: ${path.join(output, file)}`,
     "The harness's result is evaluated independently (pathcompiler evaluate); its claims are never trusted.",
   ].join("\n")}\n`;
+}
+
+/** The harness command: a flag, or the environment variable the config names; never the repository's file. */
+function harnessCommand(
+  values: Values,
+  envName: string,
+  fallbackEnv?: string,
+): string[] {
+  const text =
+    values["harness-command"] ??
+    process.env[envName] ??
+    (fallbackEnv ? process.env[fallbackEnv] : undefined);
+  if (!text)
+    throw new Error(
+      `No harness command. Pass --harness-command "<command>" or set $${envName}. The command is never read from pathcompiler.yaml: a repository's configuration must not choose what to run.`,
+    );
+  return parseCommandLine(text);
+}
+
+function formatRun(run: RunRecord, output: string, repo: string): string {
+  const lines = [
+    `Run ${run.runId} (${run.mode} mode): ${run.state.toUpperCase().replace(/_/g, " ")}`,
+  ];
+  lines.push(`  Task ${run.taskId} at ${run.baseCommit.slice(0, 12)}`);
+  if (run.result)
+    lines.push(
+      `  Harness: ${run.result.status}. ${run.result.implementationSummary}`,
+    );
+  if (run.candidateCommit && run.stats)
+    lines.push(
+      `  Candidate: ${run.branch} @ ${run.candidateCommit.slice(0, 12)} (${run.stats.files} file(s), ${run.stats.changedLines} line(s))`,
+    );
+  if (run.checks?.length)
+    lines.push(
+      `  Checks: ${run.checks.map((item) => `${item.command} ${item.passed ? "passed" : "FAILED"}`).join("; ")}`,
+    );
+  if (run.assessment) {
+    lines.push(`  Assessment: ${run.assessment.verdict}`);
+    for (const item of run.assessment.reasons)
+      lines.push(
+        `    ${item.verdict === "fail" ? "✗" : "⚠"} ${item.source}: ${item.message}`,
+      );
+    lines.push(
+      `    product-model evaluation: ${run.assessment.evaluation.applied ? run.assessment.evaluation.status : `not applied (${run.assessment.evaluation.reason})`}; behavior check: ${run.assessment.behavior.applied ? run.assessment.behavior.verdict : `not applied (${run.assessment.behavior.reason})`}`,
+    );
+  }
+  if (run.decision)
+    lines.push(
+      `  Decision (${run.decision.by}): ${run.decision.action.replace(/_/g, " ")}. ${run.decision.reasons.join(" ")}`,
+    );
+  if (run.publish)
+    lines.push(
+      `  Published: ${run.publish.target} ${run.publish.url ?? `${run.publish.remote}/${run.publish.branch}`}`,
+    );
+  const next = {
+    awaiting_run_approval: `Start it: pathcompiler harness approve ${run.runId} ${repo} --by <you>   Decline: harness reject ${run.runId} ${repo} --by <you> --reason <text>`,
+    awaiting_approval: `Review ${path.join(runDirectory(output, run.runId), "report.md")} and the branch ${run.branch}, then: pathcompiler harness approve ${run.runId} ${repo} --by <you> [--publish branch|pull_request]   or   harness reject ${run.runId} ${repo} --by <you> --reason <text>`,
+    approved: `Publishing did not complete; try again: pathcompiler harness approve ${run.runId} ${repo} --by <you>`,
+    published: "Nothing is merged or deployed. Merge it yourself after review.",
+    rejected: "Nothing was published.",
+    no_candidate:
+      "There is no candidate. A blocked harness is a valid outcome: read its questions.",
+    error:
+      "The run could not be completed; see the history with harness status.",
+    running: "",
+  }[run.state];
+  if (next) lines.push(next);
+  return `${lines.join("\n")}\n`;
+}
+
+async function runHarnessRuns(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+  cwdConfig: PathCompilerConfig | null,
+): Promise<string> {
+  const [, sub, first, second, ...rest] = positionals;
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const usage = new Error(
+    "Expected: pathcompiler harness run <task-id|task.json> [directory], harness runs [directory], harness status <run-id> [directory], harness approve <run-id> [directory] --by <name>, or harness reject <run-id> [directory] --by <name> --reason <text>. Use --help for options.",
+  );
+  if (rest.length > 0) throw usage;
+  if (sub === "runs") {
+    if (second) throw usage;
+    const runs = await listRuns(output);
+    if (values.json) return `${JSON.stringify(runs, null, 2)}\n`;
+    return runs.length === 0
+      ? `No harness runs under ${path.join(output, "harness", "runs")}.\n`
+      : `${runs.map((run) => `${run.runId} ${run.state} (${run.mode}) task ${run.taskId}${run.candidateCommit ? ` @ ${run.candidateCommit.slice(0, 12)}` : ""}`).join("\n")}\n`;
+  }
+  if (!first) throw usage;
+  const repo = path.resolve(
+    cwd,
+    sub === "run" ? (second ?? ".") : (second ?? "."),
+  );
+  if (sub === "status") {
+    const run = await loadRun(output, first);
+    if (values.json) return `${JSON.stringify(run, null, 2)}\n`;
+    return `${formatRun(run, output, second ?? ".")}${run.history.map((item) => `  ${item.at} ${item.event}${item.by ? ` (${item.by})` : ""}: ${item.detail}`).join("\n")}\n`;
+  }
+
+  // Everything below can change a repository or publish: it needs the configuration.
+  const loaded =
+    (await loadConfig(repo)) ?? (cwdConfig ? { config: cwdConfig } : null);
+  if (!loaded)
+    throw new Error(
+      `harness ${sub} needs pathcompiler.yaml in ${repo} (or the current directory) with modes.self_improvement: true; see the harness section of the README.`,
+    );
+  const config = loaded.config;
+  if (!config.modes.self_improvement)
+    throw new Error(
+      "The harness changes code, which is mode 6: set modes.self_improvement: true in pathcompiler.yaml.",
+    );
+  const mode = values.mode === undefined ? config.harness.mode : values.mode;
+  if (mode !== "approval" && mode !== "automatic")
+    throw new Error("--mode must be approval or automatic.");
+  const agentFor = (): CodingAgent =>
+    commandAgent(harnessCommand(values, config.harness.command_env), {
+      id: "command",
+    });
+  const deps: PipelineDeps = {
+    repo,
+    output,
+    policy: config.harness,
+    improvement: {
+      autonomousMutation: config.improvement_policy.autonomous_mutation,
+      maxAutonomousMutations:
+        config.improvement_policy.max_autonomous_mutations,
+    },
+    baseBranch: config.repository.default_branch,
+    agent: agentFor,
+    evaluate: async ({
+      task,
+      result,
+      base,
+      candidate,
+    }): Promise<EvaluationSummary> => {
+      let range: Awaited<ReturnType<typeof analyzeCommitRangeDetailed>>;
+      try {
+        range = await analyzeCommitRangeDetailed({
+          directory: repo,
+          base,
+          head: candidate,
+          exclude: values.exclude ?? [],
+        });
+      } catch (error) {
+        if (/No supported Next\.js/.test((error as Error).message))
+          return {
+            applied: false,
+            reason:
+              "the repository is not a Next.js App Router application PathCompiler can model",
+          };
+        throw error;
+      }
+      const solver = await createZ3SolverProvider();
+      try {
+        const evaluation = await evaluateCandidate(range, solver, {
+          criteria: evaluationCriteria(task, result),
+          approved: await readApproved(output),
+        });
+        return {
+          applied: true,
+          status: evaluation.status,
+          risks: evaluation.risks.map((item) => item.message),
+          warnings: evaluation.warnings.map((item) => item.message),
+          nextStep: evaluation.recommendedNextStep,
+        };
+      } finally {
+        await solver.close();
+      }
+    },
+    behavior: async ({ base, candidate }) => {
+      const solver = await createZ3SolverProvider();
+      try {
+        return await behaviorCheck({
+          repo,
+          base,
+          candidate,
+          options: { bindings: parseBindings(values.bind) },
+          exclude: values.exclude ?? [],
+          solver,
+        });
+      } finally {
+        await solver.close();
+      }
+    },
+    publisher: gitPublisher(),
+  };
+
+  if (sub === "run") {
+    // Resolve the command now, so a missing one is reported before anything starts.
+    agentFor();
+    const task = await (async () => {
+      const looksLikeFile =
+        first.endsWith(".json") ||
+        (await readOptional(path.resolve(cwd, first))) !== undefined;
+      if (looksLikeFile)
+        return parseHarnessTask(await readJsonFile(cwd, first, "harness task"));
+      const tasks = await readJsonRecords(
+        path.join(output, "harness", "tasks"),
+        (value) => parseHarnessTask(value),
+      );
+      const found = tasks.find((item) => item.record.id === first)?.record;
+      if (!found)
+        throw new Error(
+          `No exported task ${first} under ${path.join(output, "harness", "tasks")}; pass a task file, or create one with pathcompiler harness task.`,
+        );
+      return found;
+    })();
+    if (values.previous) await loadRun(output, values.previous);
+    const run = await startRun(deps, task, {
+      mode,
+      ...(values.previous ? { previousRunId: values.previous } : {}),
+    });
+    const text = formatRun(run, output, second ?? ".");
+    if (["rejected", "no_candidate", "error"].includes(run.state))
+      throw new Error(text);
+    return values.json ? `${JSON.stringify(run, null, 2)}\n` : text;
+  }
+  const by = reviewer(values.by);
+  const publish = values.publish;
+  if (
+    publish !== undefined &&
+    !["none", "branch", "pull_request"].includes(publish)
+  )
+    throw new Error("--publish must be none, branch or pull_request.");
+  const target = publish as "none" | "branch" | "pull_request" | undefined;
+  if (sub === "approve") {
+    // Approving the start needs the harness; say so before anything is recorded.
+    if ((await loadRun(output, first)).state === "awaiting_run_approval")
+      agentFor();
+    const run = await approveRun(deps, first, by, target ? { target } : {});
+    return values.json
+      ? `${JSON.stringify(run, null, 2)}\n`
+      : formatRun(run, output, second ?? ".");
+  }
+  if (sub === "reject") {
+    if (!values.reason)
+      throw new Error("harness reject needs --reason <text>.");
+    const run = await rejectRun(deps, first, by, values.reason);
+    return values.json
+      ? `${JSON.stringify(run, null, 2)}\n`
+      : formatRun(run, output, second ?? ".");
+  }
+  throw usage;
 }
 
 async function runHarnessImport(
@@ -5976,6 +6304,14 @@ async function configuredCompletion(
     throw new Error(
       "rules discover needs model_provider in pathcompiler.yaml (anthropic, openai or local). To use an external harness instead, run rules task, let the harness write RuleProposals.json, then rules import.",
     );
+  if (config.provider === "command")
+    return {
+      id: "command",
+      complete: commandCompletion({
+        argv: commandFromConfig(config),
+        ...(config.timeout_ms ? { timeoutMs: config.timeout_ms } : {}),
+      }),
+    };
   const name =
     config.api_key_env ??
     (config.provider === "anthropic"
@@ -6054,6 +6390,13 @@ async function runRules(
     const { id, complete } = await (async () => {
       if (values["explain-context"])
         return { id: "dry run", complete: undefined };
+      if (values["harness-command"])
+        return {
+          id: "harness command",
+          complete: commandCompletion({
+            argv: parseCommandLine(values["harness-command"]),
+          }),
+        };
       return configuredCompletion(modelConfig);
     })();
     const provider = completionRuleProvider(
@@ -6247,57 +6590,67 @@ async function runRepair(
     throw new Error(
       "Expected: pathcompiler repair propose [directory] --fixture <proposals.json>. Use --help for options.",
     );
-  if (!values.fixture)
+  if (!values.fixture && !values["harness-command"])
     throw new Error(
-      "repair propose needs a provider: pass --fixture <proposals.json>. No model adapter is wired into the CLI yet.",
+      'repair propose needs a provider: pass --harness-command "<command>" (your harness answers each repair request with JSON) or --fixture <proposals.json>.',
     );
   const attempts =
     values["max-attempts"] === undefined ? 3 : Number(values["max-attempts"]);
   if (!Number.isInteger(attempts) || attempts < 1 || attempts > 10)
     throw new Error("--max-attempts must be an integer from 1 to 10.");
   const directory = path.resolve(cwd, argument ?? ".");
-  const fixtureFile = path.resolve(cwd, values.fixture);
-  const fixture = (await readJsonFile(
-    cwd,
-    values.fixture,
-    "repair proposals",
-  )) as {
-    proposals?: {
-      edits?: { path?: string; content?: string; contentFile?: string }[];
-      rationale?: string;
-    }[];
-  };
-  if (!Array.isArray(fixture.proposals))
-    throw new Error(
-      `${values.fixture} must be a JSON object with a "proposals" array.`,
+  let provider: RepairProvider;
+  if (values["harness-command"]) {
+    provider = commandRepairProvider(
+      { argv: parseCommandLine(values["harness-command"]) },
+      "harness command",
     );
-  // A proposal may point at a file for its content, relative to the fixture.
-  const proposals = [];
-  for (const proposal of fixture.proposals)
-    proposals.push({
-      rationale: proposal.rationale,
-      edits: await Promise.all(
-        (proposal.edits ?? []).map(async (item) => ({
-          path: item.path,
-          content: item.contentFile
-            ? await readFile(
-                path.resolve(path.dirname(fixtureFile), item.contentFile),
-                "utf8",
-              )
-            : item.content,
-        })),
-      ),
-    });
+  } else {
+    const fixtureName = values.fixture as string;
+    const fixtureFile = path.resolve(cwd, fixtureName);
+    const fixture = (await readJsonFile(
+      cwd,
+      fixtureName,
+      "repair proposals",
+    )) as {
+      proposals?: {
+        edits?: { path?: string; content?: string; contentFile?: string }[];
+        rationale?: string;
+      }[];
+    };
+    if (!Array.isArray(fixture.proposals))
+      throw new Error(
+        `${fixtureName} must be a JSON object with a "proposals" array.`,
+      );
+    // A proposal may point at a file for its content, relative to the fixture.
+    const proposals = [];
+    for (const proposal of fixture.proposals)
+      proposals.push({
+        rationale: proposal.rationale,
+        edits: await Promise.all(
+          (proposal.edits ?? []).map(async (item) => ({
+            path: item.path,
+            content: item.contentFile
+              ? await readFile(
+                  path.resolve(path.dirname(fixtureFile), item.contentFile),
+                  "utf8",
+                )
+              : item.content,
+          })),
+        ),
+      });
+    provider = fixtureRepairProvider(
+      proposals,
+      `fixture ${path.basename(fixtureName)}`,
+    );
+  }
   const files = await readSourceFiles(directory, values.exclude ?? []);
   const solver = await createZ3SolverProvider();
   try {
     const report = await runRepairLoop({
       files,
       options: { bindings: parseBindings(values.bind) },
-      provider: fixtureRepairProvider(
-        proposals,
-        `fixture ${path.basename(values.fixture)}`,
-      ),
+      provider,
       solver,
       maxIterations: attempts,
       now: new Date().toISOString(),

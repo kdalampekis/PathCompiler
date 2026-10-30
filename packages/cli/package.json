@@ -35,6 +35,7 @@
     "@pathcompiler/experiment-core": "workspace:*",
     "@pathcompiler/findings": "workspace:*",
     "@pathcompiler/harness-contracts": "workspace:*",
+    "@pathcompiler/harness-runner": "workspace:*",
     "@pathcompiler/formal-abstraction": "workspace:*",
     "@pathcompiler/formal-model": "workspace:*",
     "@pathcompiler/git-intelligence": "workspace:*",
