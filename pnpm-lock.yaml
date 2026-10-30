@@ -178,6 +178,49 @@ importers:
         specifier: workspace:*
         version: link:../behavior-extraction
 
+  packages/agent-tools:
+    dependencies:
+      "@modelcontextprotocol/sdk":
+        specifier: 1.32.1
+        version: 1.32.1(zod@4.6.7)
+      "@pathcompiler/agent-gate":
+        specifier: workspace:*
+        version: link:../agent-gate
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
+      "@pathcompiler/behavior-ir":
+        specifier: workspace:*
+        version: link:../behavior-ir
+      "@pathcompiler/git-intelligence":
+        specifier: workspace:*
+        version: link:../git-intelligence
+      "@pathcompiler/harness-contracts":
+        specifier: workspace:*
+        version: link:../harness-contracts
+      "@pathcompiler/harness-runner":
+        specifier: workspace:*
+        version: link:../harness-runner
+      "@pathcompiler/pr-guard":
+        specifier: workspace:*
+        version: link:../pr-guard
+      "@pathcompiler/rule-discovery":
+        specifier: workspace:*
+        version: link:../rule-discovery
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      "@pathcompiler/verification":
+        specifier: workspace:*
+        version: link:../verification
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
+
   packages/analytics-sdk:
     dependencies:
       "@pathcompiler/observability-core":
@@ -340,6 +383,9 @@ importers:
       "@pathcompiler/agent-gate":
         specifier: workspace:*
         version: link:../agent-gate
+      "@pathcompiler/agent-tools":
+        specifier: workspace:*
+        version: link:../agent-tools
       "@pathcompiler/behavior-extraction":
         specifier: workspace:*
         version: link:../behavior-extraction

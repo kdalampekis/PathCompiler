@@ -5648,4 +5648,48 @@ because no specification exists for Python yet (BX13).
 
 - Heuristics are crude; the reviewer and the project's tests are not measured
   on real repositories (ISSUES_LOG #71).
-- Next: BX11, tools for harnesses (MCP, function-calling schemas, SDK).
+- Next: BX11 (done below), then BX12 (feedback and alignment datasets).
+
+## Expansion BX11 — Tools for harnesses
+
+Complete — verified locally on 2026-10-30. North star principle 5: every
+capability is reachable by a harness as a tool.
+
+- **`@pathcompiler/agent-tools`:** one registry of seven tools
+  (`pathcompiler_describe`, `_verify`, `_check_change`, `_check_action`,
+  `_rule_task`, `_submit_rules`, `_list_rules`), one `createToolbox().call()`
+  path that validates input and turns failures into readable messages.
+- **Adapters:** MCP server (`pathcompiler mcp-agent`), OpenAI and Anthropic
+  function-calling schemas (`tools list --format`), the TypeScript SDK, and
+  `tools call` for scripts.
+- **`_check_change`:** a self-check of the working tree (uncommitted work
+  included, new files included) against a base, using the base's approved rules,
+  the PR guard, diff risk signals and the safety checks. Returns what to fix,
+  what to consider and what was not checked. New runner helpers:
+  `workingTreeDiff`, `parseUnifiedDiff`, `mergeAssessment({needVouching})`.
+- **Read-only by default;** `_submit_rules` writes `spec/candidate-rules.json`
+  only with `--allow-write`.
+- Guide: [docs/HARNESS_TOOLS.md](../HARNESS_TOOLS.md). ADR 0098.
+
+### Results
+
+| Scenario | Outcome |
+| --- | --- |
+| Refund repository, clean working tree | nothing to fix |
+| Uncommitted support-agent fast path | `mustFix`: manager approval rule, with the values that break it; verdict `fail` |
+| Python repository, uncommitted guard removal | `consider`: removed guard; `behaviorCheck.applied: false` with the reason; verdict `review` |
+| Rule submission with an out-of-range evidence line | rejected with the reason; corrected resubmission accepted |
+| Dry run versus `--allow-write` | no file versus `spec/candidate-rules.json` |
+| MCP over stdio via the built CLI (real client) | 7 tools listed; `describe` answered |
+
+### Verification
+
+736 unit tests passed across 121 files; checks run: lint, typecheck, build,
+unit tests (new: 10 in `agent-tools`, 3 in the CLI) and e2e (50 passed).
+
+### Scope notes
+
+- `_check_change` does not run the project's tests (the harness does).
+- The behavior check is only as strong as the specification: none exists for
+  Python or Go until a harness submits rules (BX13).
+- Calls are not recorded for datasets yet (BX12).

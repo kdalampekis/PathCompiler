@@ -1,0 +1,88 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import {
+  CandidateRulesFileSchema,
+  type ExtractionResult,
+  extractBehavior,
+  readSourceFiles,
+  type SourceFile,
+} from "@pathcompiler/behavior-extraction";
+import { git, headCommit } from "@pathcompiler/harness-runner";
+import { emptyCandidates } from "@pathcompiler/rule-discovery";
+import type { SolverProvider } from "@pathcompiler/solver-provider";
+
+/**
+ * What a tool sees. The workspace is a local directory, usually a repository a
+ * harness is working in. Tools read it and never leave it; the only writes are
+ * the two explicit ones (candidate rules, feedback) and only when `allowWrite`.
+ */
+export type ToolContext = {
+  /** The repository (or any directory) the tools look at. */
+  directory: string;
+  allowWrite?: boolean;
+  /** `payment=payments`: which entity or operation a code identifier belongs to. */
+  bindings?: Record<string, string>;
+  exclude?: readonly string[];
+  /** Creates the solver on first use; the toolbox closes it. */
+  solver: () => Promise<SolverProvider>;
+  now?: () => Date;
+};
+
+export const CANDIDATE_FILE = "spec/candidate-rules.json";
+
+export type Workspace = {
+  files: SourceFile[];
+  extraction: ExtractionResult;
+  commit: string | null;
+  candidates: ReturnType<typeof emptyCandidates>;
+};
+
+/** The workspace as it is now, working-tree changes included. */
+export async function loadWorkspace(context: ToolContext): Promise<Workspace> {
+  const files = await readSourceFiles(context.directory, context.exclude ?? []);
+  const commit = await headCommit(context.directory).catch(() => null);
+  const extraction = extractBehavior(files, {
+    bindings: context.bindings ?? {},
+    id: "behavior",
+    repositoryCommit: commit,
+  });
+  let candidates = emptyCandidates();
+  try {
+    candidates = CandidateRulesFileSchema.parse(
+      JSON.parse(
+        await readFile(path.join(context.directory, CANDIDATE_FILE), "utf8"),
+      ),
+    );
+  } catch {
+    // None yet.
+  }
+  return { files, extraction, commit, candidates };
+}
+
+/** Reads a file inside the workspace; anything outside it, or missing, is undefined. */
+export function workspaceLoader(directory: string) {
+  const root = path.resolve(directory);
+  return async (relative: string): Promise<string | undefined> => {
+    const target = path.resolve(root, relative);
+    if (target !== root && !target.startsWith(`${root}${path.sep}`))
+      return undefined;
+    try {
+      const content = await readFile(target, "utf8");
+      return content.length <= 2_000_000 ? content : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+}
+
+export async function commitExists(
+  directory: string,
+  sha: string,
+): Promise<boolean> {
+  try {
+    await git(directory, ["cat-file", "-e", `${sha}^{commit}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}

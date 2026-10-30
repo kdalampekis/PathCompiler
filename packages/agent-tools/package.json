@@ -1,0 +1,36 @@
+{
+  "name": "@pathcompiler/agent-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@pathcompiler/agent-gate": "workspace:*",
+    "@pathcompiler/behavior-extraction": "workspace:*",
+    "@pathcompiler/behavior-ir": "workspace:*",
+    "@pathcompiler/git-intelligence": "workspace:*",
+    "@pathcompiler/harness-contracts": "workspace:*",
+    "@pathcompiler/harness-runner": "workspace:*",
+    "@pathcompiler/pr-guard": "workspace:*",
+    "@pathcompiler/rule-discovery": "workspace:*",
+    "@pathcompiler/solver-provider": "workspace:*",
+    "@pathcompiler/verification": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@pathcompiler/solver-z3": "workspace:*"
+  }
+}

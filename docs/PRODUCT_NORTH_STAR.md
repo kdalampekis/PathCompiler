@@ -69,11 +69,11 @@ Honest status; the work is tracked as BX10–BX14 below.
 
 | Capability | Any stack? | Harness-callable? | Feeds datasets? |
 | --- | --- | --- | --- |
-| Rule extraction | Partly: SQL, OpenAPI, JSON/YAML contracts are stack-neutral; Zod, test assertions and guard clauses are TypeScript only. Harness route (rule discovery) covers any stack. | CLI only | no |
-| Verification (the IR) | Yes: the IR and solver do not know the language | CLI only | no |
-| PR guard / change check | Only as good as the rules the specification holds for that stack | CLI only; no tool for a harness working on uncommitted changes | no |
+| Rule extraction | Partly: SQL, OpenAPI, JSON/YAML contracts are stack-neutral; Zod, test assertions and guard clauses are TypeScript only. Harness route (rule discovery) covers any stack. | **Yes (BX11)**: `_describe`, `_rule_task`, `_submit_rules`, `_list_rules` | no |
+| Verification (the IR) | Yes: the IR and solver do not know the language | **Yes (BX11)**: `_verify` | no |
+| PR guard / change check | Only as good as the rules the specification holds for that stack | **Yes (BX11)**: `pathcompiler_check_change` self-checks uncommitted work (MCP, function calling, SDK, CLI) | no |
 | Harness run assessment | **Yes (BX10)**: project checks of any ecosystem compared with the base, risk signals from the diff, an independent reviewer, configurable vouching. Business rules are checked only where a specification exists (BX13 extends that). | CLI | no |
-| Action gate | Yes (concrete values) | library, CLI; no MCP or function-calling schema | no |
+| Action gate | Yes (concrete values) | **Yes (BX11)**: `pathcompiler_check_action` | no |
 | Answer check before rendering | **Not built** | no | no |
 | Agentic software (tool definitions, prompts, policies) | **Not built** | no | no |
 | Business documents as a rule source | Evidence type exists; not wired into discovery | no | no |
@@ -102,7 +102,7 @@ Honest status; the work is tracked as BX10–BX14 below.
 | Phase | What | Why (benefit) |
 | --- | --- | --- |
 | BX10 | Stack-neutral change assessment: ecosystem detection and project checks compared at base and candidate, language-agnostic diff risk analysis, an independent reviewer role, and an explicit, configurable rule for what counts as independent | A change in any repository gets a meaningful verdict, so `harness run` and automatic mode work everywhere |
-| BX11 | Tools for harnesses: one provider-neutral registry exposed as an MCP server, function-calling schemas, an SDK and the CLI, including a self-check a harness runs on its uncommitted work | Harnesses with local code access call our checks while they work and get corrections |
+| BX11 (done) | Tools for harnesses: one provider-neutral registry exposed as an MCP server, function-calling schemas, an SDK and the CLI, including a self-check a harness runs on its uncommitted work | Harnesses with local code access call our checks while they work and get corrections |
 | BX12 | Feedback capture by agent wrappers and dataset export (supervised, preferences, verifiable rewards, evals) with a dataset card and redaction | The moat in the architecture: accepted and rejected agent behavior becomes alignment and post-training data |
 | BX13 | Agentic software and business documents as rule sources; operation contracts proposed by a harness for any language; answer check before rendering | The rules apply to LLM answers and tool use, and to codebases we have no parser for |
 | BX14 | Packaging: public package metadata, an installable CLI and SDK, install and embed docs | People can download and embed it (needs your decision on names and license) |

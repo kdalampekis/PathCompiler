@@ -31,6 +31,13 @@ import {
   type RecordedAction,
 } from "@pathcompiler/agent-gate";
 import {
+  TOOLS as AGENT_TOOLS,
+  createToolbox,
+  serveAgentToolsStdio,
+  toAnthropicTools,
+  toOpenAITools,
+} from "@pathcompiler/agent-tools";
+import {
   CandidateRulesFileSchema,
   type ExtractionResult,
   extractBehavior,
@@ -404,6 +411,9 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
        pathcompiler mcp-reasoning [directory] [--model <json-file>]
+       pathcompiler mcp-agent [directory] [--allow-write] [--bind <name>=<entity> ...] [--exclude <directory> ...]
+       pathcompiler tools list [--format text|json|openai|anthropic]
+       pathcompiler tools call <name> [directory] [--input '<json>'] [--allow-write] [--bind <name>=<entity> ...]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events] [--allow-origin <origin> ...]
        pathcompiler observe graph|workflows|transitions [--release <id>] [--json] [--out <directory>]
        pathcompiler observe check <goal> [--at-least <p> | --at-most <p>] [--baseline <release>] [--release <id>] [--json] [--out <directory>]
@@ -606,7 +616,12 @@ Developer reasoning: with PATHCOMPILER_DEVELOPER_TOKEN set (16+ characters, diff
 API and ingest tokens), serve adds POST /v1/reason/<operation> (reachability, why-unreachable,
 plan, alternatives, verify-property, minimal-enablement, dead-features) over the working
 directory's model or --model. Only the developer token is accepted there, and it is refused
-everywhere else. mcp-reasoning serves the same operations as a separate developer MCP server on
+everywhere else. mcp-agent serves tools for harnesses and agents with local access to a
+repository (pathcompiler_describe, verify, check_change, check_action, rule_task, submit_rules,
+list_rules) over stdio; any MCP client can use them, in any language. check_change checks the
+working tree, committed or not, against a base so a harness learns what it broke before it
+finishes. submit_rules is a dry run unless --allow-write. tools list --format openai|anthropic
+prints function-calling schemas; tools call runs one tool from a script. mcp-reasoning serves the same operations as a separate developer MCP server on
 stdio (pathcompiler.check_reachability, explain_unreachable, find_plan, list_alternative_paths,
 verify_product_property, minimal_enablement, dead_features). Results are product-semantic; solver
 statistics are removed. With pathcompiler.yaml both need reasoning.enabled.
@@ -856,6 +871,8 @@ const CLI_OPTIONS = {
   impact: { type: "string" },
   "at-most": { type: "string" },
   baseline: { type: "string" },
+  input: { type: "string" },
+  "allow-write": { type: "boolean" },
 } as const;
 const parse = (args: string[]) =>
   parseArgs({
@@ -974,6 +991,27 @@ export async function runCli(
     throw new Error("--setup is only supported by tests generate.");
   if (positionals[0] === "tests" && positionals[1] === "generate")
     return runGenerateTests(positionals, values, cwd);
+  if (
+    (values.input !== undefined || values["allow-write"] !== undefined) &&
+    positionals[0] !== "tools" &&
+    positionals[0] !== "mcp-agent"
+  )
+    throw new Error(
+      "--input and --allow-write are only supported by tools call and mcp-agent.",
+    );
+  if (positionals[0] === "mcp-agent") {
+    if (positionals.length > 2)
+      throw new Error(
+        "Expected: pathcompiler mcp-agent [directory] [--allow-write] [--bind <name>=<entity> ...]. Use --help for options.",
+      );
+    const toolbox = agentToolbox(positionals[1], values, cwd);
+    await serveAgentToolsStdio(toolbox);
+    process.stderr.write(
+      `PathCompiler tools for harnesses ready on stdio (${AGENT_TOOLS.length} tools${values["allow-write"] ? ", writes allowed" : ", read-only"}).\n`,
+    );
+    return "";
+  }
+  if (positionals[0] === "tools") return runTools(positionals, values, cwd);
   if (positionals[0] === "mcp-reasoning") {
     if (positionals.length > 2)
       throw new Error(
@@ -6963,6 +7001,72 @@ function formatDecision(decision: ActionDecision): string {
     );
   for (const item of decision.warnings) lines.push(`  note: ${item}`);
   return `${lines.join("\n")}\n`;
+}
+
+function agentToolbox(
+  directory: string | undefined,
+  values: Values,
+  cwd: string,
+) {
+  return createToolbox({
+    directory: path.resolve(cwd, directory ?? "."),
+    allowWrite: values["allow-write"] === true,
+    bindings: parseBindings(values.bind),
+    exclude: values.exclude ?? [],
+    solver: () => createZ3SolverProvider(),
+  });
+}
+
+/** The tools a harness calls, for listing, schemas and one-off calls. */
+async function runTools(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, sub, name, directory, ...rest] = positionals;
+  if (sub === "list" && name === undefined && values.input === undefined) {
+    const format = values.format?.[0] ?? "text";
+    if (format === "openai")
+      return `${JSON.stringify(toOpenAITools(), null, 2)}\n`;
+    if (format === "anthropic")
+      return `${JSON.stringify(toAnthropicTools(), null, 2)}\n`;
+    if (format !== "text" && format !== "json")
+      throw new Error("--format must be text, json, openai or anthropic.");
+    if (format === "json")
+      return `${JSON.stringify(
+        AGENT_TOOLS.map((tool) => ({
+          name: tool.name,
+          title: tool.title,
+          description: tool.description,
+          readOnly: tool.readOnly,
+        })),
+        null,
+        2,
+      )}\n`;
+    return `${AGENT_TOOLS.map((tool) => `${tool.name}${tool.readOnly ? "" : " (can write)"}\n  ${tool.description}`).join("\n\n")}\n`;
+  }
+  if (sub === "call" && name && rest.length === 0) {
+    let input: unknown = {};
+    if (values.input !== undefined)
+      try {
+        input = JSON.parse(values.input);
+      } catch {
+        throw new Error(
+          '--input must be a JSON object, for example --input \'{"operation":"refund"}\'.',
+        );
+      }
+    const toolbox = agentToolbox(directory, values, cwd);
+    try {
+      const outcome = await toolbox.call(name, input);
+      if (!outcome.ok) throw new Error(outcome.error);
+      return `${outcome.summary}\n\n${JSON.stringify(outcome.data, null, 2)}\n`;
+    } finally {
+      await toolbox.close();
+    }
+  }
+  throw new Error(
+    "Expected: pathcompiler tools list [--format text|json|openai|anthropic], or tools call <name> [directory] [--input '<json>'] [--allow-write] [--bind <name>=<entity> ...]. Use --help for options.",
+  );
 }
 
 function parseBindings(entries: readonly string[] | undefined) {

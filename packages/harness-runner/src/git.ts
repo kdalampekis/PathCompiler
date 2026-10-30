@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
@@ -92,49 +94,11 @@ export type DiffStats = {
   changedLines: number;
 };
 
-/** Everything that differs from `base` in the worktree, committed or not. */
-export async function diffAgainst(
-  worktree: string,
-  base: string,
-): Promise<DiffStats> {
-  await git(worktree, ["add", "-A"]);
-  const names = await git(worktree, [
-    "diff",
-    "--cached",
-    "--name-status",
-    "--no-renames",
-    base,
-  ]);
-  const files = names
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [status = "M", ...rest] = line.split("\t");
-      return {
-        status: status.charAt(0) as ChangedFile["status"],
-        path: rest.join("\t"),
-      };
-    });
-  const stat = await git(worktree, [
-    "diff",
-    "--cached",
-    "--numstat",
-    "--no-renames",
-    base,
-  ]);
-  let changedLines = 0;
-  for (const line of stat.split("\n").filter(Boolean)) {
-    const [added = "0", removed = "0"] = line.split("\t");
-    changedLines += (Number(added) || 0) + (Number(removed) || 0);
-  }
-  const patch = await git(worktree, [
-    "diff",
-    "--cached",
-    "--unified=0",
-    "--no-renames",
-    "--no-color",
-    base,
-  ]);
+/** The line-level view of a unified diff (`--unified=0`). */
+export function parseUnifiedDiff(patch: string): {
+  added: AddedLine[];
+  removed: RemovedLine[];
+} {
   const added: AddedLine[] = [];
   const removed: RemovedLine[] = [];
   let file = "";
@@ -170,7 +134,119 @@ export async function diffAgainst(
       previous += 1;
     }
   }
-  return { files, added, removed, changedLines };
+  return { added, removed };
+}
+const parseNameStatus = (output: string): ChangedFile[] =>
+  output
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [status = "M", ...rest] = line.split("\t");
+      return {
+        status: status.charAt(0) as ChangedFile["status"],
+        path: rest.join("\t"),
+      };
+    });
+const sumNumstat = (output: string) => {
+  let total = 0;
+  for (const line of output.split("\n").filter(Boolean)) {
+    const [added = "0", removed = "0"] = line.split("\t");
+    total += (Number(added) || 0) + (Number(removed) || 0);
+  }
+  return total;
+};
+
+/** Everything that differs from `base` in the worktree, committed or not. Stages the worktree. */
+export async function diffAgainst(
+  worktree: string,
+  base: string,
+): Promise<DiffStats> {
+  await git(worktree, ["add", "-A"]);
+  const files = parseNameStatus(
+    await git(worktree, [
+      "diff",
+      "--cached",
+      "--name-status",
+      "--no-renames",
+      base,
+    ]),
+  );
+  const changedLines = sumNumstat(
+    await git(worktree, [
+      "diff",
+      "--cached",
+      "--numstat",
+      "--no-renames",
+      base,
+    ]),
+  );
+  const patch = await git(worktree, [
+    "diff",
+    "--cached",
+    "--unified=0",
+    "--no-renames",
+    "--no-color",
+    base,
+  ]);
+  return { files, ...parseUnifiedDiff(patch), changedLines };
+}
+
+/**
+ * The same view for a working tree you are editing: tracked changes (staged or
+ * not) against `base`, plus untracked files as additions. It reads; it does
+ * not stage, stash or otherwise touch the repository.
+ */
+export async function workingTreeDiff(
+  repo: string,
+  base: string,
+  options: { maxUntracked?: number; maxBytes?: number } = {},
+): Promise<DiffStats & { patch: string; patchTruncated: boolean }> {
+  const files = parseNameStatus(
+    await git(repo, ["diff", "--name-status", "--no-renames", base]),
+  );
+  let changedLines = sumNumstat(
+    await git(repo, ["diff", "--numstat", "--no-renames", base]),
+  );
+  const zero = await git(repo, [
+    "diff",
+    "--unified=0",
+    "--no-renames",
+    "--no-color",
+    base,
+  ]);
+  const parsed = parseUnifiedDiff(zero);
+  const added = [...parsed.added];
+  const untracked = (
+    await git(repo, ["ls-files", "--others", "--exclude-standard"])
+  )
+    .split("\n")
+    .filter(Boolean)
+    .slice(0, options.maxUntracked ?? 200);
+  for (const name of untracked) {
+    const text = await readFile(path.join(repo, name), "utf8").catch(
+      () => undefined,
+    );
+    if (
+      text === undefined ||
+      text.length > (options.maxBytes ?? 200_000) ||
+      text.includes("\u0000")
+    )
+      continue;
+    files.push({ status: "A", path: name });
+    const lines = text.split("\n");
+    for (const [index, line] of lines.entries())
+      added.push({ path: name, line: index + 1, text: line });
+    changedLines += lines.length;
+  }
+  const full = await git(repo, ["diff", "--no-renames", "--no-color", base]);
+  return {
+    files,
+    added,
+    removed: parsed.removed,
+    changedLines,
+    patch: full.slice(0, 60_000),
+    patchTruncated: full.length > 60_000,
+  };
 }
 
 export async function commitAll(

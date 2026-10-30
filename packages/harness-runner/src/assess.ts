@@ -97,6 +97,11 @@ export function mergeAssessment(input: {
   independent?: readonly Source[];
   /** Sources that must have passed. */
   require?: readonly Source[];
+  /**
+   * False for a self-check while the work is still in progress, where "nothing
+   * vouched yet" is not a finding. Default true.
+   */
+  needVouching?: boolean;
 }): Assessment {
   const reasons: Assessment["reasons"] = [];
   const notes: string[] = [];
@@ -258,7 +263,7 @@ export function mergeAssessment(input: {
     : reasons.length > 0
       ? "review"
       : null;
-  if (!hardened && vouchedBy.length === 0)
+  if (!hardened && vouchedBy.length === 0 && input.needVouching !== false)
     add(
       "assessment",
       "review",
