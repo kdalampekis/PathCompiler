@@ -5281,3 +5281,57 @@ agent traffic.
 - Not built: an HTTP or MCP adapter for the gate, temporal rules, building
   the request's state from a live system (the caller supplies it).
 - Next: BX6 — counterexample to regression eval.
+
+## Expansion BX6 — Counterexample to regression eval
+
+Complete — verified locally on 2026-10-30.
+
+- **New `@pathcompiler/counterexamples`:** record format with a content-hash
+  ID, a file store (idempotent, validated IDs, `resolveCounterexample`), an
+  eval generator (reproduction, same-rule variants, still-allowed
+  neighbors, labeled by the trusted specification), `runEval` with
+  `contractExecutor` or any adapter, and `runSpecEval`.
+- **CLI `counterexamples list | record | eval | run`;** `verify-pr` stores new
+  violations automatically.
+- Recorded in ADR 0093.
+
+### Results on the refund fixture
+
+The support-agent fast path yields an eval of 13 cases. It **fails** on the
+violating code, on the contract extracted from it and on the verifier
+(`VIOLATED`), and **passes** on the repaired code, its contract and the
+verifier (`VERIFIED`). The behavior-preserving refactor passes. The stricter
+limit passes and its stricter neighbors are reported as over-restrictive (a
+failure only with `--strict-neighbors`). An executor that rejects everything
+passes by default but every neighbor is reported, and fails with
+`--strict-neighbors`.
+
+Recurrence (RQ5) is not measured: that needs the evals re-run across later
+commits of a real repository, which is C6 work.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 633 tests passed across 111 suites (all 111 test files; 7 counterexample and 2 CLI counterexample tests are new) |
+
+### Errors found during the phase
+
+- Importing the evaluation runner into the CLI collided with its existing
+  `runEval` (a different command); the import is aliased.
+- A first design made neighbors required, which would have failed the
+  legitimate stricter limit; they are now advisory unless requested.
+- The full suite failed twice on the CLI HTTP API test (30 s timeout under
+  parallel load, 11 s alone). Not a logic error; its timeout is now 120 s
+  (ISSUES_LOG #49).
+- A test-only type import needed `solver-provider` declared as a
+  devDependency; the root typecheck caught it.
+
+### Scope notes
+
+- Not built: automatic re-running of stored evals on new commits, evals for
+  temporal rules, variants that change several values together.
+- Next: BX7 — conservative repair loop prototype.

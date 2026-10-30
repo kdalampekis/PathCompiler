@@ -29,6 +29,7 @@
     "@pathcompiler/behavior-ir": "workspace:*",
     "@pathcompiler/capability-engine": "workspace:*",
     "@pathcompiler/config": "workspace:*",
+    "@pathcompiler/counterexamples": "workspace:*",
     "@pathcompiler/diagnostics": "workspace:*",
     "@pathcompiler/evaluation": "workspace:*",
     "@pathcompiler/experiment-core": "workspace:*",

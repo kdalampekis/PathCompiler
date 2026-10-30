@@ -1508,6 +1508,21 @@ only knows the rules in the specification; `agent eval` reports the unsafe
 actions it misses. See
 [ADR 0092](docs/decisions/0092-agent-action-gate.md).
 
+A counterexample is kept and becomes a **regression eval**:
+
+```bash
+pnpm pathcompiler counterexamples list
+pnpm pathcompiler counterexamples eval <id> --spec <trusted behavior-spec.json>
+pnpm pathcompiler counterexamples run  <eval.json> --spec <candidate behavior-spec.json>
+```
+
+`verify-pr` stores the counterexample of each new violation. The eval holds
+the counterexample, nearby actions that break the same rule and nearby actions
+that must still be allowed, so a fix that handles only the exact values, or
+one that rejects everything, is visible. It fails the violating candidate and
+passes after a verified repair. See
+[ADR 0093](docs/decisions/0093-counterexamples-as-regression-evals.md).
+
 BehaviorIR describes what the system does (transitions, operations), what the
 specification requires (invariants, permissions, temporal rules, data
 policies, business rules) and how far to trust each requirement. Rules use a

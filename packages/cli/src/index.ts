@@ -71,6 +71,17 @@ import {
   reasoningEnabled,
 } from "@pathcompiler/config";
 import {
+  contractExecutor,
+  createRecord,
+  generateEval,
+  listCounterexamples,
+  type RegressionEval,
+  readCounterexample,
+  recordCounterexample,
+  runEval as runRegressionEval,
+  runSpecEval,
+} from "@pathcompiler/counterexamples";
+import {
   createFileCache,
   createJsonLogger,
   type Logger,
@@ -254,8 +265,10 @@ import {
 import { minePlaywrightTests } from "@pathcompiler/test-miner-playwright";
 import { clusterTraces } from "@pathcompiler/trace-clustering";
 import {
+  type Counterexample,
   createSmtVerifier,
   createVerificationRouter,
+  type RuleBasis,
   type VerificationReport,
   verifySpec,
 } from "@pathcompiler/verification";
@@ -357,6 +370,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler memory list [--json] [--out <directory>]
        pathcompiler behavior export [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler verify-pr --base <ref> --candidate <ref> [directory] [--bind <name>=<entity> ...] [--strict] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler counterexamples list|record <report.json>|eval <id> --spec <behavior-spec.json>|run <eval.json> --spec <behavior-spec.json> [--strict-neighbors] [--json] [--out <directory>]
        pathcompiler agent check <behavior-spec.json> --request <action.json> [--enforce all|approved_only] [--on-unknown block|allow] [--json]
        pathcompiler agent eval <behavior-spec.json> --cases <labeled-actions.json> [--json]
        pathcompiler behavior extract [directory] [--bind <name>=<entity> ...] [--commit <sha>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -600,6 +614,13 @@ rule of which carries provenance (source type, explicit/inferred/human-approved,
 method, confidence). behavior validate checks a specification file (references, scopes, types,
 mandatory provenance) and behavior show lists its rules with their provenance. Rules extracted
 automatically are candidates, not business ground truth.
+counterexamples keeps the concrete actions that broke a rule (verify-pr stores them under
+<out>/counterexamples) and turns each into a regression eval: the counterexample itself, nearby
+actions that break the same rule, and nearby actions that must still be allowed, labeled by the
+trusted specification (--spec for eval). run replays an eval against a candidate's specification
+(--spec): it checks the candidate's extracted preconditions on every case and asks the verifier
+the same question; it exits nonzero when the candidate would accept something it must reject.
+Neighbors it rejects are reported as over-restrictive and fail only with --strict-neighbors.
 agent check decides whether an agent's action may run: the request names an operation with its
 inputs, the acting context and the relevant stored state, and the specification is evaluated on
 those concrete values (no solver): the operation's preconditions, the actor's permissions, every
@@ -703,6 +724,8 @@ const CLI_OPTIONS = {
   "allow-origin": { type: "string", multiple: true },
   bind: { type: "string", multiple: true },
   candidate: { type: "string" },
+  spec: { type: "string" },
+  "strict-neighbors": { type: "boolean" },
   request: { type: "string" },
   cases: { type: "string" },
   enforce: { type: "string" },
@@ -856,6 +879,13 @@ export async function runCli(
       "--candidate and --strict are only supported by verify-pr.",
     );
   if (
+    (values.spec !== undefined || values["strict-neighbors"] !== undefined) &&
+    positionals[0] !== "counterexamples"
+  )
+    throw new Error(
+      "--spec and --strict-neighbors are only supported by counterexamples.",
+    );
+  if (
     (values.request !== undefined ||
       values.cases !== undefined ||
       values.enforce !== undefined ||
@@ -878,6 +908,8 @@ export async function runCli(
   if (positionals[0] === "behavior")
     return runBehavior(positionals, values, cwd);
   if (positionals[0] === "agent") return runAgent(positionals, values, cwd);
+  if (positionals[0] === "counterexamples")
+    return runCounterexamples(positionals, values, cwd);
   if (positionals[0] === "harness") return runHarness(positionals, values, cwd);
   if (positionals[0] === "gate")
     return runGate(
@@ -5526,6 +5558,181 @@ function behaviorRules(spec: BehaviorSpec) {
   ];
 }
 
+/** Keeps the counterexample of every new violation a PR guard report names. */
+async function storeFindings(
+  report: Awaited<ReturnType<typeof verifyPullRequest>>,
+  directory: string,
+): Promise<number> {
+  let created = 0;
+  for (const finding of report.findings) {
+    if (
+      !finding.counterexample ||
+      !finding.rule ||
+      (finding.kind !== "regression" && finding.kind !== "new_violation")
+    )
+      continue;
+    const result = await recordCounterexample(
+      directory,
+      createRecord({
+        rule: finding.rule,
+        counterexample: finding.counterexample,
+        trigger: "pr_guard",
+        commit: report.head.commit,
+        specHash: report.head.specHash,
+        now: new Date().toISOString(),
+        violation: finding.message,
+      }),
+    );
+    if (result.created) created += 1;
+  }
+  return created;
+}
+
+async function runCounterexamples(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, sub, argument, ...rest] = positionals;
+  const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+  const directory = path.join(output, "counterexamples");
+  const usage = new Error(
+    "Expected: pathcompiler counterexamples list, record <report.json>, eval <id> --spec <behavior-spec.json>, or run <eval.json> --spec <behavior-spec.json>. Use --help for options.",
+  );
+  if (rest.length > 0) throw usage;
+  if (sub === "list" && !argument) {
+    const records = await listCounterexamples(directory);
+    if (values.json) return `${JSON.stringify(records, null, 2)}\n`;
+    return records.length === 0
+      ? `No counterexamples in ${directory}.\n`
+      : `${records
+          .map(
+            (item) =>
+              `${item.id} ${item.status} ${item.operation} violates ${item.rule.id}${item.commit ? ` at ${item.commit.slice(0, 12)}` : ""}`,
+          )
+          .join("\n")}\n`;
+  }
+  if (sub === "record" && argument) {
+    const report = (await readJsonFile(cwd, argument, "report")) as {
+      findings?: {
+        counterexample?: Counterexample;
+        rule?: RuleBasis;
+        kind?: string;
+        message?: string;
+      }[];
+      results?: {
+        counterexample?: Counterexample;
+        rule?: RuleBasis;
+        status?: string;
+      }[];
+      head?: { commit: string | null; specHash: string };
+      specHash?: string;
+    };
+    const items = [
+      ...(report.findings ?? [])
+        .filter(
+          (item) => item.kind === "regression" || item.kind === "new_violation",
+        )
+        .map((item) => ({ ...item, violation: item.message })),
+      ...(report.results ?? []).filter((item) => item.status === "VIOLATED"),
+    ].filter((item) => item.counterexample && item.rule);
+    if (!report.findings && !report.results)
+      throw new Error(
+        `${argument} is neither a verify-pr report nor a behavior verify report.`,
+      );
+    let created = 0;
+    for (const item of items) {
+      const result = await recordCounterexample(
+        directory,
+        createRecord({
+          rule: item.rule as RuleBasis,
+          counterexample: item.counterexample as Counterexample,
+          trigger: report.findings ? "pr_guard" : "verification",
+          commit: report.head?.commit ?? null,
+          specHash: report.head?.specHash ?? report.specHash ?? null,
+          now: new Date().toISOString(),
+          ...("violation" in item && typeof item.violation === "string"
+            ? { violation: item.violation }
+            : {}),
+        }),
+      );
+      if (result.created) created += 1;
+    }
+    return `Recorded ${created} new counterexample(s) (${items.length - created} already known) in ${directory}.\n`;
+  }
+  if (sub === "eval" && argument) {
+    if (!values.spec)
+      throw new Error(
+        "counterexamples eval needs --spec <behavior-spec.json>, the specification the rule is approved in.",
+      );
+    const record = await readCounterexample(directory, argument);
+    const evaluation = generateEval(
+      record,
+      await readBehaviorSpec(cwd, values.spec),
+    );
+    const file = `counterexamples/evals/${evaluation.id}.json`;
+    await writeArtifacts(output, [
+      [file, `${JSON.stringify(evaluation, null, 2)}\n`],
+    ]);
+    if (values.json) return `${JSON.stringify(evaluation, null, 2)}\n`;
+    return `${[
+      `${evaluation.id}: ${evaluation.description}`,
+      ...evaluation.cases.map(
+        (item) => `  ${item.id} must be ${item.expect} (${item.change})`,
+      ),
+      `Eval: ${path.join(output, file)}`,
+    ].join("\n")}\n`;
+  }
+  if (sub === "run" && argument) {
+    if (!values.spec)
+      throw new Error(
+        "counterexamples run needs --spec <behavior-spec.json>, the candidate's specification.",
+      );
+    const evaluation = (await readJsonFile(
+      cwd,
+      argument,
+      "regression eval",
+    )) as RegressionEval;
+    if (!Array.isArray(evaluation.cases) || !evaluation.property)
+      throw new Error(`${argument} is not a regression eval.`);
+    const spec = await readBehaviorSpec(cwd, values.spec);
+    const solver = await createZ3SolverProvider();
+    try {
+      const run = await runRegressionEval(evaluation, contractExecutor(spec), {
+        strictNeighbors: values["strict-neighbors"] === true,
+      });
+      const verified = await runSpecEval(
+        evaluation,
+        spec,
+        createVerificationRouter([createSmtVerifier(solver)]),
+      );
+      const passed = run.passed && verified.status === "VERIFIED";
+      const text = `${[
+        `${evaluation.id} (${evaluation.description}): ${passed ? "PASS" : "FAIL"}`,
+        `  extracted contract: ${run.cases.filter((item) => item.passed).length}/${run.cases.length} cases as expected${run.failed.length > 0 ? `; accepted something it must reject or rejected something required: ${run.failed.join(", ")}` : ""}`,
+        ...(run.overRestrictive.length > 0
+          ? [
+              `  over-restrictive (the specification allows these): ${run.overRestrictive.join(", ")}`,
+            ]
+          : []),
+        `  verifier: ${verified.status}${verified.reason ? ` (${verified.reason})` : ""}`,
+        ...(verified.counterexample
+          ? [
+              `  counterexample: ${JSON.stringify({ ...verified.counterexample.inputs, ...verified.counterexample.context })}`,
+            ]
+          : []),
+      ].join("\n")}\n`;
+      if (!passed) throw new Error(text);
+      return values.json
+        ? `${JSON.stringify({ run, verified }, null, 2)}\n`
+        : text;
+    } finally {
+      await solver.close();
+    }
+  }
+  throw usage;
+}
+
 async function runAgent(
   positionals: string[],
   values: Values,
@@ -5669,7 +5876,11 @@ async function runVerifyPr(
       ["reports/pr-guard.json", `${JSON.stringify(report, null, 2)}\n`],
       ["reports/pr-guard.md", markdown],
     ]);
-    const text = `${markdown}Report: ${path.join(output, "reports/pr-guard.json")}\n`;
+    const stored = await storeFindings(
+      report,
+      path.join(output, "counterexamples"),
+    );
+    const text = `${markdown}${stored > 0 ? `Stored ${stored} new counterexample(s) in ${path.join(output, "counterexamples")} (counterexamples eval <id> makes a regression eval).\n` : ""}Report: ${path.join(output, "reports/pr-guard.json")}\n`;
     if (report.verdict === "fail")
       throw new Error(`The change newly violates the specification.\n${text}`);
     return values.json ? `${JSON.stringify(report, null, 2)}\n` : text;

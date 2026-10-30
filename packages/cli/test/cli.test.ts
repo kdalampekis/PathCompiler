@@ -498,7 +498,7 @@ describe("pathcompiler CLI", () => {
       ["mcp", "--host", "0.0.0.0"],
     ])
       await expect(run(invalid)).rejects.toThrow("--port and --host");
-  }, 30_000);
+  }, 120_000);
 
   it("writes a graph delta between two local commits", async () => {
     const cwd = await directory();

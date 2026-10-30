@@ -358,6 +358,9 @@ importers:
       "@pathcompiler/config":
         specifier: workspace:*
         version: link:../config
+      "@pathcompiler/counterexamples":
+        specifier: workspace:*
+        version: link:../counterexamples
       "@pathcompiler/diagnostics":
         specifier: workspace:*
         version: link:../diagnostics
@@ -497,6 +500,28 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/counterexamples:
+    dependencies:
+      "@pathcompiler/agent-gate":
+        specifier: workspace:*
+        version: link:../agent-gate
+      "@pathcompiler/behavior-ir":
+        specifier: workspace:*
+        version: link:../behavior-ir
+      "@pathcompiler/verification":
+        specifier: workspace:*
+        version: link:../verification
+    devDependencies:
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
 
   packages/diagnostics: {}
 
