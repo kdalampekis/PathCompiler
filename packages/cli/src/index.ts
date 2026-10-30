@@ -157,19 +157,25 @@ import {
   approveRun,
   behaviorCheck,
   type CodingAgent,
+  collectEcosystemFiles,
   commandAgent,
   commandCompletion,
   commandRepairProvider,
+  commandReviewer,
   createCommandModelProvider,
+  detectChecks,
   type EvaluationSummary,
   gitPublisher,
   listRuns,
   loadRun,
   type PipelineDeps,
   parseCommandLine,
+  type Reviewer,
   type RunRecord,
   rejectRun,
+  runReview as runDiffReview,
   runDirectory,
+  git as runGit,
   startRun,
 } from "@pathcompiler/harness-runner";
 import {
@@ -432,6 +438,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler behavior show <behavior-spec.json> [--json]
        pathcompiler harness task <recommendation-id> <base-commit> [--json] [--out <directory>]
        pathcompiler harness run <task-id|task.json> [directory] [--mode approval|automatic] [--harness-command "<cmd>"] [--previous <run-id>] [--bind <name>=<entity> ...] [--exclude <directory> ...] [--json] [--out <directory>]
+       pathcompiler harness detect [directory] [--json]
        pathcompiler harness runs [directory] | status <run-id> [directory] | approve <run-id> [directory] --by <name> [--publish none|branch|pull_request] | reject <run-id> [directory] --by <name> --reason <text>
        pathcompiler harness import <mutation-result.json> [directory] [--tests <json-file>] [--browser <json-file>] [--json] [--out <directory>]
        pathcompiler review queue [--impact <json-file>] [--json] [--out <directory>]
@@ -737,6 +744,9 @@ functions as operation contracts) and writes reports/behavior-spec.json plus
 reports/behavior-extraction.json (every extracted fact with its source, and every construct it
 could not model). It uses no model. --bind payment=payments maps a code identifier to the
 entity or operation prefix its variables use (also applied to OpenAPI operation IDs).
+harness detect looks at what the repository is built with (JavaScript, Python, Go, Rust, JVM,
+.NET, Ruby, PHP, Elixir, Swift, Makefile targets) and prints the test, lint, type-check and build
+commands it offers, plus a ready harness block for pathcompiler.yaml. It runs nothing.
 harness run executes a task with your harness, locally, and decides what happens next by mode (the
 harness section of pathcompiler.yaml; mode 6 must be on). The harness is a command you choose
 (--harness-command, or the environment variable named by harness.command_env; never read from the
@@ -828,6 +838,7 @@ const CLI_OPTIONS = {
   from: { type: "string" },
   mode: { type: "string" },
   "harness-command": { type: "string" },
+  "review-command": { type: "string" },
   publish: { type: "string" },
   previous: { type: "string" },
   to: { type: "string" },
@@ -996,6 +1007,8 @@ export async function runCli(
     throw new Error(
       "--mode, --publish and --previous are only supported by harness.",
     );
+  if (values["review-command"] !== undefined && positionals[0] !== "harness")
+    throw new Error("--review-command is only supported by harness run.");
   if (
     values["harness-command"] !== undefined &&
     !["harness", "repair", "rules"].includes(positionals[0] ?? "")
@@ -5516,6 +5529,8 @@ async function runHarness(
 ): Promise<string> {
   if (positionals[1] === "import")
     return runHarnessImport(positionals, values, cwd);
+  if (positionals[1] === "detect")
+    return runHarnessDetect(positionals, values, cwd);
   if (
     ["run", "runs", "status", "approve", "reject"].includes(
       positionals[1] ?? "",
@@ -5616,11 +5631,18 @@ function formatRun(run: RunRecord, output: string, repo: string): string {
       `  Checks: ${run.checks.map((item) => `${item.command} ${item.passed ? "passed" : "FAILED"}`).join("; ")}`,
     );
   if (run.assessment) {
-    lines.push(`  Assessment: ${run.assessment.verdict}`);
+    lines.push(
+      `  Assessment: ${run.assessment.verdict} (vouched for by: ${run.assessment.vouchedBy.join(", ") || "nothing"}; ${Object.entries(
+        run.assessment.signals,
+      )
+        .map(([source, signal]) => `${source} ${signal.replace("_", " ")}`)
+        .join(", ")})`,
+    );
     for (const item of run.assessment.reasons)
       lines.push(
         `    ${item.verdict === "fail" ? "✗" : "⚠"} ${item.source}: ${item.message}`,
       );
+    for (const note of run.assessment.notes) lines.push(`    ℹ ${note}`);
     lines.push(
       `    product-model evaluation: ${run.assessment.evaluation.applied ? run.assessment.evaluation.status : `not applied (${run.assessment.evaluation.reason})`}; behavior check: ${run.assessment.behavior.applied ? run.assessment.behavior.verdict : `not applied (${run.assessment.behavior.reason})`}`,
     );
@@ -5647,6 +5669,54 @@ function formatRun(run: RunRecord, output: string, repo: string): string {
   }[run.state];
   if (next) lines.push(next);
   return `${lines.join("\n")}\n`;
+}
+
+async function runHarnessDetect(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length > 3)
+    throw new Error("Expected: pathcompiler harness detect [directory].");
+  const repo = path.resolve(cwd, positionals[2] ?? ".");
+  const suggestions = detectChecks(await collectEcosystemFiles(repo));
+  if (values.json) return `${JSON.stringify(suggestions, null, 2)}\n`;
+  if (suggestions.length === 0)
+    return `No test, lint, type-check or build command was recognised in ${repo}.\nName the commands that vouch for a change yourself, under harness.checks in pathcompiler.yaml.\n`;
+  const checks = suggestions.filter(
+    (item) =>
+      item.kind === "test" || item.kind === "lint" || item.kind === "typecheck",
+  );
+  const setups = [
+    ...new Set(
+      suggestions.flatMap((item) => (item.needsSetup ? [item.needsSetup] : [])),
+    ),
+  ];
+  const links = suggestions.some((item) => item.ecosystem === "javascript")
+    ? ["node_modules"]
+    : [];
+  return `${[
+    `Recognised in ${repo} (nothing was run):`,
+    ...suggestions.map(
+      (item) =>
+        `  ${item.ecosystem} ${item.kind}: ${item.command}   (from ${item.evidence})`,
+    ),
+    "",
+    "Add what you trust to pathcompiler.yaml. A check is only as good as the project's own tests:",
+    "harness:",
+    `  checks: [${checks.map((item) => JSON.stringify(item.command)).join(", ")}]`,
+    ...(setups.length > 0
+      ? [
+          `  setup: [${setups.map((item) => JSON.stringify(item)).join(", ")}]   # installs dependencies in each fresh worktree`,
+        ]
+      : []),
+    ...(links.length > 0
+      ? [
+          `  link_paths: [${links.map((item) => JSON.stringify(item)).join(", ")}]   # or link an existing install instead of running setup`,
+        ]
+      : []),
+    "  baseline: true   # run the checks at the base commit too, to tell a regression from a failure that was already there",
+  ].join("\n")}\n`;
 }
 
 async function runHarnessRuns(
@@ -5699,6 +5769,16 @@ async function runHarnessRuns(
     commandAgent(harnessCommand(values, config.harness.command_env), {
       id: "command",
     });
+  // A separate reviewer (never the implementing harness's session): a flag, or the variable the config names.
+  const reviewText =
+    values["review-command"] ??
+    (config.harness.review.enabled
+      ? process.env[config.harness.review.command_env]
+      : undefined);
+  const diffReviewer: Reviewer | undefined = reviewText
+    ? commandReviewer(parseCommandLine(reviewText))
+    : undefined;
+  const reviewerId = "reviewer command";
   const deps: PipelineDeps = {
     repo,
     output,
@@ -5765,6 +5845,48 @@ async function runHarnessRuns(
         await solver.close();
       }
     },
+    ...(diffReviewer
+      ? {
+          review: async ({ task, patch, patchTruncated, files, candidate }) => {
+            let rules: { id: string; text: string; trust: string }[] = [];
+            try {
+              const sources = await readSourceFiles(repo, values.exclude ?? []);
+              const extracted = extractBehavior(sources, {
+                bindings: parseBindings(values.bind),
+                id: "behavior",
+              });
+              rules = buildDiscoveryTask({
+                spec: extracted.spec,
+                specHash: extracted.specHash,
+                unmodeled: [],
+              }).existingRules.filter((item) => item.trust !== "rejected");
+            } catch {
+              // No specification: the reviewer works from the diff and the task alone.
+            }
+            return runDiffReview({
+              reviewer: diffReviewer,
+              id: reviewerId,
+              request: {
+                task: {
+                  objective: task.objective.summary,
+                  protectedBehaviors: task.constraints.protectedBehaviors.map(
+                    (item) => item.description ?? item.id,
+                  ),
+                  constraints: task.constraints.hard,
+                },
+                rules,
+                files,
+                patch,
+                patchTruncated,
+              },
+              loadCandidateFile: async (file) =>
+                runGit(repo, ["show", `${candidate}:${file}`]).catch(
+                  () => undefined,
+                ),
+            });
+          },
+        }
+      : {}),
     publisher: gitPublisher(),
   };
 

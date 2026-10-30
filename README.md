@@ -1777,6 +1777,16 @@ in the `harness` section of `pathcompiler.yaml` or per run with `--mode`:
   `require_approval_paths`, `max_autonomous_mutations` per day) and waits for a
   person otherwise. It needs `improvement_policy.autonomous_mutation: true`.
 
+The assessment works on any stack: the project's own checks (`harness detect`
+recognises the commands of JavaScript, Python, Go, Rust, JVM, .NET, Ruby, PHP,
+Elixir, Swift and Makefile projects) are run at the base and at the candidate,
+so a regression is told from a failure that was already there; risk signals are
+read from the diff (removed guards, changed constants, weakened tests); a
+separate reviewer can be added (`--review-command`), and its findings count only
+if they cite evidence found in the candidate. `harness.assessment.independent`
+and `require` decide what may vouch for a change. See
+[ADR 0097](docs/decisions/0097-stack-neutral-change-assessment.md).
+
 In both, a candidate whose assessment fails is rejected, and PathCompiler
 **never merges and never deploys**. Publishing pushes the branch and, with
 `publish.target: pull_request`, opens a draft pull request with `gh`.
@@ -2113,7 +2123,7 @@ and changed nodes/edges. Inputs must use unique IDs and existing edge endpoints.
 - [Behavioral specification guide](docs/BEHAVIOR_SPEC_GUIDE.md), the
   [expanded architecture](docs/EXPANDED_PATHCOMPILER_ARCHITECTURE.md) and its
   [roadmap with results](docs/EXPANDED_PATHCOMPILER_ROADMAP.md)
-- Architecture decision records in [docs/decisions/](docs/decisions/) (0001–0096)
+- Architecture decision records in [docs/decisions/](docs/decisions/) (0001–0097)
 - [Workflow and graph decisions](docs/decisions/0001-foundation-contracts.md)
 - [Fixture state decision](docs/decisions/0002-fixture-session-state.md)
 

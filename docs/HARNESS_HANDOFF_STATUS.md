@@ -10,7 +10,7 @@ tested with scripted harnesses; no real coding agent has been run.
 | --- | --- | --- |
 | §4 Responsibility (1–10) | Accept a task; inspect at the base commit; edit; run checks; create a candidate; return a `MutationResult` with assumptions and blockers | **Implemented** by `executeHarness`; the editing itself is done by your harness (`commandAgent`) |
 | §5 Not the harness's job | Graph extraction, formal modeling, recommendations, measurement | PathCompiler's, unchanged |
-| §6, §19 The harness does not grade itself | Independent evaluation; criteria not weakened | **Implemented**: `mergeAssessment` (product-model evaluation, behavior check, checks, safety); criteria are frozen from the task |
+| §6, §19 The harness does not grade itself | Independent evaluation; criteria not weakened | **Implemented** for any stack: `mergeAssessment` over the project's own checks (compared with the base), the behavior check, risk signals from the diff, an independent reviewer, safety and, where the repository is a Next.js app, the product-model evaluation (ADR 0097) |
 | §7–§11, §29 Task contract, interpretation | Schema-validated `HarnessTaskSpec`, protected properties over suggested files | **Implemented** (I2); the task is validated before any mutation |
 | §12–§13 Reject, blocked, partial | A harness may refuse; blocked and partial are valid | **Implemented**: statuses, open questions, no-candidate runs |
 | §14–§18 `MutationResult`, claimed changes | Valid result; claims compared with observation | **Implemented** (I2/I9, validated against the task by `parseMutationResult`) |
@@ -48,7 +48,16 @@ improvement_policy:           # only for automatic mode
   max_autonomous_mutations: 2 # automatic publications per day
 harness:
   mode: approval              # or automatic
-  checks: ["pnpm test"]
+  checks: ["pnpm test"]        # `pathcompiler harness detect` suggests them for any stack
+  setup: ["pnpm install --frozen-lockfile"]   # run in each fresh worktree
+  link_paths: ["node_modules"]               # or link an existing install
+  baseline: true               # run the checks at the base too
+  assessment:
+    independent: [checks, behavior, evaluation]   # what may vouch for a change (add reviewer to let it)
+    require: []                                   # what must have passed
+  review:
+    enabled: false             # a separate reviewer: PATHCOMPILER_REVIEW_COMMAND
+  risk_paths: ["src/billing/**"]
   approvals:
     before_run: false         # approval mode: also ask before the harness starts
   publish:

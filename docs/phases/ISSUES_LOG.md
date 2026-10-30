@@ -11,7 +11,7 @@ rest stay open for a stated reason:
 
 | Why | Entries |
 | --- | --- |
-| Needs the user's API key or real repositories (C6, alpha validation) | #34, #35, #43 (thresholds), #44, #47, #56, #57, #63, #64, #65, #66, #67 |
+| Needs the user's API key or real repositories (C6, alpha validation) | #34, #35, #43 (thresholds), #44, #47, #56, #57, #63, #64, #65, #66, #67, #71 |
 | Modeling limits that need data-flow analysis or a finer abstraction, best judged on real code | #4, #5, #30, #31, #51, #52, #53, #68, #69, #70 |
 | Evaluation-quality limits that are measured and by design today | #17, #18, #20, #54, #55 |
 | Feature gaps outside the current scope (UI views, templates needing new evidence classes, hypothesis review) | #7, #42, #45, #50 |
@@ -22,7 +22,8 @@ Entries marked **Resolved** below were fixed and verified with a test.
 
 | # | Found in | Kind | Description | Status / retry |
 | --- | --- | --- | --- | --- |
-| 70 | BX9 | Bug against the end goal | The harness assessment depended on Next.js (product-model evaluation) and on a TypeScript-extractable specification (behavior check), so on other repositories nothing independent ran and automatic mode never published. This contradicted the product's goal (any business, any codebase) and was wrongly recorded as an acceptable limit. | **Being fixed in BX10** (stack-neutral assessment); see docs/PRODUCT_NORTH_STAR.md. |
+| 71 | BX10 | Gap | The stack-neutral assessment is unmeasured on real repositories: how often project tests are sufficient to vouch, how noisy the risk heuristics are, whether a reviewer finds real problems, and how much the baseline run costs. Passing tests alone cannot see a business rule no one encoded (the Python fast path passes). | Open; part of the real-software trial (#57); BX13 adds rules for any language. |
+| 70 | BX9 | Bug against the end goal, resolved | The harness assessment depended on Next.js (product-model evaluation) and on a TypeScript-extractable specification (behavior check), so on other repositories nothing independent ran and automatic mode never published. | **Resolved** in BX10 (ADR 0097): project checks compared with the base, risk signals, an independent reviewer and configurable vouching work on any stack; tested on a Python repository. |
 | 69 | BX9 | Gap | Harness quality metrics (handoff §53–§56: unexpected-change rate, human edit distance, constraint-violation rate) are not computed; the run records contain their inputs. Multiple candidates, candidate search and feasibility checks (handoff §63–§69) are not built. | Open. |
 | 68 | BX9 | Limitation | `harness.checks` are commands from the repository's `pathcompiler.yaml`, run in the worktree against the candidate's code. That is what a test command does, but it means `harness run` must not be run on branches you do not trust (for example in CI on forks). The harness command itself is deliberately not read from the file. | Open; documented in ADR 0096. |
 | 67 | BX9 | Gap | The pull-request path (`gh pr create`) has only been run against a stub; a real GitHub remote and a real draft pull request have not been exercised, and no GitHub App or token flow exists (it uses the person's `gh`). | Open; part of the real-software trial. |

@@ -80,9 +80,9 @@ async function setup(
       started.push("agent");
       await writeFile(
         path.join(worktree, "src/app.ts"),
-        "export const limit = 250;\n",
+        'export const title = "demo 250";\n',
       );
-      return { summary: "Raised the limit." };
+      return { summary: "Retitled the page." };
     }, "fake");
   let counter = 0;
   const deps: PipelineDeps = {
@@ -223,7 +223,7 @@ describe("automatic mode", () => {
       agent: scriptedAgent(async ({ worktree }) => {
         await writeFile(
           path.join(worktree, "src/app.ts"),
-          "export const limit = 1;\nexport const more = 2;\n",
+          'export const title = "demo 1";\nexport const more = 2;\n',
         );
         await writeFile(
           path.join(worktree, "src/b.ts"),
@@ -340,7 +340,7 @@ describe("what both modes refuse", () => {
     const run = await startRun(deps, task);
     expect(run.assessment?.verdict).toBe("review");
     expect(run.assessment?.reasons[0]?.message).toContain(
-      "Nothing independent of the harness could be run",
+      "Nothing independent of the harness vouched",
     );
     expect(run.state).toBe("awaiting_approval");
   });
@@ -382,12 +382,29 @@ describe("merging the harness with the deterministic checks", () => {
       assumptions: [],
       ...overrides,
     }) as never;
+  const noChecks = { candidate: [], base: null, comparison: [] };
   const base = {
-    checks: [],
+    checks: noChecks,
     safety: [],
+    risk: [],
     evaluation: passEvaluation,
     behavior: passBehavior,
+    review: { ran: false as const, reason: "none" },
   };
+  const checks = (
+    comparison: { command: string; outcome: string; sameFailure?: boolean }[],
+  ) =>
+    ({
+      candidate: [],
+      base: [],
+      comparison: comparison.map((item) => ({
+        kind: "check",
+        candidate: item.outcome === "passes" || item.outcome === "fixed",
+        base: null,
+        ...item,
+      })),
+    }) as never;
+
   it("takes the worst verdict of independent sources and lists every reason with its source", () => {
     expect(mergeAssessment({ ...base, result: result() }).verdict).toBe("pass");
     const merged = mergeAssessment({
@@ -396,7 +413,7 @@ describe("merging the harness with the deterministic checks", () => {
         status: "partial",
         unresolvedQuestions: ["Is 250 right?"],
       }),
-      checks: [{ command: "pnpm test", passed: false, exitCode: 1, tail: "" }],
+      checks: checks([{ command: "pytest", outcome: "regression" }]),
       safety: [
         {
           rule: "tests_deleted",
@@ -404,6 +421,9 @@ describe("merging the harness with the deterministic checks", () => {
           path: "t.test.ts",
           detail: "t.test.ts, a test file, was deleted.",
         },
+      ],
+      risk: [
+        { category: "billing", severity: "review", message: "touches billing" },
       ],
       evaluation: {
         applied: true,
@@ -418,22 +438,111 @@ describe("merging the harness with the deterministic checks", () => {
     ).toEqual([
       "harness:review",
       "harness:review",
-      "checks:review",
       "safety:review",
+      "checks:fail",
       "evaluation:fail",
+      "risk:review",
     ]);
   });
-  it("counts a source that did not apply as nothing, not as a pass", () => {
+
+  it("lets only the configured sources vouch, and never the harness itself", () => {
+    const only = (
+      independent: ("checks" | "behavior" | "evaluation" | "reviewer")[],
+    ) =>
+      mergeAssessment({
+        ...base,
+        result: result(),
+        checks: checks([{ command: "pytest", outcome: "passes" }]),
+        evaluation: { applied: false, reason: "x" },
+        behavior: { applied: false, reason: "no specification" },
+        independent,
+      });
+    expect(only(["checks"])).toMatchObject({
+      verdict: "pass",
+      vouchedBy: ["checks"],
+    });
+    const none = only(["behavior", "evaluation"]);
+    expect(none.verdict).toBe("review");
+    expect(none.reasons[0]?.message).toContain(
+      "Nothing independent of the harness vouched",
+    );
+    // Business rules not being checked is said, not hidden.
+    expect(none.notes.join(" ")).toContain(
+      "Business rules were not checked: no specification",
+    );
+  });
+
+  it("requires sources when asked to", () => {
+    const required = mergeAssessment({
+      ...base,
+      result: result(),
+      checks: checks([{ command: "pytest", outcome: "passes" }]),
+      behavior: { applied: false, reason: "no specification" },
+      require: ["behavior"],
+    });
+    expect(required.verdict).toBe("review");
+    expect(required.reasons.at(-1)?.message).toContain(
+      "behavior is required by the configuration and did not run",
+    );
+  });
+
+  it("attributes a failing check to the change only when it passed at the base", () => {
+    const failing = (outcome: string, sameFailure?: boolean) =>
+      mergeAssessment({
+        ...base,
+        result: result(),
+        checks: checks([
+          {
+            command: "pytest",
+            outcome,
+            ...(sameFailure === undefined ? {} : { sameFailure }),
+          },
+        ]),
+        evaluation: { applied: false, reason: "x" },
+        behavior: { applied: false, reason: "x" },
+      });
+    expect(failing("regression").verdict).toBe("fail");
+    expect(failing("fails_no_baseline").verdict).toBe("review");
+    expect(failing("fails_both", false).verdict).toBe("review");
+    const preexisting = failing("fails_both", true);
+    expect(preexisting.verdict).toBe("review");
+    expect(preexisting.notes.join(" ")).toContain(
+      "already failed the same way at the base",
+    );
+    expect(preexisting.signals.checks).toBe("no_signal");
+    expect(failing("fixed").verdict).toBe("pass");
+  });
+
+  it("counts reviewer concerns as review, notes as notes, and never as a failure", () => {
     const merged = mergeAssessment({
       ...base,
       result: result(),
-      evaluation: { applied: false, reason: "not a Next.js app" },
+      review: {
+        ran: true,
+        reviewer: "r",
+        concerns: [
+          {
+            severity: "concern",
+            message: "Skips approval for agents",
+            evidence: [{ file: "a.py", lines: "3", quote: "q" }],
+          },
+        ],
+        notes: [
+          {
+            severity: "note",
+            message: "Consider a test",
+            evidence: [{ file: "a.py", quote: "q" }],
+          },
+        ],
+        dropped: 2,
+      },
     });
-    expect(merged.verdict).toBe("pass");
-    expect(merged.evaluation).toEqual({
-      applied: false,
-      reason: "not a Next.js app",
-    });
+    expect(merged.verdict).toBe("review");
+    expect(merged.reasons.map((item) => item.source)).toEqual(["reviewer"]);
+    expect(merged.reasons[0]?.message).toContain("(a.py:3)");
+    expect(merged.notes.join(" ")).toContain(
+      "2 reviewer finding(s) were discarded",
+    );
   });
 });
 

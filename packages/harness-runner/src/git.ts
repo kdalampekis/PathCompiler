@@ -45,6 +45,20 @@ export async function createWorktree(input: {
     input.base,
   ]);
 }
+/** A worktree with no branch, for looking at (and running things in) a commit. */
+export async function createDetachedWorktree(input: {
+  repo: string;
+  directory: string;
+  commit: string;
+}) {
+  await git(input.repo, [
+    "worktree",
+    "add",
+    "--detach",
+    input.directory,
+    input.commit,
+  ]);
+}
 export async function removeWorktree(repo: string, directory: string) {
   await git(repo, ["worktree", "remove", "--force", directory]).catch(
     () => undefined,
@@ -69,9 +83,12 @@ export async function branchExists(repo: string, branch: string) {
 
 export type ChangedFile = { status: "A" | "M" | "D" | "T"; path: string };
 export type AddedLine = { path: string; line: number; text: string };
+/** A line the change removed; `line` is its number in the base version. */
+export type RemovedLine = { path: string; line: number; text: string };
 export type DiffStats = {
   files: ChangedFile[];
   added: AddedLine[];
+  removed: RemovedLine[];
   changedLines: number;
 };
 
@@ -119,19 +136,41 @@ export async function diffAgainst(
     base,
   ]);
   const added: AddedLine[] = [];
+  const removed: RemovedLine[] = [];
   let file = "";
+  let oldFile = "";
   let next = 0;
+  let previous = 0;
+  // File headers (`--- a/x`, `+++ b/x`) only occur between `diff --git` and the first
+  // hunk; a content line that starts with `-- ` or `++ ` must not be mistaken for one.
+  let inHeader = false;
   for (const line of patch.split("\n")) {
-    if (line.startsWith("+++ b/")) file = line.slice(6);
-    else if (line.startsWith("@@")) {
-      const match = /\+(\d+)/.exec(line);
-      next = match ? Number(match[1]) : 0;
-    } else if (line.startsWith("+") && !line.startsWith("+++")) {
+    if (line.startsWith("diff --git ")) {
+      inHeader = true;
+      oldFile = "";
+      file = "";
+    } else if (inHeader && line.startsWith("--- ")) {
+      oldFile = line.startsWith("--- a/") ? line.slice(6) : "";
+    } else if (inHeader && line.startsWith("+++ ")) {
+      file = line.startsWith("+++ b/") ? line.slice(6) : oldFile;
+    } else if (line.startsWith("@@")) {
+      inHeader = false;
+      const match = /-(\d+)(?:,\d+)? \+(\d+)/.exec(line);
+      previous = match ? Number(match[1]) : 0;
+      next = match ? Number(match[2]) : 0;
+    } else if (!inHeader && line.startsWith("+")) {
       added.push({ path: file, line: next, text: line.slice(1) });
       next += 1;
+    } else if (!inHeader && line.startsWith("-")) {
+      removed.push({
+        path: oldFile || file,
+        line: previous,
+        text: line.slice(1),
+      });
+      previous += 1;
     }
   }
-  return { files, added, changedLines };
+  return { files, added, removed, changedLines };
 }
 
 export async function commitAll(
@@ -153,4 +192,21 @@ export async function commitAll(
     message,
   ]);
   return headCommit(worktree);
+}
+
+/** The unified patch of everything that differs from `base`, capped for a reader. */
+export async function patchAgainst(
+  worktree: string,
+  base: string,
+  limit = 60_000,
+): Promise<{ patch: string; truncated: boolean }> {
+  await git(worktree, ["add", "-A"]);
+  const patch = await git(worktree, [
+    "diff",
+    "--cached",
+    "--no-renames",
+    "--no-color",
+    base,
+  ]);
+  return { patch: patch.slice(0, limit), truncated: patch.length > limit };
 }

@@ -20,7 +20,7 @@ export async function cleanup() {
 
 export async function repository(
   files: Record<string, string> = {
-    "src/app.ts": "export const limit = 100;\n",
+    "src/app.ts": 'export const title = "demo";\n',
     "README.md": "# demo\n",
   },
 ) {

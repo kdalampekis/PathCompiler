@@ -129,6 +129,12 @@ export function pullRequestBody(input: {
       (item) =>
         `- ${item.verdict === "fail" ? "✗" : "⚠"} ${item.source}: ${item.message}`,
     ),
+    `**Sources:** ${Object.entries(assessment.signals)
+      .map(([source, signal]) => `${source} ${signal.replace("_", " ")}`)
+      .join(
+        ", ",
+      )}${assessment.vouchedBy.length > 0 ? ` (vouched for by: ${assessment.vouchedBy.join(", ")})` : ""}`,
+    ...assessment.notes.map((item) => `- ℹ ${item}`),
     "",
     `Changed files (${result.changedFiles.length}): ${result.changedFiles
       .slice(0, 15)

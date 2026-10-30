@@ -1,4 +1,4 @@
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -192,10 +192,10 @@ describe("Harness V0: executeHarness", () => {
     const agent = scriptedAgent(async ({ worktree }) => {
       await writeFile(
         path.join(worktree, "src/app.ts"),
-        "export const limit = 250;\n",
+        'export const title = "demo 250";\n',
       );
       return {
-        summary: "Raised the limit.",
+        summary: "Retitled the page.",
         assumptions: ["250 is enough"],
         claimedSemanticChanges: [
           { goal: "clients.created", kind: "restore-reachability" },
@@ -210,7 +210,7 @@ describe("Harness V0: executeHarness", () => {
     expect(run.result).toMatchObject({
       status: "completed",
       changedFiles: ["src/app.ts"],
-      implementationSummary: "Raised the limit.",
+      implementationSummary: "Retitled the page.",
       assumptions: ["250 is enough"],
       repository: { baseCommit: r.base, branch: "pathcompiler/run-1" },
       harnessMetadata: { provider: "test-agent", runId: "run-1" },
@@ -227,7 +227,7 @@ describe("Harness V0: executeHarness", () => {
     expect(log).toHaveLength(2);
     expect(log[0]).toContain("PathCompiler harness:");
     expect(await readFile(path.join(r.repo, "src/app.ts"), "utf8")).toBe(
-      "export const limit = 100;\n",
+      'export const title = "demo";\n',
     );
     expect((await r.git("status", "--porcelain")).stdout).toBe("");
     expect((await r.git("rev-parse", "HEAD")).stdout.trim()).toBe(r.base);
@@ -240,13 +240,14 @@ describe("Harness V0: executeHarness", () => {
       "files changed",
       "check",
       "candidate commit",
+      "baseline",
       "result emitted",
     ]);
   });
 
   it("runs a real command harness with the documented environment and exit codes", async () => {
     const script =
-      "const fs=require('fs');fs.writeFileSync('src/app.ts','export const limit = 7;\\n');fs.writeFileSync(process.env.PATHCOMPILER_NOTES,JSON.stringify({summary:'cmd '+require('path').basename(process.env.PATHCOMPILER_TASK),unresolvedQuestions:['Is 7 right?']}));process.exit(2)";
+      "const fs=require('fs');fs.writeFileSync('src/app.ts','export const title = \"demo 7\";\\n');fs.writeFileSync(process.env.PATHCOMPILER_NOTES,JSON.stringify({summary:'cmd '+require('path').basename(process.env.PATHCOMPILER_TASK),unresolvedQuestions:['Is demo 7 right?']}));process.exit(2)";
     const { input } = await baseInput(
       commandAgent([node, "-e", script], { id: "cmd", version: "1.2" }),
     );
@@ -255,29 +256,110 @@ describe("Harness V0: executeHarness", () => {
     expect(run.result).toMatchObject({
       status: "partial",
       implementationSummary: "cmd task.json",
-      unresolvedQuestions: ["Is 7 right?"],
+      unresolvedQuestions: ["Is demo 7 right?"],
       harnessMetadata: { provider: "cmd", version: "1.2" },
     });
     expect(run.candidateCommit).not.toBeNull();
   });
 
-  it("marks a candidate whose checks fail as partial, with the failure as an open question", async () => {
+  it("attributes a red check to the change only when it passed at the base", async () => {
     const agent = scriptedAgent(async ({ worktree }) => {
       await writeFile(
         path.join(worktree, "src/app.ts"),
-        "export const limit = 1;\n",
+        'export const title = "demo 1";\n',
       );
     });
-    const { input } = await baseInput(agent, {
-      checks: [`${node} -e "console.error('3 tests failed');process.exit(1)"`],
+    // Passes on the base text, fails on the changed text.
+    const regression = await baseInput(agent, {
+      checks: [
+        `${node} -e "process.exit(require('fs').readFileSync('src/app.ts','utf8').includes('demo 1')?1:0)"`,
+      ],
     });
-    const run = await executeHarness(input);
+    const run = await executeHarness(regression.input);
+    expect(run.checksReport.comparison[0]).toMatchObject({
+      outcome: "regression",
+      base: true,
+      candidate: false,
+    });
     expect(run.result.status).toBe("partial");
     expect(run.result.unresolvedQuestions.join(" ")).toContain(
-      "3 tests failed",
+      "passed at the base and fails with the change",
     );
-    expect(run.checks[0]).toMatchObject({ passed: false, exitCode: 1 });
     expect(run.candidateCommit).not.toBeNull();
+
+    // Red before the change in the same way: not the change's doing.
+    const before = await baseInput(agent, {
+      runId: "run-2",
+      runDirectory: path.join((await repository()).runs, "run-2"),
+      checks: [`${node} -e "console.error('3 tests failed');process.exit(1)"`],
+    });
+    const same = await executeHarness(before.input);
+    expect(same.checksReport.comparison[0]).toMatchObject({
+      outcome: "fails_both",
+      sameFailure: true,
+    });
+    expect(same.result.status).toBe("completed");
+
+    // Without a baseline there is nothing to compare with, so it is the change's to answer for.
+    const alone = await baseInput(agent, {
+      runId: "run-3",
+      runDirectory: path.join((await repository()).runs, "run-3"),
+      baseline: false,
+      checks: [`${node} -e "process.exit(1)"`],
+    });
+    const solo = await executeHarness(alone.input);
+    expect(solo.checksReport.comparison[0]?.outcome).toBe("fails_no_baseline");
+    expect(solo.result.status).toBe("partial");
+  });
+
+  it("runs setup and links dependency directories into both worktrees", async () => {
+    const r = await repository({
+      "src/app.ts": 'export const title = "demo";\n',
+      "check.cjs":
+        "process.exit(require('fs').existsSync('prepared.txt') && require('fs').existsSync('deps/marker') ? 0 : 1)",
+    });
+    await mkdir(path.join(r.repo, "deps"));
+    await writeFile(path.join(r.repo, "deps/marker"), "x");
+    await r.git("add", "-A").catch(() => undefined);
+    const agent = scriptedAgent(async ({ worktree }) => {
+      await writeFile(
+        path.join(worktree, "src/app.ts"),
+        'export const title = "demo 2";\n',
+      );
+    });
+    const run = await executeHarness({
+      repo: r.repo,
+      task: await taskFor(r.base),
+      agent,
+      runId: "run-4",
+      runDirectory: path.join(r.runs, "run-4"),
+      worktreeParent: r.worktrees,
+      setup: [`${node} -e "require('fs').writeFileSync('prepared.txt','1')"`],
+      linkPaths: ["deps"],
+      checks: [`${node} check.cjs`],
+    });
+    expect(
+      run.checksReport.comparison.map((item) => [item.kind, item.outcome]),
+    ).toEqual([
+      ["setup", "passes"],
+      ["check", "passes"],
+    ]);
+    expect(run.checksReport.base?.map((item) => item.passed)).toEqual([
+      true,
+      true,
+    ]);
+    await expect(
+      executeHarness({
+        repo: r.repo,
+        task: await taskFor(r.base),
+        agent,
+        runId: "run-5",
+        runDirectory: path.join(r.runs, "run-5"),
+        worktreeParent: r.worktrees,
+        linkPaths: ["../outside"],
+        checks: [`${node} check.cjs`],
+      }),
+    ).rejects.toThrow("must be a relative path inside the repository");
   });
 
   it("discards a candidate that touches a protected path or adds a secret, and keeps no branch", async () => {
@@ -363,7 +445,7 @@ describe("Harness V0: executeHarness", () => {
     const agent = scriptedAgent(async ({ worktree }) => {
       await writeFile(
         path.join(worktree, "src/app.ts"),
-        "export const limit = 3;\n",
+        'export const title = "demo 3";\n',
       );
     });
     const { input } = await baseInput(agent, { previousRunId: "run-0" });

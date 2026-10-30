@@ -14,6 +14,7 @@ import {
 import { executeHarness } from "./execute.js";
 import { decideNext, type HarnessPolicy, type Mode } from "./policy.js";
 import { type Publisher, pullRequestBody } from "./publish.js";
+import type { ReviewOutcome, ReviewRequest } from "./review.js";
 import {
   isRunId,
   listRuns,
@@ -48,6 +49,14 @@ export type PipelineDeps = {
     base: string;
     candidate: string;
   }) => Promise<EvaluationSummary>;
+  /** A separate reviewer of the diff; omit when none is configured. */
+  review?: (input: {
+    task: HarnessTaskSpec;
+    patch: string;
+    patchTruncated: boolean;
+    files: ReviewRequest["files"];
+    candidate: string;
+  }) => Promise<ReviewOutcome>;
   /** The behavior check; omit when there is no specification. */
   behavior?: (input: {
     base: string;
@@ -159,6 +168,10 @@ export async function executeRun(
       runDirectory: runDirectory(deps.output, runId),
       ...(deps.worktreeParent ? { worktreeParent: deps.worktreeParent } : {}),
       checks: deps.policy.checks,
+      setup: deps.policy.setup,
+      linkPaths: deps.policy.link_paths,
+      baseline: deps.policy.baseline,
+      riskPaths: deps.policy.risk_paths,
       agentTimeoutMs: deps.policy.timeout_ms,
       protectedPaths: deps.policy.protected_paths,
       ...(deps.now ? { now: deps.now } : {}),
@@ -170,6 +183,7 @@ export async function executeRun(
     ...run,
     result: execution.result,
     checks: execution.checks,
+    checksReport: execution.checksReport,
     safety: execution.safety,
     stats: execution.stats,
     ...(execution.branch ? { branch: execution.branch } : {}),
@@ -207,12 +221,28 @@ export async function executeRun(
           candidate: execution.candidateCommit,
         })
       : { applied: false, reason: "no behavior check is configured" };
+    const review: ReviewOutcome = deps.review
+      ? await deps.review({
+          task,
+          patch: execution.patch.text,
+          patchTruncated: execution.patch.truncated,
+          files: execution.stats.paths.map((item) => ({
+            path: item,
+            status: "changed",
+          })),
+          candidate: execution.candidateCommit,
+        })
+      : { ran: false, reason: "no reviewer is configured" };
     assessment = mergeAssessment({
       result: execution.result,
-      checks: execution.checks,
+      checks: execution.checksReport,
       safety: execution.safety,
+      risk: execution.risk,
       evaluation,
       behavior,
+      review,
+      independent: deps.policy.assessment.independent,
+      require: deps.policy.assessment.require,
     });
   } catch (error) {
     return fail(

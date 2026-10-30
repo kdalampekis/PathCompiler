@@ -336,3 +336,114 @@ describe("a harness answering structured tasks", () => {
     expect(rules).toContain("harness command proposed 0 rule(s)");
   }, 180_000);
 });
+
+describe("harness on a Python repository (any stack)", () => {
+  const pyrefunds = fileURLToPath(
+    new URL("../../../fixtures/pyrefunds/", import.meta.url),
+  );
+  const CHECK = "python3 -m unittest discover -s tests -t .";
+  async function pythonSetup(yaml: string) {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-py-"));
+    temporary.push(cwd);
+    const repo = path.join(cwd, "repo");
+    await cp(pyrefunds, repo, { recursive: true });
+    await rm(path.join(repo, "variants"), { recursive: true });
+    await writeFile(path.join(repo, "pathcompiler.yaml"), yaml);
+    const git = (...args: string[]) =>
+      exec(
+        "git",
+        [
+          "-c",
+          "user.name=T",
+          "-c",
+          "user.email=t@example.com",
+          "-c",
+          "commit.gpgsign=false",
+          ...args,
+        ],
+        { cwd: repo },
+      );
+    await git("init", "-q", "-b", "main");
+    await git("add", "-A");
+    await git("commit", "-q", "-m", "base");
+    const base = (await git("rev-parse", "HEAD")).stdout.trim();
+    const task = JSON.parse(await readFile(example, "utf8"));
+    task.repository.baseCommit = base;
+    await writeFile(path.join(cwd, "task.json"), JSON.stringify(task));
+    await writeFile(
+      path.join(cwd, "harness.cjs"),
+      "require('fs').copyFileSync(process.argv[2],'refunds/service.py')",
+    );
+    const harness = (variant: string) =>
+      `node ${path.join(cwd, "harness.cjs")} ${path.join(pyrefunds, "variants", `${variant}.py`)}`;
+    const run = (args: string[]) => runCli([...args, "--out", "out"], cwd);
+    return { cwd, repo, harness, run };
+  }
+
+  it("suggests the project's own checks for any ecosystem and runs nothing", async () => {
+    const s = await pythonSetup(POLICY("  mode: approval\n"));
+    const text = await s.run(["harness", "detect", s.repo]);
+    expect(text).toContain("python test: python3 -m unittest discover");
+    expect(text).toContain("nothing was run");
+    expect(text).toContain("harness:");
+    expect(text).toContain("baseline: true");
+    expect(await s.run(["harness", "detect", s.repo, "--json"])).toContain(
+      '"ecosystem": "python"',
+    );
+  }, 120_000);
+
+  it("assesses a Python change with the project's tests compared with the base, and rejects a regression", async () => {
+    const s = await pythonSetup(
+      POLICY(`  mode: approval\n  checks: ["${CHECK}"]\n`),
+    );
+    const run = (variant: string) =>
+      s.run([
+        "harness",
+        "run",
+        path.join(s.cwd, "task.json"),
+        s.repo,
+        "--harness-command",
+        s.harness(variant),
+      ]);
+    const clean = await run("benign_refactor");
+    expect(clean).toContain("AWAITING APPROVAL");
+    expect(clean).toContain("vouched for by: checks");
+    expect(clean).toContain("Business rules were not checked");
+    const broken = await run("breaks_tests").catch(
+      (error: Error) => error.message,
+    );
+    expect(broken).toContain("REJECTED");
+    expect(broken).toContain(
+      "passed at the base commit and fails with the change",
+    );
+    const limit = await run("raises_limit");
+    expect(limit).toContain("changes a number from 5000 to 50000");
+    expect(limit).toContain("Assessment: review");
+  }, 240_000);
+
+  it("adds a separate reviewer whose findings must cite evidence in the candidate", async () => {
+    const s = await pythonSetup(
+      POLICY(`  mode: approval\n  checks: ["${CHECK}"]\n`),
+    );
+    await writeFile(
+      path.join(s.cwd, "reviewer.cjs"),
+      `let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const i=JSON.parse(d);console.log(JSON.stringify({findings:[{severity:'concern',message:'Support agents skip manager approval.',evidence:[{file:'refunds/service.py',quote:'actor["role"] != "support_agent"'}]},{severity:'concern',message:'Invented.',evidence:[{file:'refunds/service.py',quote:'not in the file'}]}]}))})`,
+    );
+    const text = await s.run([
+      "harness",
+      "run",
+      path.join(s.cwd, "task.json"),
+      s.repo,
+      "--harness-command",
+      s.harness("support_fast_path"),
+      "--review-command",
+      `node ${path.join(s.cwd, "reviewer.cjs")}`,
+    ]);
+    expect(text).toContain("Assessment: review");
+    expect(text).toContain(
+      "reviewer: Support agents skip manager approval. (refunds/service.py)",
+    );
+    expect(text).not.toContain("Invented");
+    expect(text).toContain("1 reviewer finding(s) were discarded");
+  }, 240_000);
+});

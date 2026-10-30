@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { MutationResult } from "@pathcompiler/harness-contracts";
 import type { Assessment } from "./assess.js";
-import type { CheckResult } from "./execute.js";
+import type { CheckResult, ChecksReport } from "./checks.js";
 import type { Mode } from "./policy.js";
 import type { SafetyFinding } from "./safety.js";
 
@@ -50,6 +50,7 @@ export type RunRecord = {
   stats?: { files: number; changedLines: number; paths: string[] };
   result?: MutationResult;
   checks?: CheckResult[];
+  checksReport?: ChecksReport;
   safety?: SafetyFinding[];
   assessment?: Assessment;
   decision?: {

@@ -72,7 +72,7 @@ Honest status; the work is tracked as BX10–BX14 below.
 | Rule extraction | Partly: SQL, OpenAPI, JSON/YAML contracts are stack-neutral; Zod, test assertions and guard clauses are TypeScript only. Harness route (rule discovery) covers any stack. | CLI only | no |
 | Verification (the IR) | Yes: the IR and solver do not know the language | CLI only | no |
 | PR guard / change check | Only as good as the rules the specification holds for that stack | CLI only; no tool for a harness working on uncommitted changes | no |
-| Harness run assessment | **No: the product-model evaluation is Next.js only and the behavior check needs a TypeScript-extractable specification.** Fixed in BX10. | CLI | no |
+| Harness run assessment | **Yes (BX10)**: project checks of any ecosystem compared with the base, risk signals from the diff, an independent reviewer, configurable vouching. Business rules are checked only where a specification exists (BX13 extends that). | CLI | no |
 | Action gate | Yes (concrete values) | library, CLI; no MCP or function-calling schema | no |
 | Answer check before rendering | **Not built** | no | no |
 | Agentic software (tool definitions, prompts, policies) | **Not built** | no | no |

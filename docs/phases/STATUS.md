@@ -5588,3 +5588,64 @@ No real coding harness, GitHub remote or `gh` pull request has been exercised
 
 - Not built: auto-merge (by decision), deployment, multiple candidates,
   harness quality metrics (handoff §53–§56), a bundled coding agent.
+
+## Expansion BX10 — Stack-neutral change assessment
+
+Complete — verified locally on 2026-10-30. A correction against the end goal
+(docs/PRODUCT_NORTH_STAR.md): the harness assessment was Next.js-bound.
+
+- **Checks from any ecosystem, compared with the base:** `detectChecks` and
+  `harness detect` (JavaScript/TypeScript, Python, Go, Rust, JVM, .NET, Ruby,
+  PHP, Elixir, Swift, Makefile); `harness.setup`, `link_paths`, `baseline`;
+  each check is passes, regression, fixed, fails at both, or fails without a
+  baseline.
+- **Risk signals from the diff in any language:** removed guards (moved or
+  reworded ones excluded), changed constants, weakened tests, and what the change
+  touches; configurable sensitive paths.
+- **An independent reviewer** (`--review-command`, `harness.review`) whose
+  findings must cite evidence found in the candidate.
+- **A new merge:** signals per source, `independent` and `require`
+  configuration, notes for what was not checked; run records and pull request
+  bodies show them.
+- **Fixture:** `fixtures/pyrefunds` (Python, `unittest`) with five variants.
+- Recorded in ADR 0097.
+
+### Results on a Python repository (no TypeScript, no Next.js)
+
+| Change | Tests | Assessment |
+| --- | --- | --- |
+| Named constant (harmless) | pass | pass, vouched for by checks; notes that business rules were not checked |
+| Allows a zero refund | a test fails (passed at the base) | rejected: regression |
+| Approval limit 5000 → 50000 | pass | review: changed constant |
+| Self-approval guard removed | pass | review: removed guard |
+| Support agents skip approval | pass | pass on tests alone; **review with a reviewer** that cites the line |
+| Project without tests | none | review: nothing independent vouched |
+
+The business-rule violation in the fast path is only caught by a reviewer here,
+because no specification exists for Python yet (BX13).
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 723 tests passed across 119 suites (all 119 test files; 11 universal-assessment tests, 3 CLI Python tests and the revised runner tests are new) |
+
+### Errors found during the phase
+
+- Treating "touches billing code" as `review` made every change to a refund module
+  wait for a person; path categories are context unless the user marks them.
+- A reworded error message was reported as a removed guard; guards are compared
+  with string literals taken out.
+- Diff header detection mistook a removed `-- comment` line for a file header;
+  headers are only read between `diff --git` and the first hunk.
+- The earlier harness tests used a constant named `limit`, which the new
+  heuristic rightly flagged; they now change a title.
+
+### Scope notes
+
+- Heuristics are crude; the reviewer and the project's tests are not measured
+  on real repositories (ISSUES_LOG #71).
+- Next: BX11, tools for harnesses (MCP, function-calling schemas, SDK).

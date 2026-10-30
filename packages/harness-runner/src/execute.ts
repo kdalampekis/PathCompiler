@@ -14,19 +14,30 @@ import {
   EXIT_CODES,
   writeTaskFile,
 } from "./agent.js";
-import { parseCommandLine, runProcess } from "./command.js";
+import {
+  accountable,
+  type CheckComparison,
+  type CheckResult,
+  type ChecksReport,
+  compareChecks,
+  prepareWorktree,
+  runCommandCheck,
+} from "./checks.js";
 import {
   branchExists,
   commitAll,
+  createDetachedWorktree,
   createWorktree,
   deleteBranch,
   diffAgainst,
   git,
   headCommit,
+  patchAgainst,
   removeWorktree,
   resolveCommit,
   workingTreeStatus,
 } from "./git.js";
+import { analyzeRisk, type RiskFinding } from "./risk.js";
 import {
   checkSafety,
   redactSecretsInText,
@@ -41,12 +52,7 @@ import {
  * developer's own working tree is never modified, and nothing is pushed,
  * merged or deployed.
  */
-export type CheckResult = {
-  command: string;
-  passed: boolean;
-  exitCode: number | null;
-  tail: string;
-};
+export type { CheckComparison, CheckResult, ChecksReport };
 export type ExecutionInput = {
   repo: string;
   task: HarnessTaskSpec;
@@ -58,6 +64,14 @@ export type ExecutionInput = {
   /** Where the task copy, notes and log of the run are written. */
   runDirectory: string;
   checks?: readonly string[];
+  /** Commands run in each fresh worktree before the checks (installing dependencies, building). */
+  setup?: readonly string[];
+  /** Paths linked from the repository into each worktree (node_modules, .venv). */
+  linkPaths?: readonly string[];
+  /** Run the checks at the base commit too, to tell a regression from a failure that was already there. */
+  baseline?: boolean;
+  /** Extra path globs that count as sensitive when judging risk. */
+  riskPaths?: readonly string[];
   agentTimeoutMs?: number;
   checkTimeoutMs?: number;
   protectedPaths?: readonly string[];
@@ -69,16 +83,20 @@ export type ExecutionResult = {
   candidateCommit: string | null;
   stats: { files: number; changedLines: number; paths: string[] };
   safety: SafetyFinding[];
+  /** The checks run in the candidate worktree. */
   checks: CheckResult[];
+  /** The same checks at the base commit, and how each compares. */
+  checksReport: ChecksReport;
+  /** Language-agnostic signals about what the diff touches. */
+  risk: RiskFinding[];
+  /** The patch, capped, for a reviewer. */
+  patch: { text: string; truncated: boolean };
   agentExitCode: number | null;
   logFile: string;
   trace: { step: string; detail: string }[];
   /** The 0 / 2 / 3 / 4 exit code of the contract (handoff §25). */
   exitCode: number;
 };
-
-const tailOf = (text: string) =>
-  text.trim().split("\n").slice(-6).join("\n").slice(-1_200);
 
 export async function executeHarness(
   input: ExecutionInput,
@@ -124,6 +142,9 @@ export async function executeHarness(
   let candidateCommit: string | null = null;
   let safety: SafetyFinding[] = [];
   const checks: CheckResult[] = [];
+  let baseChecks: CheckResult[] | null = null;
+  let risk: RiskFinding[] = [];
+  let patch = { text: "", truncated: false };
   let stats: ExecutionResult["stats"] = {
     files: 0,
     changedLines: 0,
@@ -161,9 +182,15 @@ export async function executeHarness(
       added: diff.added,
       protectedPaths: input.protectedPaths ?? [],
     });
+    risk = analyzeRisk({
+      files: diff.files,
+      added: diff.added,
+      removed: diff.removed,
+      extraSensitivePaths: input.riskPaths ?? [],
+    });
     log(
       "files changed",
-      `${stats.files} file(s), ${stats.changedLines} line(s)`,
+      `${stats.files} file(s), ${stats.changedLines} line(s); ${risk.length} risk signal(s)`,
     );
     const blocking = safety.filter((item) => item.severity === "block");
     if (blocking.length > 0) {
@@ -180,27 +207,31 @@ export async function executeHarness(
       stats.files > 0 &&
       (outcome.status === "completed" || outcome.status === "partial")
     ) {
-      for (const command of input.checks ?? []) {
-        const result = await runProcess({
-          argv: parseCommandLine(command),
-          cwd: worktree,
-          timeoutMs: input.checkTimeoutMs ?? 900_000,
-        }).catch((error: Error) => ({
-          code: null as number | null,
-          stdout: "",
-          stderr: error.message,
-          timedOut: false,
-          truncated: false,
-        }));
-        checks.push({
-          command,
-          passed: result.code === 0 && !result.timedOut,
-          exitCode: result.code,
-          tail: redactSecretsInText(
-            tailOf(`${result.stdout}\n${result.stderr}`),
-          ),
-        });
-        log("check", `${command}: ${result.code === 0 ? "passed" : "failed"}`);
+      const checkTimeout = input.checkTimeoutMs ?? 900_000;
+      if ((input.checks ?? []).length > 0) {
+        for (const result of await prepareWorktree({
+          repo: input.repo,
+          worktree,
+          linkPaths: input.linkPaths ?? [],
+          setup: input.setup ?? [],
+          timeoutMs: checkTimeout,
+        })) {
+          checks.push(result);
+          log("setup", `${result.command}: ${result.passed ? "ok" : "failed"}`);
+        }
+        const setupFailed = checks.some(
+          (item) => item.kind === "setup" && !item.passed,
+        );
+        for (const command of setupFailed ? [] : (input.checks ?? [])) {
+          const result = await runCommandCheck(
+            command,
+            "check",
+            worktree,
+            checkTimeout,
+          );
+          checks.push(result);
+          log("check", `${command}: ${result.passed ? "passed" : "failed"}`);
+        }
       }
       // Checks may have created files (build output); the candidate is the agent's change.
       const after = await diffAgainst(worktree, base);
@@ -209,12 +240,54 @@ export async function executeHarness(
         changedLines: after.changedLines,
         paths: after.files.map((item) => item.path),
       };
+      patch = await patchAgainst(worktree, base).then((item) => ({
+        text: item.patch,
+        truncated: item.truncated,
+      }));
       candidateCommit = await commitAll(
         worktree,
         `PathCompiler harness: ${task.objective.summary}\n\nTask: ${task.id}\nRun: ${input.runId}\nHarness: ${input.agent.id}${input.agent.version ? ` ${input.agent.version}` : ""}\n\nA candidate for review. It has not been merged or deployed.`,
       );
       committed = true;
       log("candidate commit", candidateCommit.slice(0, 12));
+      // The same checks at the base, so a red check is attributed to the change or not.
+      if (
+        (input.baseline ?? true) &&
+        checks.some((item) => item.kind === "check")
+      ) {
+        const baseDirectory = path.join(parent, `${input.runId}-base`);
+        await createDetachedWorktree({
+          repo: input.repo,
+          directory: baseDirectory,
+          commit: base,
+        });
+        try {
+          baseChecks = await prepareWorktree({
+            repo: input.repo,
+            worktree: baseDirectory,
+            linkPaths: input.linkPaths ?? [],
+            setup: input.setup ?? [],
+            timeoutMs: checkTimeout,
+          });
+          if (baseChecks.every((item) => item.passed))
+            for (const item of checks.filter((entry) => entry.kind === "check"))
+              baseChecks.push(
+                await runCommandCheck(
+                  item.command,
+                  "check",
+                  baseDirectory,
+                  checkTimeout,
+                ),
+              );
+          log(
+            "baseline",
+            `${baseChecks.filter((item) => item.kind === "check" && item.passed).length}/${baseChecks.filter((item) => item.kind === "check").length} check(s) pass at the base`,
+          );
+        } finally {
+          await removeWorktree(input.repo, baseDirectory);
+          await rm(baseDirectory, { recursive: true, force: true });
+        }
+      }
     }
   } finally {
     await removeWorktree(input.repo, worktree);
@@ -232,8 +305,13 @@ export async function executeHarness(
     );
 
   // 6. The result.
-  const failedChecks = checks.filter((item) => !item.passed);
+  const checksReport: ChecksReport = {
+    candidate: checks,
+    base: baseChecks,
+    comparison: compareChecks(checks, baseChecks),
+  };
   const blocking = safety.filter((item) => item.severity === "block");
+  const blamed = checksReport.comparison.filter(accountable);
   let status: AgentOutcome["status"] = outcome.status;
   const questions = [...(outcome.notes?.unresolvedQuestions ?? [])];
   if (blocking.length > 0) {
@@ -247,17 +325,14 @@ export async function executeHarness(
     questions.push(
       "The harness finished but changed nothing, so there is no candidate.",
     );
-  } else if (
-    candidateCommit &&
-    failedChecks.length > 0 &&
-    status === "completed"
-  ) {
+  } else if (candidateCommit && blamed.length > 0 && status === "completed") {
     status = "partial";
     questions.push(
-      ...failedChecks.map(
-        (item) =>
-          `The check "${item.command}" failed: ${item.tail.split("\n").slice(-2).join(" ")}`,
-      ),
+      ...blamed.map((item) => {
+        const tail =
+          checks.find((entry) => entry.command === item.command)?.tail ?? "";
+        return `The ${item.kind} "${item.command}" ${item.outcome === "regression" ? "passed at the base and fails with the change" : "fails"}: ${tail.split("\n").slice(-2).join(" ")}`;
+      }),
     );
   }
   const summary =
@@ -302,6 +377,9 @@ export async function executeHarness(
     stats,
     safety,
     checks,
+    checksReport,
+    risk,
+    patch,
     agentExitCode: outcome.exitCode,
     logFile,
     trace,

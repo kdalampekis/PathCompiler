@@ -152,6 +152,44 @@ export const PathCompilerConfigSchema = z.strictObject({
       checks: z.array(z.string().min(1).max(500)).max(10).default([]),
       /** Worktree location; defaults to a temporary directory. */
       worktree_dir: z.string().min(1).optional(),
+      /** Commands run in each fresh worktree before the checks (installing dependencies, building). */
+      setup: z.array(z.string().min(1).max(500)).max(10).default([]),
+      /** Paths linked from the repository into each worktree, such as node_modules or .venv. */
+      link_paths: z.array(z.string().min(1).max(200)).max(10).default([]),
+      /** Also run the checks at the base commit, so a failure is attributed to the change or not. */
+      baseline: z.boolean().default(true),
+      /**
+       * What may vouch for a candidate. `independent`: at least one of these
+       * must have produced a signal or the verdict is review. `require`: each
+       * of these must have run and passed or the verdict is review.
+       */
+      assessment: z
+        .strictObject({
+          independent: z
+            .array(z.enum(["checks", "behavior", "evaluation", "reviewer"]))
+            .min(1)
+            .default(["checks", "behavior", "evaluation"]),
+          require: z
+            .array(z.enum(["checks", "behavior", "evaluation", "reviewer"]))
+            .default([]),
+        })
+        .default({
+          independent: ["checks", "behavior", "evaluation"],
+          require: [],
+        }),
+      /** A second, separate harness or model that reviews the diff; its findings must cite evidence. */
+      review: z
+        .strictObject({
+          enabled: flag,
+          /** The environment variable that holds the reviewer command. */
+          command_env: envName.default("PATHCOMPILER_REVIEW_COMMAND"),
+        })
+        .default({
+          enabled: false,
+          command_env: "PATHCOMPILER_REVIEW_COMMAND",
+        }),
+      /** Extra path globs to treat as sensitive when judging the risk of a change. */
+      risk_paths: z.array(z.string().min(1)).default([]),
       approvals: z
         .strictObject({
           /** Ask a person before the harness starts (approval mode). */
@@ -197,6 +235,15 @@ export const PathCompilerConfigSchema = z.strictObject({
       command_env: "PATHCOMPILER_HARNESS_COMMAND",
       timeout_ms: 1_800_000,
       checks: [],
+      setup: [],
+      link_paths: [],
+      baseline: true,
+      assessment: {
+        independent: ["checks", "behavior", "evaluation"],
+        require: [],
+      },
+      review: { enabled: false, command_env: "PATHCOMPILER_REVIEW_COMMAND" },
+      risk_paths: [],
       approvals: { before_run: false },
       publish: { target: "pull_request", remote: "origin", draft: true },
       automatic: {
