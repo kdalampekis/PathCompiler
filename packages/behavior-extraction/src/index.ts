@@ -19,6 +19,7 @@ export * from "./approved.js";
 export * from "./assertions.js";
 export * from "./common.js";
 export * from "./evaluate.js";
+export * from "./files.js";
 export * from "./guards.js";
 export * from "./openapi.js";
 export * from "./sql.js";

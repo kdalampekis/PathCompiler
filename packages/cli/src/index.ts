@@ -1,13 +1,16 @@
 import {
   link,
   mkdir,
+  mkdtemp,
   readdir,
   readFile,
   rename,
+  rm,
   unlink,
   writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { createGitHubProvider } from "@pathcompiler/adapter-github";
@@ -20,6 +23,7 @@ import {
 import {
   type ExtractionResult,
   extractBehavior,
+  readSourceFiles,
 } from "@pathcompiler/behavior-extraction";
 import {
   type BehaviorSpec,
@@ -178,6 +182,10 @@ import {
   type OutcomeAssessment,
   recordApproval,
 } from "@pathcompiler/outcome-analysis";
+import {
+  formatPrGuardMarkdown,
+  verifyPullRequest,
+} from "@pathcompiler/pr-guard";
 import {
   type CheapestPlanResult,
   type CostWeights,
@@ -340,6 +348,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler memory record <recommendation-id> [--json] [--out <directory>]
        pathcompiler memory list [--json] [--out <directory>]
        pathcompiler behavior export [directory] [--json] [--out <directory>] [--exclude <directory> ...]
+       pathcompiler verify-pr --base <ref> --candidate <ref> [directory] [--bind <name>=<entity> ...] [--strict] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler behavior extract [directory] [--bind <name>=<entity> ...] [--commit <sha>] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler behavior verify <behavior-spec.json> [--operation <id> ...] [--json] [--out <directory>]
        pathcompiler behavior validate <behavior-spec.json> [--json]
@@ -581,6 +590,14 @@ rule of which carries provenance (source type, explicit/inferred/human-approved,
 method, confidence). behavior validate checks a specification file (references, scopes, types,
 mandatory provenance) and behavior show lists its rules with their provenance. Rules extracted
 automatically are candidates, not business ground truth.
+verify-pr extracts the behavior at two Git revisions (--base, --candidate), verifies the rules at
+both and reports only what the change introduces: a rule that held at the base and is violated at
+the candidate (a new reachable violation, with a counterexample), the behavior that changed
+(a precondition got weaker or stricter, or is just a refactoring), and what it could not model.
+The approved rules are taken from the base, so a change cannot weaken a rule by editing it. A
+violated human-approved rule exits nonzero; findings that need a person (an extracted rule
+violated, rules removed or edited, code the extractor cannot model) say "review" and exit nonzero
+only with --strict. It writes reports/pr-guard.json and reports/pr-guard.md.
 behavior verify asks, for every operation, whether each invariant is preserved, each applicable
 business rule or data policy is enforced and each deny or constrained permission is respected,
 within a supported fragment (linear integer arithmetic, booleans, finite enums, string
@@ -665,6 +682,8 @@ const CLI_OPTIONS = {
   base: { type: "string" },
   "allow-origin": { type: "string", multiple: true },
   bind: { type: "string", multiple: true },
+  candidate: { type: "string" },
+  strict: { type: "boolean" },
   operation: { type: "string", multiple: true },
   browser: { type: "string" },
   impact: { type: "string" },
@@ -804,8 +823,14 @@ export async function runCli(
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (values["model-fixtures"] !== undefined && positionals[0] !== "analyze")
     throw new Error("--model-fixtures is only supported by analyze.");
+  if (positionals[0] === "verify-pr")
+    return runVerifyPr(positionals, values, cwd);
   if (values.base !== undefined && positionals[0] !== "diagnose")
-    throw new Error("--base is only supported by diagnose.");
+    throw new Error("--base is only supported by diagnose and verify-pr.");
+  if (values.candidate !== undefined || values.strict !== undefined)
+    throw new Error(
+      "--candidate and --strict are only supported by verify-pr.",
+    );
   if (values.impact !== undefined && positionals[0] !== "review")
     throw new Error("--impact is only supported by review queue.");
   if (positionals[0] === "review") return runReview(positionals, values, cwd);
@@ -5466,42 +5491,73 @@ function behaviorRules(spec: BehaviorSpec) {
   ];
 }
 
-const EXTRACTION_EXTENSIONS = /\.(sql|tsx?|json|ya?ml)$/;
-const EXTRACTION_SKIPPED = new Set([
-  "node_modules",
-  "dist",
-  ".git",
-  ".next",
-  ".pathcompiler",
-  "coverage",
-]);
-/** Source files the deterministic extractors may read, relative to the directory. */
-async function readExtractionInputs(
-  directory: string,
-  exclude: readonly string[],
-): Promise<{ path: string; content: string }[]> {
-  const files: { path: string; content: string }[] = [];
-  const excluded = new Set(
-    exclude.map((item) => path.resolve(directory, item)),
-  );
-  const walk = async (current: string): Promise<void> => {
-    for (const entry of await readdir(current, { withFileTypes: true })) {
-      const full = path.join(current, entry.name);
-      if (excluded.has(full)) continue;
-      if (entry.isDirectory()) {
-        if (!EXTRACTION_SKIPPED.has(entry.name)) await walk(full);
-      } else if (entry.isFile() && EXTRACTION_EXTENSIONS.test(entry.name)) {
-        const content = await readFile(full, "utf8");
-        if (content.length <= 1_000_000)
-          files.push({
-            path: path.relative(directory, full).split(path.sep).join("/"),
-            content,
-          });
-      }
+function parseBindings(entries: readonly string[] | undefined) {
+  const bindings: Record<string, string> = {};
+  for (const entry of entries ?? []) {
+    const [name, target, ...extra] = entry.split("=");
+    if (!name || !target || extra.length > 0)
+      throw new Error(
+        `--bind expects <name>=<entity>, for example --bind payment=payments; got "${entry}".`,
+      );
+    bindings[name] = target;
+  }
+  return bindings;
+}
+
+async function runVerifyPr(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  if (positionals.length > 2 || !values.base || !values.candidate)
+    throw new Error(
+      "Expected: pathcompiler verify-pr --base <ref> --candidate <ref> [directory]. Use --help for options.",
+    );
+  const directory = path.resolve(cwd, positionals[1] ?? ".");
+  const git = await openGitRepository(directory);
+  const scratch = await mkdtemp(path.join(os.tmpdir(), "pathcompiler-pr-"));
+  const solver = await createZ3SolverProvider();
+  try {
+    const exclude = values.exclude ?? [];
+    const sides: {
+      commit: string;
+      files: Awaited<ReturnType<typeof readSourceFiles>>;
+    }[] = [];
+    for (const [index, ref] of [values.base, values.candidate].entries()) {
+      const target = path.join(scratch, String(index));
+      await mkdir(target);
+      const commit = await git.exportCommit(ref, target);
+      sides.push({ commit, files: await readSourceFiles(target, exclude) });
     }
-  };
-  await walk(directory);
-  return files;
+    const [base, head] = sides as [
+      (typeof sides)[number],
+      (typeof sides)[number],
+    ];
+    const report = await verifyPullRequest({
+      base: base.files,
+      head: head.files,
+      baseRef: values.base,
+      headRef: values.candidate,
+      baseCommit: base.commit,
+      headCommit: head.commit,
+      options: { bindings: parseBindings(values.bind) },
+      solver,
+      strict: values.strict === true,
+    });
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const markdown = formatPrGuardMarkdown(report);
+    await writeArtifacts(output, [
+      ["reports/pr-guard.json", `${JSON.stringify(report, null, 2)}\n`],
+      ["reports/pr-guard.md", markdown],
+    ]);
+    const text = `${markdown}Report: ${path.join(output, "reports/pr-guard.json")}\n`;
+    if (report.verdict === "fail")
+      throw new Error(`The change newly violates the specification.\n${text}`);
+    return values.json ? `${JSON.stringify(report, null, 2)}\n` : text;
+  } finally {
+    await solver.close();
+    await rm(scratch, { recursive: true, force: true });
+  }
 }
 
 function formatExtraction(result: ExtractionResult, output: string): string {
@@ -5688,16 +5744,8 @@ async function runBehavior(
   }
   if (sub === "extract" && rest.length === 0) {
     const directory = path.resolve(cwd, argument ?? ".");
-    const bindings: Record<string, string> = {};
-    for (const entry of values.bind ?? []) {
-      const [name, target, ...extra] = entry.split("=");
-      if (!name || !target || extra.length > 0)
-        throw new Error(
-          `--bind expects <name>=<entity>, for example --bind payment=payments; got "${entry}".`,
-        );
-      bindings[name] = target;
-    }
-    const files = await readExtractionInputs(directory, values.exclude ?? []);
+    const bindings = parseBindings(values.bind);
+    const files = await readSourceFiles(directory, values.exclude ?? []);
     const result = extractBehavior(files, {
       bindings,
       id:

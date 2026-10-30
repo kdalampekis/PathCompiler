@@ -1481,6 +1481,18 @@ supported model; it does not establish that the specification is the real
 business rule. See
 [ADR 0090](docs/decisions/0090-verification-router-and-smt-backend.md).
 
+```bash
+pnpm pathcompiler verify-pr --base main --candidate my-branch --bind payment=payments
+```
+
+`verify-pr` extracts and verifies the behavior at two Git revisions and
+reports only what the change introduces: a rule that held and is now violated
+(with a counterexample), the behavior that changed (a precondition got
+weaker, stricter, or is only a refactoring) and what it could not model. The
+approved rules are read from the base branch, so a change cannot weaken a
+rule by editing it. It exits nonzero when an approved rule is newly violated.
+See [ADR 0091](docs/decisions/0091-behavior-diff-and-pr-guard.md).
+
 BehaviorIR describes what the system does (transitions, operations), what the
 specification requires (invariants, permissions, temporal rules, data
 policies, business rules) and how far to trust each requirement. Rules use a

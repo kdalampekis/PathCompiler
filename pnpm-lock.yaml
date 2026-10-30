@@ -402,6 +402,9 @@ importers:
       "@pathcompiler/outcome-analysis":
         specifier: workspace:*
         version: link:../outcome-analysis
+      "@pathcompiler/pr-guard":
+        specifier: workspace:*
+        version: link:../pr-guard
       "@pathcompiler/reasoner-core":
         specifier: workspace:*
         version: link:../reasoner-core
@@ -1019,6 +1022,25 @@ importers:
       "@pathcompiler/recommendation-engine":
         specifier: workspace:*
         version: link:../recommendation-engine
+
+  packages/pr-guard:
+    dependencies:
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
+      "@pathcompiler/behavior-ir":
+        specifier: workspace:*
+        version: link:../behavior-ir
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      "@pathcompiler/verification":
+        specifier: workspace:*
+        version: link:../verification
+    devDependencies:
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
 
   packages/probabilistic-evidence:
     dependencies:

@@ -12,9 +12,10 @@ real payments system.
 | `src/models.ts` | Zod validation models |
 | `api/openapi.json` | The HTTP contract |
 | `tests/refunds.test.ts` | Test assertions (documentation fixtures; not run by the repository's test runner) |
+| `tests/scenarios.ts` | The same kind of example tests as plain functions; they pass on the base service and on **every** variant |
 | `spec/approved-rules.json` | The rules a human approved (BehaviorIR) |
 | `spec/ground-truth.json` | Hand-written expected extraction results, for precision and recall |
-| `variants/*.ts` | Candidate versions of `src/refunds.ts`: one introduces a violation tests do not catch, others are benign or break a different rule |
+| `variants/*.ts` | Candidate versions of `src/refunds.ts`: three break a rule the tests do not cover, two are benign |
 
 Roles: `support_agent`, `manager`, `customer`.
 

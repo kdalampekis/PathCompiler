@@ -5169,3 +5169,59 @@ Complete — verified locally on 2026-10-29.
   decimals, null, collections. Each is reported UNSUPPORTED or absent from
   the model, never as a pass.
 - Next: BX4 — behavior diff and the PR guard.
+
+## Expansion BX4 — Behavior diff and PR guard
+
+Complete — verified locally on 2026-10-29.
+
+- **New `@pathcompiler/pr-guard`:** `verifyPullRequest`, `diffBehavior`
+  and `formatPrGuardMarkdown`. Only violations the change introduces are
+  regressions; approved rules are taken from the base; equivalent
+  refactorings are not changes.
+- **`relateConditions` in `@pathcompiler/verification`:** equivalent,
+  stronger, weaker or incomparable, by two solver checks.
+- **CLI `verify-pr --base --candidate`** with `--strict`, `--bind`,
+  `--exclude`; writes JSON and Markdown reports and exits nonzero on `fail`.
+  `readSourceFiles` moved into `behavior-extraction`.
+- **Fixture:** `tests/scenarios.ts` (the example tests as functions).
+- Recorded in ADR 0091.
+
+### Results on the refund fixture
+
+| Candidate | Example tests | Verdict | Finding |
+| --- | --- | --- | --- |
+| support-fast-path | pass | fail | approval rule violated; counterexample: support agent, 5001, no approval |
+| own-approval | pass | fail | no-self-approval rule violated |
+| double-process | pass | fail | process-once rule violated |
+| benign-refactor | pass | pass | no change in behavior |
+| stricter-limit | pass | pass | precondition strengthened, no rule violated |
+
+3 of 3 seeded regressions found, 0 of 2 benign changes flagged, about 0.5 s
+per check. The fixture is small and its variants were written to be
+detectable; this shows the mechanism works, not a detection rate on real
+pull requests.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 611 tests passed across 107 suites (all 107 test files; 11 PR-guard, 3 CLI verify-pr and 1 CLI behavior tests are new; one existing assertion on the `--base` message was updated) |
+
+### Errors found during the phase
+
+- Dynamic `import()` with a template path is not resolvable by Vite; the
+  scenario test uses static imports.
+- The root typecheck covers tests and fixtures: `.ts` import suffixes and an
+  extensionless import in `scenarios.ts` failed it until they used `.js`.
+  The first chain run stopped there, as intended.
+- The existing `--base` test asserted the old message; the message now
+  names `verify-pr` as well, and the assertion was updated.
+
+### Scope notes
+
+- Not built: GitHub check runs or comments, running the project's own tests
+  inside the guard, counterexample storage (BX6).
+- Next: BX5 — the agent action gate.

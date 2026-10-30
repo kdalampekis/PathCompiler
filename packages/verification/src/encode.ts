@@ -37,7 +37,10 @@ export class Encoding {
   readonly interned = new Map<string, number>();
   private readonly byId = new Map<number, string>();
 
-  constructor(readonly spec: BehaviorSpec) {
+  constructor(
+    readonly spec: BehaviorSpec,
+    extra: readonly Expr[] = [],
+  ) {
     this.variables = new Map(spec.variables.map((item) => [item.id, item]));
     const words = new Set<string>();
     for (const variable of spec.variables)
@@ -56,7 +59,7 @@ export class Encoding {
         item.constraint ? [item.constraint] : [],
       ),
     ];
-    for (const expr of exprs)
+    for (const expr of [...exprs, ...extra])
       walk(expr, (item) => {
         if (item.op === "lit" && typeof item.value === "string")
           words.add(item.value);

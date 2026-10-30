@@ -180,7 +180,7 @@ describe("diagnose", () => {
     expect(await top(copy)).toBe("formal-model-wrong");
     expect(await top(moved)).toBe("backend-changed");
     await expect(runCli(["scan", "app", "--base", base], cwd)).rejects.toThrow(
-      "--base is only supported by diagnose.",
+      "--base is only supported by diagnose and verify-pr.",
     );
   }, 120_000);
 });
