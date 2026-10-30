@@ -240,6 +240,10 @@ import {
   recommend,
 } from "@pathcompiler/recommendation-engine";
 import {
+  fixtureRepairProvider,
+  runRepairLoop,
+} from "@pathcompiler/repair-loop";
+import {
   calibrationFromReviews,
   collectReviewFeedback,
   prioritizeReviews,
@@ -371,6 +375,7 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler behavior export [directory] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler verify-pr --base <ref> --candidate <ref> [directory] [--bind <name>=<entity> ...] [--strict] [--json] [--out <directory>] [--exclude <directory> ...]
        pathcompiler counterexamples list|record <report.json>|eval <id> --spec <behavior-spec.json>|run <eval.json> --spec <behavior-spec.json> [--strict-neighbors] [--json] [--out <directory>]
+       pathcompiler repair propose [directory] --fixture <proposals.json> [--max-attempts <n>] [--bind <name>=<entity> ...] [--exclude <directory> ...] [--json] [--out <directory>]
        pathcompiler agent check <behavior-spec.json> --request <action.json> [--enforce all|approved_only] [--on-unknown block|allow] [--json]
        pathcompiler agent eval <behavior-spec.json> --cases <labeled-actions.json> [--json]
        pathcompiler behavior extract [directory] [--bind <name>=<entity> ...] [--commit <sha>] [--json] [--out <directory>] [--exclude <directory> ...]
@@ -621,6 +626,16 @@ trusted specification (--spec for eval). run replays an eval against a candidate
 (--spec): it checks the candidate's extracted preconditions on every case and asks the verifier
 the same question; it exits nonzero when the candidate would accept something it must reject.
 Neighbors it rejects are reported as over-restrictive and fail only with --strict-neighbors.
+repair propose takes the first violated rule of the code in the directory and runs a bounded,
+logged repair loop: the violation and its counterexample go to a repair provider together with the
+source file of the operation (nothing else from the repository), and a proposed change is accepted
+only if the violated property now holds, no other property became violated and the regression eval
+built from the counterexample passes. It tries up to --max-attempts (default 3, at most 10) from
+the original files each time and writes reports/repair.json and, if repaired, repair/<id>.patch.
+Nothing is changed, merged or deployed: apply the patch yourself after reviewing it. The provider
+is a --fixture file of prepared proposals ({"proposals": [{"edits": [{"path", "contentFile"}],
+"rationale"}]}); no model adapter is wired in yet, and the CLI does not run your tests, so the
+patch must be tested before it is applied. It exits nonzero when no repair was found.
 agent check decides whether an agent's action may run: the request names an operation with its
 inputs, the acting context and the relevant stored state, and the specification is evaluated on
 those concrete values (no solver): the operation's preconditions, the actor's permissions, every
@@ -725,6 +740,8 @@ const CLI_OPTIONS = {
   bind: { type: "string", multiple: true },
   candidate: { type: "string" },
   spec: { type: "string" },
+  fixture: { type: "string" },
+  "max-attempts": { type: "string" },
   "strict-neighbors": { type: "boolean" },
   request: { type: "string" },
   cases: { type: "string" },
@@ -879,6 +896,13 @@ export async function runCli(
       "--candidate and --strict are only supported by verify-pr.",
     );
   if (
+    (values.fixture !== undefined || values["max-attempts"] !== undefined) &&
+    positionals[0] !== "repair"
+  )
+    throw new Error(
+      "--fixture and --max-attempts are only supported by repair.",
+    );
+  if (
     (values.spec !== undefined || values["strict-neighbors"] !== undefined) &&
     positionals[0] !== "counterexamples"
   )
@@ -908,6 +932,7 @@ export async function runCli(
   if (positionals[0] === "behavior")
     return runBehavior(positionals, values, cwd);
   if (positionals[0] === "agent") return runAgent(positionals, values, cwd);
+  if (positionals[0] === "repair") return runRepair(positionals, values, cwd);
   if (positionals[0] === "counterexamples")
     return runCounterexamples(positionals, values, cwd);
   if (positionals[0] === "harness") return runHarness(positionals, values, cwd);
@@ -5731,6 +5756,117 @@ async function runCounterexamples(
     }
   }
   throw usage;
+}
+
+async function runRepair(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [, sub, argument, ...rest] = positionals;
+  if (sub !== "propose" || rest.length > 0)
+    throw new Error(
+      "Expected: pathcompiler repair propose [directory] --fixture <proposals.json>. Use --help for options.",
+    );
+  if (!values.fixture)
+    throw new Error(
+      "repair propose needs a provider: pass --fixture <proposals.json>. No model adapter is wired into the CLI yet.",
+    );
+  const attempts =
+    values["max-attempts"] === undefined ? 3 : Number(values["max-attempts"]);
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > 10)
+    throw new Error("--max-attempts must be an integer from 1 to 10.");
+  const directory = path.resolve(cwd, argument ?? ".");
+  const fixtureFile = path.resolve(cwd, values.fixture);
+  const fixture = (await readJsonFile(
+    cwd,
+    values.fixture,
+    "repair proposals",
+  )) as {
+    proposals?: {
+      edits?: { path?: string; content?: string; contentFile?: string }[];
+      rationale?: string;
+    }[];
+  };
+  if (!Array.isArray(fixture.proposals))
+    throw new Error(
+      `${values.fixture} must be a JSON object with a "proposals" array.`,
+    );
+  // A proposal may point at a file for its content, relative to the fixture.
+  const proposals = [];
+  for (const proposal of fixture.proposals)
+    proposals.push({
+      rationale: proposal.rationale,
+      edits: await Promise.all(
+        (proposal.edits ?? []).map(async (item) => ({
+          path: item.path,
+          content: item.contentFile
+            ? await readFile(
+                path.resolve(path.dirname(fixtureFile), item.contentFile),
+                "utf8",
+              )
+            : item.content,
+        })),
+      ),
+    });
+  const files = await readSourceFiles(directory, values.exclude ?? []);
+  const solver = await createZ3SolverProvider();
+  try {
+    const report = await runRepairLoop({
+      files,
+      options: { bindings: parseBindings(values.bind) },
+      provider: fixtureRepairProvider(
+        proposals,
+        `fixture ${path.basename(values.fixture)}`,
+      ),
+      solver,
+      maxIterations: attempts,
+      now: new Date().toISOString(),
+    });
+    const output = path.resolve(cwd, values.out ?? ".pathcompiler");
+    const artifacts: [string, string][] = [
+      ["reports/repair.json", `${JSON.stringify(report, null, 2)}\n`],
+    ];
+    if (report.patch && report.target)
+      artifacts.push([
+        `repair/${report.target.counterexample}.patch`,
+        report.patch.map((item) => item.diff).join(""),
+      ]);
+    await writeArtifacts(output, artifacts);
+    const text = `${[
+      report.status === "already_verified"
+        ? "Nothing to repair: no rule is violated."
+        : `${report.status === "repaired" ? "Repair found" : "No repair found"} for ${report.target ? `${report.target.rule.id} (${report.target.counterexample})` : "the violation"} after ${report.attempts.length} attempt(s).`,
+      ...report.attempts.map(
+        (attempt) =>
+          `  attempt ${attempt.iteration}: ${attempt.outcome}${
+            attempt.outcome === "rejected"
+              ? ` (${attempt.checks
+                  .filter((item) => !item.passed)
+                  .map((item) => `${item.name}: ${item.detail}`)
+                  .join("; ")})`
+              : ""
+          }`,
+      ),
+      ...(report.reason ? [report.reason] : []),
+      ...(report.otherViolations > 0
+        ? [
+            `${report.otherViolations} other violation(s) remain; run the loop again for each.`,
+          ]
+        : []),
+      ...(report.patch
+        ? [
+            `Patch (not applied): ${path.join(output, `repair/${report.target?.counterexample}.patch`)}. Review it, run your tests, then apply it with git apply.`,
+          ]
+        : []),
+      report.approval.note,
+      `Report: ${path.join(output, "reports/repair.json")}`,
+    ].join("\n")}\n`;
+    if (report.status === "not_repaired") throw new Error(text);
+    return values.json ? `${JSON.stringify(report, null, 2)}\n` : text;
+  } finally {
+    await solver.close();
+  }
 }
 
 async function runAgent(

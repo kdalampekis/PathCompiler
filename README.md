@@ -1523,6 +1523,19 @@ one that rejects everything, is visible. It fails the violating candidate and
 passes after a verified repair. See
 [ADR 0093](docs/decisions/0093-counterexamples-as-regression-evals.md).
 
+```bash
+pnpm pathcompiler repair propose . --fixture proposals.json --bind payment=payments
+```
+
+`repair propose` is a conservative repair loop, a prototype. A violated rule
+and its counterexample go to a repair provider together with the source file
+of the operation. A proposed change is accepted only if the property holds,
+no other property became violated, the regression eval passes and the tests
+you supply pass. Attempts are bounded and logged, and the result is a patch
+for you to review: nothing is applied, merged or deployed. The provider
+boundary is vendor neutral; only a scripted fixture provider exists today. See
+[ADR 0094](docs/decisions/0094-conservative-repair-loop.md).
+
 BehaviorIR describes what the system does (transitions, operations), what the
 specification requires (invariants, permissions, temporal rules, data
 policies, business rules) and how far to trust each requirement. Rules use a

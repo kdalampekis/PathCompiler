@@ -433,6 +433,9 @@ importers:
       "@pathcompiler/recommendation-engine":
         specifier: workspace:*
         version: link:../recommendation-engine
+      "@pathcompiler/repair-loop":
+        specifier: workspace:*
+        version: link:../repair-loop
       "@pathcompiler/review-priority":
         specifier: workspace:*
         version: link:../review-priority
@@ -1307,6 +1310,34 @@ importers:
       "@pathcompiler/semantic-change":
         specifier: workspace:*
         version: link:../semantic-change
+
+  packages/repair-loop:
+    dependencies:
+      "@pathcompiler/behavior-extraction":
+        specifier: workspace:*
+        version: link:../behavior-extraction
+      "@pathcompiler/behavior-ir":
+        specifier: workspace:*
+        version: link:../behavior-ir
+      "@pathcompiler/counterexamples":
+        specifier: workspace:*
+        version: link:../counterexamples
+      "@pathcompiler/solver-provider":
+        specifier: workspace:*
+        version: link:../solver-provider
+      "@pathcompiler/verification":
+        specifier: workspace:*
+        version: link:../verification
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      "@pathcompiler/solver-z3":
+        specifier: workspace:*
+        version: link:../solver-z3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
 
   packages/resolver:
     dependencies:

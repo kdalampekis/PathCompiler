@@ -5335,3 +5335,56 @@ commits of a real repository, which is C6 work.
 - Not built: automatic re-running of stored evals on new commits, evals for
   temporal rules, variants that change several values together.
 - Next: BX7 — conservative repair loop prototype.
+
+## Expansion BX7 — Conservative repair loop (prototype)
+
+Complete — verified locally on 2026-10-30.
+
+- **New `@pathcompiler/repair-loop`:** `runRepairLoop`, the vendor-neutral
+  `RepairProvider` boundary with schema-validated responses,
+  `fixtureRepairProvider`, and `unifiedDiff`. The provider sees only the
+  rule, the counterexample and the operation's source file; may change only
+  that file; and a candidate is accepted only if the target holds, nothing
+  else became violated, the regression eval passes and the tests (if given)
+  pass. Attempts are bounded, start from the original files and are logged.
+- **CLI `repair propose --fixture`:** writes `reports/repair.json` and a
+  patch that `git apply --check` accepts; changes nothing; exits nonzero when
+  no repair was found.
+- Recorded in ADR 0094.
+
+### Results on the refund fixture
+
+| Case | Outcome |
+| --- | --- |
+| Comment-only change, then reject-all-support-agents, then the real guard | repaired on attempt 3; attempts 1 and 2 rejected (target and eval; example tests) |
+| Repair that removes the customer check | rejected: refund no longer respects the customers-cannot-refund rule |
+| Edit of `spec/approved-rules.json` | rejected before analysis |
+| Unusable or missing provider response | logged as a rejected attempt |
+| Two violations present | repairs one, reports the other |
+| Nothing violated | the provider is not called |
+
+These are scripted proposals; they show the checks do their job, not that a
+model can produce a repair. That is unmeasured and needs an adapter and real
+repositories.
+
+### Verification
+
+| Command / check | Result |
+| --- | --- |
+| `pnpm lint` | Passed without warnings |
+| `pnpm typecheck` | Passed |
+| `pnpm build` | Passed |
+| `pnpm test` | 646 tests passed across 113 suites (all 113 test files; 11 repair-loop and 2 CLI repair tests are new) |
+
+### Errors found during the phase
+
+- The diff helper printed an addition before the removal it replaces; ties in
+  its traceback now prefer the removal.
+
+### Scope notes
+
+- Not built: a model-backed provider, running the project's tests from the
+  CLI, repairing several violations in one run, applying or committing a
+  patch.
+- All expansion phases (BX0–BX7) are done. Next: fix the issues noted, then
+  re-read every document for gaps.

@@ -54,6 +54,7 @@
     "@pathcompiler/outcome-analysis": "workspace:*",
     "@pathcompiler/reasoning-service": "workspace:*",
     "@pathcompiler/recommendation-engine": "workspace:*",
+    "@pathcompiler/repair-loop": "workspace:*",
     "@pathcompiler/review-priority": "workspace:*",
     "@pathcompiler/sdk-js": "workspace:*",
     "@pathcompiler/semantic-change": "workspace:*",
