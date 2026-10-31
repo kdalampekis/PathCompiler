@@ -5761,3 +5761,57 @@ this works at any company ([docs/ADOPTION_AUDIT.md](../ADOPTION_AUDIT.md)).
 Installation without a JavaScript toolchain (BX16), no real-software trial
 (#57), the rule language's limits (#74), monorepo namespaces (#75), no value
 history view.
+
+## Expansion BX14 — Feedback capture and alignment datasets
+
+Complete — verified locally on 2026-10-31. North star principle 6; the training
+loop stays out of scope.
+
+- **`@pathcompiler/alignment-data`:** `feedback-event/1` schema, `fileRecorder` /
+  `memoryRecorder` (opt-in, secrets redacted, unreadable lines counted),
+  `gateEvent` / `recordGateDecisions` for `guardTool`, and `buildDatasets` producing
+  `preference`, `sft`, `reward` and `eval` JSONL plus a dataset card.
+- **Hooks:** the toolbox records every check and returns an `eventId`;
+  `pathcompiler_record_feedback` reports accepted / corrected / abandoned;
+  human decisions (rules, contract, harness runs) are recorded with `--record`.
+- **CLI:** `feedback summary|list`, `dataset export --out --format
+  --include-payloads`; `mcp-agent` and `tools call` take `--record --agent`.
+- **Privacy:** structure only by default (explanations quote values, so they are
+  left out too); content needs `--include-payloads`.
+- ADR 0101.
+
+## Expansion BX15 — Agentic software and the answer check
+
+Complete — verified locally on 2026-10-31.
+
+- **Tool definitions as a rule source:** OpenAI, Anthropic and MCP shapes in any
+  JSON file become operations with exact bounds (`tooldefs` extractor).
+- **Answer check before rendering:** `checkOutput`, `guardOutput`, the tool
+  `pathcompiler_check_output`, answer policies in `spec/output-policies.json`
+  (forbid / require, per channel, optionally per claimed operation); claims are
+  judged by the action gate.
+- **Agent prompts and guardrail files** are listed as documents in the discovery
+  task.
+- **Fixture:** `fixtures/support-agent` (a Python agent with JSON Schema tools).
+- ADR 0102; packaging decisions recorded in ADR 0103 (Apache-2.0, `@pathcompiler/*`,
+  not publishing yet).
+
+### Verification
+
+`pnpm lint`, `pnpm typecheck`, `pnpm build` passed; 770 unit tests passed across 128 files (new: feedback and datasets, tool definitions, answer check, toolbox recording, feedback CLI); e2e 50 passed. A flaky ordering of same-millisecond events found by the full run was fixed (explicit corrections now win, recorded order breaks ties) and has a regression test.
+
+### Results on the support-agent fixture
+
+| Case | Outcome |
+| --- | --- |
+| Tool call `refund` 25,000 (schema maximum 20,000) | BLOCK, from the tool's own declaration |
+| Tool call `refund` 6,000 without approval | BLOCK, `support.manager_approval_over_limit` |
+| Answer "I refunded 6000, guaranteed" with that claim | BLOCK: the claim and `support.no_guarantees`, with rewrite instructions |
+| Answer committing to a refund without the disclaimer | BLOCK: `support.refund_disclaimer` |
+| Compliant answer | PASS |
+| Block, then the reported correction | one preference pair with the rules that explain it |
+
+### Scope notes
+
+- The answer check is as good as the claims it is given (ISSUES_LOG #77).
+- Datasets inherit the specification's accuracy (#76).

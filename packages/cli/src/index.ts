@@ -39,6 +39,14 @@ import {
   toOpenAITools,
 } from "@pathcompiler/agent-tools";
 import {
+  buildDatasets,
+  DATASET_FORMATS,
+  type DatasetFormat,
+  type FeedbackInput,
+  fileRecorder,
+  readFeedback,
+} from "@pathcompiler/alignment-data";
+import {
   CandidateRulesFileSchema,
   CONTRACT_FILE,
   contractDrift,
@@ -429,10 +437,12 @@ Usage: pathcompiler scan <directory> [--explain-model-context] [--json] [--out <
        pathcompiler github-app serve --config <json-file> [--port <number>] [--host <address>]
        pathcompiler mcp [--out <directory>]
        pathcompiler contract task|status [directory] | contract import <ContractProposal.json> [directory] | contract approve --by <name> [directory]
+       pathcompiler feedback summary|list [directory]
+       pathcompiler dataset export [directory] --out <directory> [--format preference,sft,reward,eval] [--include-payloads]
        pathcompiler start [directory] [--json] [--bind <name>=<entity> ...]
        pathcompiler ci [directory] [--base <ref>] [--candidate <ref>] [--report-only] [--print-workflow]
        pathcompiler mcp-reasoning [directory] [--model <json-file>]
-       pathcompiler mcp-agent [directory] [--allow-write] [--bind <name>=<entity> ...] [--exclude <directory> ...]
+       pathcompiler mcp-agent [directory] [--allow-write] [--record] [--agent <name>] [--bind <name>=<entity> ...] [--exclude <directory> ...]
        pathcompiler tools list [--format text|json|openai|anthropic]
        pathcompiler tools call <name> [directory] [--input '<json>'] [--allow-write] [--bind <name>=<entity> ...]
        pathcompiler serve [--out <directory>] [--port <number>] [--host <address>] [--events] [--allow-origin <origin> ...]
@@ -895,6 +905,9 @@ const CLI_OPTIONS = {
   input: { type: "string" },
   "allow-write": { type: "boolean" },
   "report-only": { type: "boolean" },
+  record: { type: "boolean" },
+  agent: { type: "string" },
+  "include-payloads": { type: "boolean" },
   "print-workflow": { type: "boolean" },
 } as const;
 const parse = (args: string[]) =>
@@ -1051,6 +1064,19 @@ export async function runCli(
   if (positionals[0] === "eval") return runEval(positionals, values, cwd);
   if (values["model-fixtures"] !== undefined && positionals[0] !== "analyze")
     throw new Error("--model-fixtures is only supported by analyze.");
+  if (positionals[0] === "feedback" || positionals[0] === "dataset")
+    return runFeedback(positionals, values, cwd);
+  if (
+    (values.record !== undefined || values.agent !== undefined) &&
+    !["mcp-agent", "tools", "rules", "contract", "harness"].includes(
+      positionals[0] ?? "",
+    )
+  )
+    throw new Error(
+      "--record and --agent are only supported by mcp-agent, tools call, rules, contract and harness.",
+    );
+  if (values["include-payloads"] !== undefined)
+    throw new Error("--include-payloads is only supported by dataset export.");
   if (positionals[0] === "start") return runStart(positionals, values, cwd);
   if (positionals[0] === "ci") return runCi(positionals, values, cwd);
   if (
@@ -6006,6 +6032,13 @@ async function runHarnessRuns(
     if ((await loadRun(output, first)).state === "awaiting_run_approval")
       agentFor();
     const run = await approveRun(deps, first, by, target ? { target } : {});
+    await recordDecision(values, path.resolve(cwd, second ?? "."), {
+      kind: "human_decision",
+      verdict: "approved",
+      decidedBy: by,
+      subject: { summary: `harness run ${first}` },
+      checks: [{ kind: "harness_run", status: "approved" }],
+    });
     return values.json
       ? `${JSON.stringify(run, null, 2)}\n`
       : formatRun(run, output, second ?? ".");
@@ -6014,6 +6047,14 @@ async function runHarnessRuns(
     if (!values.reason)
       throw new Error("harness reject needs --reason <text>.");
     const run = await rejectRun(deps, first, by, values.reason);
+    await recordDecision(values, path.resolve(cwd, second ?? "."), {
+      kind: "human_decision",
+      verdict: "rejected",
+      decidedBy: by,
+      note: values.reason,
+      subject: { summary: `harness run ${first}` },
+      checks: [{ kind: "harness_run", status: "rejected" }],
+    });
     return values.json
       ? `${JSON.stringify(run, null, 2)}\n`
       : formatRun(run, output, second ?? ".");
@@ -6459,6 +6500,15 @@ async function runContract(
         ),
       ],
     ]);
+    await recordDecision(values, directory, {
+      kind: "human_decision",
+      verdict: "approved",
+      decidedBy: by,
+      subject: {
+        summary: `contract: ${found.contract.operations.map((o) => o.id).join(", ")}`,
+      },
+      checks: [{ kind: "contract", status: "approved" }],
+    });
     return `${by} approved ${found.contract.operations.length} operation(s) in ${CONTRACT_FILE}. Approve means: you checked these descriptions against the code.\n`;
   }
 
@@ -6885,6 +6935,14 @@ async function runRules(
           ),
         ],
       ]);
+      await recordDecision(values, directory, {
+        kind: "human_decision",
+        verdict: "rejected",
+        decidedBy: by,
+        note: values.reason,
+        subject: { summary: `rule ${first}` },
+        checks: [{ rule: first, kind: "proposed_rule", status: "rejected" }],
+      });
       return `Rejected ${first}; it will not be proposed again.\n`;
     }
     let approved = null;
@@ -6914,6 +6972,13 @@ async function runRules(
       [CANDIDATE_FILE, serializeCandidates(result.candidates)],
       [APPROVED_FILE, `${JSON.stringify(result.approved, null, 2)}\n`],
     ]);
+    await recordDecision(values, directory, {
+      kind: "human_decision",
+      verdict: "approved",
+      decidedBy: by,
+      subject: { summary: `rule ${first}` },
+      checks: [{ rule: first, kind: "proposed_rule", status: "approved" }],
+    });
     return `Approved ${first} as ${by}. It is now in ${path.join(directory, APPROVED_FILE)}; review the diff and commit it. A pull request is checked against the approved rules of its base branch, so the rule applies once this change is merged.\n`;
   }
   throw usage;
@@ -7190,6 +7255,12 @@ function agentToolbox(
   return createToolbox({
     directory: path.resolve(cwd, directory ?? "."),
     allowWrite: values["allow-write"] === true,
+    ...(feedbackOn(values)
+      ? {
+          recorder: fileRecorder(path.resolve(cwd, directory ?? ".")),
+          agent: values.agent ?? process.env.PATHCOMPILER_AGENT ?? "agent",
+        }
+      : {}),
     bindings: parseBindings(values.bind),
     exclude: values.exclude ?? [],
     solver: () => createZ3SolverProvider(),
@@ -7259,6 +7330,110 @@ function parseBindings(entries: readonly string[] | undefined) {
     bindings[name] = target;
   }
   return bindings;
+}
+
+/** Capture is opt-in: a flag or PATHCOMPILER_FEEDBACK=1. */
+const feedbackOn = (values: Values) =>
+  values.record === true || process.env.PATHCOMPILER_FEEDBACK === "1";
+
+/** Records a person's decision when capture is on. */
+async function recordDecision(
+  values: Values,
+  directory: string,
+  event: FeedbackInput,
+): Promise<void> {
+  if (feedbackOn(values)) await fileRecorder(directory).record(event);
+}
+
+/** `feedback summary|list` and `dataset export`: what was recorded and the datasets built from it. */
+async function runFeedback(
+  positionals: string[],
+  values: Values,
+  cwd: string,
+): Promise<string> {
+  const [command, sub, first, ...rest] = positionals;
+  const usage = new Error(
+    "Expected: pathcompiler feedback summary|list [directory], or pathcompiler dataset export [directory] --out <directory> [--format preference,sft,reward,eval] [--include-payloads]. Capture is opt-in: --record or PATHCOMPILER_FEEDBACK=1.",
+  );
+  if (rest.length > 0) throw usage;
+  if (
+    (command === "feedback" && sub !== "summary" && sub !== "list") ||
+    (command === "dataset" && sub !== "export")
+  )
+    throw usage;
+  const directory = path.resolve(cwd, first ?? ".");
+  const { events, invalid } = await readFeedback(directory);
+  if (command === "feedback") {
+    if (sub === "list")
+      return `${
+        events
+          .map(
+            (event) =>
+              `${event.at} ${event.id} ${event.kind} ${event.verdict}${event.agent ? ` (${event.agent})` : ""}${event.subject.operation ? ` ${event.subject.operation}` : ""}`,
+          )
+          .join("\n") || "No feedback recorded."
+      }\n`;
+    const tally = (pick: (item: (typeof events)[number]) => string) => {
+      const map = new Map<string, number>();
+      for (const event of events)
+        map.set(pick(event), (map.get(pick(event)) ?? 0) + 1);
+      return (
+        [...map]
+          .sort()
+          .map(([key, count]) => `${key} ${count}`)
+          .join(", ") || "none"
+      );
+    };
+    return `${[
+      `${events.length} event(s) recorded${invalid ? `, ${invalid} unreadable line(s)` : ""}.`,
+      `  by kind: ${tally((e) => e.kind)}`,
+      `  by verdict: ${tally((e) => e.verdict)}`,
+      "Turn them into datasets with: pathcompiler dataset export --out <directory>",
+    ].join("\n")}\n`;
+  }
+  const formats = (values.format ?? [...DATASET_FORMATS])
+    .flatMap((item) => item.split(","))
+    .map((item) => item.trim());
+  for (const format of formats)
+    if (!DATASET_FORMATS.includes(format as DatasetFormat))
+      throw new Error(
+        `--format must be a list of ${DATASET_FORMATS.join(", ")}; got "${format}".`,
+      );
+  if (!values.out)
+    throw new Error(
+      "dataset export needs --out <directory> to write the files to.",
+    );
+  if (events.length === 0)
+    throw new Error(
+      "Nothing recorded yet. Start the tools with --record (or set PATHCOMPILER_FEEDBACK=1), let agents run, then export.",
+    );
+  const build = buildDatasets(events, {
+    formats: formats as DatasetFormat[],
+    includePayloads: values["include-payloads"] === true,
+  });
+  await writeArtifacts(
+    path.resolve(cwd, values.out),
+    Object.entries(build.files).map(
+      ([name, content]) => [name, content] as const,
+    ),
+  );
+  return `${[
+    `Wrote ${Object.keys(build.files).length} file(s) to ${values.out}: ${Object.entries(
+      build.counts,
+    )
+      .filter(([format]) => formats.includes(format))
+      .map(([format, count]) => `${format} ${count}`)
+      .join(", ")}.`,
+    values["include-payloads"]
+      ? "Contents of requests and answers are included: review them for personal data before sharing."
+      : "Structure only: contents of requests and answers are not included (--include-payloads adds them; eval cases need it).",
+    "Read DATASET_CARD.md before using the data.",
+    invalid
+      ? `${invalid} unreadable line(s) in the feedback file were skipped.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n")}\n`;
 }
 
 /** Where a repository stands and what to do next, in any language. */

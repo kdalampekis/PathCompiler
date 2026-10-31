@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { FeedbackRecorder } from "@pathcompiler/alignment-data";
 import {
   CandidateRulesFileSchema,
   createFileLoader,
@@ -27,6 +28,10 @@ export type ToolContext = {
   /** Creates the solver on first use; the toolbox closes it. */
   solver: () => Promise<SolverProvider>;
   now?: () => Date;
+  /** When set, checks and outcomes are recorded for alignment datasets. */
+  recorder?: FeedbackRecorder;
+  agent?: string;
+  session?: string;
 };
 
 export const CANDIDATE_FILE = "spec/candidate-rules.json";

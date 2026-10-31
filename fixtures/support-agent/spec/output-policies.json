@@ -1,0 +1,19 @@
+{
+  "declaredBy": "support-policy@example.com",
+  "reference": "Support tone and promises policy v2 (fixture)",
+  "policies": [
+    {
+      "id": "support.no_guarantees",
+      "description": "Never guarantee a refund or an outcome.",
+      "kind": "forbid",
+      "pattern": "\\b(guarantee|guaranteed|definitely will be refunded)\\b"
+    },
+    {
+      "id": "support.refund_disclaimer",
+      "description": "An answer that commits to a refund must say it is subject to the refund policy.",
+      "kind": "require",
+      "pattern": "subject to (our )?refund policy",
+      "whenClaims": ["refund"]
+    }
+  ]
+}

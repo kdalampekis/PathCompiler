@@ -113,3 +113,68 @@ describe("contract extraction", () => {
     expect(none?.provenance[0]?.origin).toBe("INFERRED");
   });
 });
+
+describe("tool definitions of agentic software", () => {
+  const tools = JSON.stringify({
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "refund",
+          parameters: {
+            type: "object",
+            properties: {
+              amount: { type: "integer", minimum: 1, maximum: 20000 },
+            },
+            required: ["amount"],
+          },
+        },
+      },
+      {
+        name: "escalate",
+        input_schema: {
+          type: "object",
+          properties: {
+            priority: { type: "string", enum: ["low", "high"] },
+            ratio: { type: "number" },
+          },
+        },
+      },
+      {
+        name: "lookup",
+        inputSchema: { type: "object", properties: { id: { type: "string" } } },
+      },
+    ],
+  });
+  it("reads OpenAI, Anthropic and MCP shapes into operations with exact bounds", () => {
+    const { spec, inputs, unsupported } = extractBehavior([
+      { path: "agent/tools.json", content: tools },
+    ]);
+    expect(inputs.tooldefs).toEqual(["agent/tools.json"]);
+    expect(spec.operations.map((item) => item.id).sort()).toEqual([
+      "escalate",
+      "lookup",
+      "refund",
+    ]);
+    const refund = spec.operations.find((item) => item.id === "refund");
+    expect(refund?.preconditions).toHaveLength(2);
+    expect(refund?.provenance[0]).toMatchObject({
+      sourceType: "CONFIG",
+      origin: "EXPLICIT",
+    });
+    expect(
+      spec.variables.find((item) => item.id === "escalate.priority"),
+    ).toMatchObject({ type: "enum", values: ["low", "high"] });
+    // What has no exact form is listed, not guessed.
+    expect(unsupported.map((item) => item.construct)).toContain(
+      "escalate.ratio",
+    );
+  });
+  it("ignores JSON that merely has a name and parameters elsewhere", () => {
+    const other = JSON.stringify({ name: "x", version: 1 });
+    expect(
+      extractBehavior([{ path: "package.json", content: other }]).inputs
+        .tooldefs,
+    ).toEqual([]);
+  });
+});

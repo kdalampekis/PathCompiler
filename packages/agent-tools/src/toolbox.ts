@@ -1,3 +1,4 @@
+import type { FeedbackRecorder } from "@pathcompiler/alignment-data";
 import type { SolverProvider } from "@pathcompiler/solver-provider";
 import { z } from "zod";
 import type { ToolContext } from "./context.js";
@@ -11,10 +12,22 @@ export type ToolboxOptions = {
   exclude?: readonly string[];
   /** Creates the solver on first use. The toolbox closes it. */
   solver: () => Promise<SolverProvider>;
+  /** Records checks and reported outcomes (opt-in). */
+  recorder?: FeedbackRecorder;
+  agent?: string;
+  /** Calls that belong together; defaults to one per toolbox. */
+  session?: string;
 };
 
 export type ToolCallOutcome =
-  | { ok: true; tool: string; summary: string; data: unknown }
+  | {
+      ok: true;
+      tool: string;
+      summary: string;
+      data: unknown;
+      /** Pass to pathcompiler_record_feedback as relatesTo. */
+      eventId?: string;
+    }
   | { ok: false; tool: string; error: string };
 
 /**
@@ -30,11 +43,16 @@ export type Toolbox = {
 
 export function createToolbox(options: ToolboxOptions): Toolbox {
   let solver: Promise<SolverProvider> | undefined;
+  const session =
+    options.session ??
+    `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const context: ToolContext = {
     directory: options.directory,
     allowWrite: options.allowWrite ?? false,
     ...(options.bindings ? { bindings: options.bindings } : {}),
     ...(options.exclude ? { exclude: options.exclude } : {}),
+    ...(options.recorder ? { recorder: options.recorder } : {}),
+    ...(options.agent ? { agent: options.agent } : {}),
     solver: () => {
       solver ??= options.solver();
       return solver;
@@ -66,7 +84,22 @@ export function createToolbox(options: ToolboxOptions): Toolbox {
           context,
           parsed.data as never,
         );
-        return { ok: true, tool: name, ...result };
+        let eventId: string | undefined;
+        if (options.recorder && result.feedback) {
+          const event = await options.recorder.record({
+            ...result.feedback,
+            ...(options.agent ? { agent: options.agent } : {}),
+            session,
+          });
+          eventId = event.id;
+        }
+        return {
+          ok: true,
+          tool: name,
+          summary: result.summary,
+          data: result.data,
+          ...(eventId ? { eventId } : {}),
+        };
       } catch (error) {
         // The harness needs to read what went wrong; it is not a crash.
         return {

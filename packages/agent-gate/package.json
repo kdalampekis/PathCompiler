@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@pathcompiler/behavior-ir": "workspace:*",
-    "@pathcompiler/verification": "workspace:*"
+    "@pathcompiler/verification": "workspace:*",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@pathcompiler/behavior-extraction": "workspace:*"

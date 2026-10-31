@@ -34,6 +34,8 @@ Read-only unless `--allow-write` is given.
 | `pathcompiler_readiness` | first, in a repository you have not used PathCompiler on | languages, what is known, the stage, and the next steps in order |
 | `pathcompiler_describe` | starting, and after learning something | operations, rules with provenance and trust, what could not be modeled |
 | `pathcompiler_check_change` | before you finish, and after each fix | `mustFix`, `consider`, counterexample values, what was not checked |
+| `pathcompiler_check_output` | an agent is about to send an answer | PASS or BLOCK: the claims the answer commits to are judged by the rules, plus declared answer policies; how to rewrite |
+| `pathcompiler_record_feedback` | after a check: you accepted, corrected or abandoned | stored only with `--record`; builds preference examples |
 | `pathcompiler_check_action` | an agent is about to act | PASS or BLOCK with the violated rule, the values, what is missing |
 | `pathcompiler_verify` | looking for a real bug | solver results with counterexamples |
 | `pathcompiler_contract_task` | the language has no extractor (Python, Go, Java, ...) | the task of describing what its operations do in the behavior contract |
@@ -103,3 +105,17 @@ message the model can read, never as a crash.
   was started in and nothing else.
 
 Design: [ADR 0098](decisions/0098-tools-for-harnesses.md).
+
+## Agents, answers and datasets
+
+- **Tool definitions** (OpenAI, Anthropic, MCP, or plain JSON Schema, in any
+  language's project) are read as operations, so `pathcompiler_check_action`
+  refuses a call that breaks its own schema or an approved business rule.
+- **Answers:** `pathcompiler_check_output` with `text` and the `claims` the
+  answer makes (the same shape as an action). Declared answer policies live in
+  `spec/output-policies.json` and a person approves them. A missed claim is not
+  checked; list every commitment.
+- **Datasets:** start the server with `--record --agent <name>`; each check
+  returns an `eventId`; report corrections with `pathcompiler_record_feedback`.
+  `pathcompiler dataset export --out data` writes structure-only datasets
+  (`--include-payloads` adds content) and a dataset card. Nothing is trained.

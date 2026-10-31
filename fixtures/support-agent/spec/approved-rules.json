@@ -1,0 +1,13 @@
+{
+  "declaredBy": "support-policy@example.com",
+  "reference": "Support policy v2 (fixture)",
+  "businessRules": [
+    {
+      "id": "support.manager_approval_over_limit",
+      "description": "A refund above 5000 needs manager approval.",
+      "when": "refund.amount > 5000",
+      "must": "refund.manager_approval == true",
+      "appliesTo": ["refund"]
+    }
+  ]
+}

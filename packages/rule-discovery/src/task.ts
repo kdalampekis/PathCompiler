@@ -48,7 +48,9 @@ export const EXPRESSION_SYNTAX = [
   "old(x) is not allowed here.",
 ];
 
-const DOCUMENT = /\.(md|mdx|txt|rst|adoc)$/i;
+/** Policies, specifications, and the prompts and instructions of agentic software. */
+const DOCUMENT =
+  /(\.(md|mdx|txt|rst|adoc|prompt|tmpl|jinja2?)|(^|\/)(system[_-]?prompt|instructions|guardrails?)[^/]*)$/i;
 
 export type DiscoveryTask = {
   schemaVersion: 1;

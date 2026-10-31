@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { buildDatasets, memoryRecorder } from "@pathcompiler/alignment-data";
 import { createZ3SolverProvider } from "@pathcompiler/solver-z3";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -531,4 +532,80 @@ describe("a repository no extractor can read: the behavior contract", () => {
       await box.close();
     }
   }, 60_000);
+});
+
+describe("agentic software: answers, tool definitions and feedback", () => {
+  it("checks an answer before it is sent, records the block and the correction, and builds a preference pair", async () => {
+    const recorder = memoryRecorder();
+    const box = createToolbox({
+      directory: fixture("support-agent"),
+      solver: () => createZ3SolverProvider(),
+      recorder,
+      agent: "support-bot",
+    });
+    try {
+      const blocked = await box.call("pathcompiler_check_output", {
+        text: "I refunded 6000 for you, guaranteed.",
+        claims: [
+          {
+            operation: "refund",
+            inputs: { amount: 6000, manager_approval: false },
+          },
+        ],
+      });
+      expect(blocked.ok).toBe(true);
+      if (!blocked.ok) return;
+      expect(blocked.summary).toMatch(/^BLOCK answer/);
+      expect(blocked.eventId).toBeDefined();
+      const data = blocked.data as { violations: { id?: string }[] };
+      expect(data.violations.map((item) => item.id)).toEqual(
+        expect.arrayContaining([
+          "support.manager_approval_over_limit",
+          "support.no_guarantees",
+        ]),
+      );
+
+      const fixed = await box.call("pathcompiler_check_output", {
+        text: "I have asked a manager to approve this refund, subject to our refund policy.",
+        claims: [],
+      });
+      expect(fixed.ok && fixed.summary).toBe("PASS answer");
+      const reported = await box.call("pathcompiler_record_feedback", {
+        outcome: "corrected",
+        relatesTo: blocked.eventId,
+        text: "I have asked a manager to approve this refund, subject to our refund policy.",
+      });
+      expect(reported.ok && reported.summary).toBe("Recorded: corrected.");
+
+      const build = buildDatasets(recorder.events, {
+        includePayloads: true,
+        formats: ["preference"],
+      });
+      expect(build.counts.preference).toBe(1);
+      expect(build.files["preference.jsonl"]).toContain(
+        "support.no_guarantees",
+      );
+    } finally {
+      await box.close();
+    }
+  });
+
+  it("does not record unless a recorder is given", async () => {
+    const box = createToolbox({
+      directory: fixture("support-agent"),
+      solver: () => createZ3SolverProvider(),
+    });
+    try {
+      const outcome = await box.call("pathcompiler_check_output", {
+        text: "hello",
+      });
+      expect(outcome.ok && outcome.eventId).toBeUndefined();
+      const note = await box.call("pathcompiler_record_feedback", {
+        outcome: "accepted",
+      });
+      expect(note.ok && note.summary).toContain("Not recorded");
+    } finally {
+      await box.close();
+    }
+  });
 });

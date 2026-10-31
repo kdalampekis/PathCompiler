@@ -74,10 +74,10 @@ Honest status; the work is tracked as BX10–BX16 below. (The phase numbers afte
 | PR guard / change check | Only as good as the rules the specification holds for that stack | **Yes (BX11)**: `pathcompiler_check_change` self-checks uncommitted work (MCP, function calling, SDK, CLI) | no |
 | Harness run assessment | **Yes (BX10)**: project checks of any ecosystem compared with the base, risk signals from the diff, an independent reviewer, configurable vouching. Business rules are checked only where a specification exists (BX13 extends that). | CLI | no |
 | Action gate | Yes (concrete values) | **Yes (BX11)**: `pathcompiler_check_action` | no |
-| Answer check before rendering | **Not built** (BX15) | no | no |
-| Agentic software (tool definitions, prompts, policies) | **Not built** | no | no |
+| Answer check before rendering | **Yes (BX15)**: claims judged by the gate, declared answer policies | `pathcompiler_check_output` | yes |
+| Agentic software (tool definitions, prompts, policies) | **Yes (BX15)**: tool definitions (OpenAI, Anthropic, MCP) become operations; prompts are documents for the harness | via the action gate and rule tools | yes |
 | Business documents as a rule source | **Partly (BX13)**: the discovery task lists the repository's documents; tickets and wikis need the harness's own access | yes, through `pathcompiler_rule_task` | no |
-| Alignment and post-training datasets | **Not built** | no | n/a |
+| Alignment and post-training datasets | **Yes (BX14)**: opt-in capture, preference / SFT / reward / eval export with a dataset card | `pathcompiler_record_feedback` | yes |
 | Any language | **Yes (BX12)**: the behavior contract, written by a harness, model or person, with anchors that notice when the code changes | `pathcompiler_contract_task`, `pathcompiler_submit_contract` | no |
 | Getting started and CI rollout | **Yes (BX13)**: `start`, `pathcompiler_readiness`, `ci --report-only` | yes | n/a |
 | Downloadable packages | **Not built** (all packages are private; BX16) | n/a | n/a |
@@ -107,6 +107,6 @@ Honest status; the work is tracked as BX10–BX16 below. (The phase numbers afte
 | BX11 (done) | Tools for harnesses: one provider-neutral registry exposed as an MCP server, function-calling schemas, an SDK and the CLI, including a self-check a harness runs on its uncommitted work | Harnesses with local access to code call our checks while they work and get corrections |
 | BX12 (done) | The behavior contract: one language-neutral format for what code does, filled in by a harness, model or person, validated, anchored to the code so changes are noticed | Business rules apply to a codebase in any language without a parser per language |
 | BX13 (done) | The adoption layer: `start`, `pathcompiler_readiness`, `ci --report-only`, documents in the discovery task, [ADOPTION_AUDIT.md](ADOPTION_AUDIT.md) | A newcomer reaches a first result in minutes and rolls out without risk |
-| BX14 | Feedback capture by agent wrappers and dataset export (supervised, preferences, verifiable rewards, evals) with a dataset card and redaction | The moat in the architecture: accepted and rejected agent behavior becomes alignment and post-training data |
-| BX15 | Agentic software as a rule source (tool definitions, prompts, guardrail configs); answer check before rendering; a richer rule language where the real-software trial shows it matters (decimals, dates, collections) | The rules apply to LLM answers and tool use, and to the business rules finance and insurance actually have |
-| BX16 | Packaging: public package metadata, an installable CLI and SDK, a container image, install and embed docs | People can download and embed it (needs your decision on names and license) |
+| BX14 (done) | Feedback capture by agent wrappers and dataset export (supervised, preferences, verifiable rewards, evals) with a dataset card and redaction | The moat in the architecture: accepted and rejected agent behavior becomes alignment and post-training data |
+| BX15 (done) | Agentic software as a rule source (tool definitions, prompts, guardrail configs); answer check before rendering; a richer rule language where the real-software trial shows it matters (decimals, dates, collections) | The rules apply to LLM answers and tool use, and to the business rules finance and insurance actually have |
+| BX16 | Packaging: public package metadata, an installable CLI and SDK, a container image, install and embed docs | People can download and embed it (decided: Apache-2.0, `@pathcompiler/*`, not publishing yet: ADR 0103; after the real-software trial) |

@@ -1,7 +1,13 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createActionGate } from "@pathcompiler/agent-gate";
+import {
+  checkOutput,
+  createActionGate,
+  OUTPUT_POLICIES_FILE,
+  parseOutputPolicies,
+} from "@pathcompiler/agent-gate";
+import { type FeedbackInput, gateEvent } from "@pathcompiler/alignment-data";
 import {
   CONTRACT_FILE,
   contractDrift,
@@ -56,7 +62,12 @@ import {
  * rules I found acceptable. They are provider-neutral; adapters (MCP, function
  * calling) only reshape them.
  */
-export type ToolResult = { summary: string; data: unknown };
+export type ToolResult = {
+  summary: string;
+  data: unknown;
+  /** What to record when feedback capture is on; the toolbox adds who and when. */
+  feedback?: FeedbackInput;
+};
 export type ToolDefinition = {
   name: string;
   title: string;
@@ -342,6 +353,22 @@ export const TOOLS: ToolDefinition[] = [
               ? "Fix the items in mustFix, then call pathcompiler_check_change again."
               : "Run your project's own tests, then finish. Items under consider are for you to judge.",
         },
+        feedback: {
+          kind: "change_check",
+          verdict: assessment.verdict,
+          subject: {
+            summary: `${diff.files.length} file(s), ${diff.changedLines} changed line(s): ${diff.files
+              .slice(0, 10)
+              .map((item) => item.path)
+              .join(", ")}`,
+          },
+          checks: assessment.reasons.map((item) => ({
+            kind: item.source,
+            status: item.verdict === "fail" ? "violated" : "flagged",
+            explanation: item.message,
+          })),
+          specHash: extraction.specHash,
+        },
       };
     },
   }),
@@ -376,13 +403,87 @@ export const TOOLS: ToolDefinition[] = [
         enforce: input.enforce,
         onUnknown: input.on_unknown,
       });
-      const decision = gate.check({
+      const request = {
         operation: input.operation,
         ...(input.inputs ? { inputs: input.inputs } : {}),
         ...(input.context ? { context: input.context } : {}),
         ...(input.state ? { state: input.state } : {}),
+      };
+      const decision = gate.check(request);
+      return {
+        summary: decision.summary,
+        data: decision,
+        feedback: gateEvent(decision, request, {
+          specHash: extraction.specHash,
+        }),
+      };
+    },
+  }),
+
+  define({
+    name: "pathcompiler_check_output",
+    title: "May this answer be sent?",
+    description:
+      'Check what an agent is about to say before it is rendered or returned. List the actions the answer commits the business to ("I refunded 6000", "you are approved") as claims, in the same form as pathcompiler_check_action; each is judged against the rules. The text is also checked against the declared answer policies (forbidden promises, required disclaimers) in spec/output-policies.json. Returns PASS or BLOCK with what is wrong and how to rewrite the answer. You find the claims; the rules decide.',
+    readOnly: true,
+    input: z.strictObject({
+      text: z.string().max(50_000).describe("The answer, as it would be sent"),
+      claims: z
+        .array(
+          z.strictObject({
+            operation: z.string(),
+            inputs: valuation.optional(),
+            context: valuation.optional(),
+            state: valuation.optional(),
+          }),
+        )
+        .max(50)
+        .optional()
+        .describe("Actions the answer says were taken or promises"),
+      channel: z.string().optional().describe("chat, email, ..."),
+      enforce: z.enum(["all", "approved_only"]).default("all"),
+    }),
+    async run(context, input) {
+      const { extraction } = await loadWorkspace(context);
+      const gate = createActionGate(extraction.spec, {
+        enforce: input.enforce,
       });
-      return { summary: decision.summary, data: decision };
+      const raw = await workspaceLoader(context.directory)(
+        OUTPUT_POLICIES_FILE,
+      );
+      const policies = raw === undefined ? undefined : parseOutputPolicies(raw);
+      const decision = checkOutput(gate, policies, {
+        text: input.text,
+        claims: (input.claims ?? []).map((claim) => ({
+          operation: claim.operation,
+          ...(claim.inputs ? { inputs: claim.inputs } : {}),
+          ...(claim.context ? { context: claim.context } : {}),
+          ...(claim.state ? { state: claim.state } : {}),
+        })),
+        ...(input.channel ? { channel: input.channel } : {}),
+      });
+      const warnings = policies
+        ? decision.warnings
+        : [
+            ...decision.warnings,
+            `No answer policies (${OUTPUT_POLICIES_FILE}); only the claims were checked.`,
+          ];
+      return {
+        summary: decision.summary,
+        data: { ...decision, warnings },
+        feedback: {
+          kind: "output_check",
+          verdict: decision.decision === "PASS" ? "pass" : "block",
+          subject: { text: input.text },
+          checks: decision.violations.map((item) => ({
+            ...(item.id ? { rule: item.id } : {}),
+            kind: item.source,
+            status: "violated",
+            explanation: item.explanation,
+          })),
+          specHash: extraction.specHash,
+        },
+      };
     },
   }),
 
@@ -569,6 +670,47 @@ export const TOOLS: ToolDefinition[] = [
           stored,
           operations: assessed.operations,
           next: "Fix the rejected ones using their reasons and resubmit only those. Then propose business rules over these variables with pathcompiler_submit_rules; a person approves the contract and the rules.",
+        },
+      };
+    },
+  }),
+
+  define({
+    name: "pathcompiler_record_feedback",
+    title: "Report what you did after a check",
+    description:
+      "Tell PathCompiler what happened after one of its checks: you accepted the result, you corrected your work (include the corrected answer or request), or you abandoned the attempt. Pass relatesTo with the eventId a check returned. This is how a blocked attempt and its correction become a preference example in an alignment dataset. Recorded only when the server was started with --record; otherwise nothing is stored.",
+    readOnly: false,
+    input: z.strictObject({
+      outcome: z.enum(["accepted", "corrected", "abandoned"]),
+      relatesTo: z
+        .string()
+        .optional()
+        .describe("The eventId of the check this answers"),
+      note: z.string().max(2000).optional(),
+      text: z.string().max(20000).optional().describe("The corrected answer"),
+      request: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe("The corrected action request"),
+      operation: z.string().optional(),
+    }),
+    async run(context, input) {
+      return {
+        summary: context.recorder
+          ? `Recorded: ${input.outcome}.`
+          : "Not recorded: feedback capture is off (start the server with --record).",
+        data: { recorded: context.recorder !== undefined },
+        feedback: {
+          kind: "outcome",
+          verdict: input.outcome,
+          ...(input.relatesTo ? { relatesTo: input.relatesTo } : {}),
+          ...(input.note ? { note: input.note } : {}),
+          subject: {
+            ...(input.operation ? { operation: input.operation } : {}),
+            ...(input.text ? { text: input.text } : {}),
+            ...(input.request ? { request: input.request } : {}),
+          },
         },
       };
     },

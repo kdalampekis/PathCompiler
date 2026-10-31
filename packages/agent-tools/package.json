@@ -19,6 +19,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
     "@pathcompiler/agent-gate": "workspace:*",
+    "@pathcompiler/alignment-data": "workspace:*",
     "@pathcompiler/behavior-extraction": "workspace:*",
     "@pathcompiler/behavior-ir": "workspace:*",
     "@pathcompiler/git-intelligence": "workspace:*",

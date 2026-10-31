@@ -24,6 +24,7 @@
     "@pathcompiler/adapter-nextjs": "workspace:*",
     "@pathcompiler/agent-gate": "workspace:*",
     "@pathcompiler/agent-tools": "workspace:*",
+    "@pathcompiler/alignment-data": "workspace:*",
     "@pathcompiler/behavior-extraction": "workspace:*",
     "@pathcompiler/behavior-ir": "workspace:*",
     "@pathcompiler/behavior-reconciliation": "workspace:*",
