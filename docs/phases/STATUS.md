@@ -1,6 +1,6 @@
 # Phase status
 
-## Current state (updated 2026-10-25, after I9)
+## Current state (updated 2026-10-31, after BX15; rows below describe the original tracks as of 2026-10-25)
 
 | Item | State |
 | --- | --- |
@@ -13,7 +13,8 @@
 | Blocked | None (mode 6 phases run only when enabled); see the roadmap §5 |
 | Deferred | O13, I10, MDP assistance, information-gain diagnostics, review editor/graph UI, hosted control plane, billing/SSO, graph/vector DB, CI/CD platform, `analysis_backend: external_harness`, autonomous mutation by default |
 | New-track phases complete | R0, R1, R2, R3, R4, R11, R8 (reasoning MVP), R-WI, R5, R6, R7, R9, R10, R12; P0–P5, P-RV; I0–I9 and IG (mode 5, Evaluate); C1, C2, C3, C4, C5, C7, C8, C9; O0–O12 (mode 3, Observe). 2026-10-23 to 2026-10-24; details per phase below. |
-| Next recommended phase | All planned phases except C6 are complete. Next: fix the open issues, review the documentation, then C6 on real repositories (`MASTER_ROADMAP.md` §7). Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
+| Behavior expansion | BX0–BX15 complete (BehaviorIR through harness tools, the language-neutral contract, adoption layer, alignment datasets, agentic software and the answer check); records at the end of this file. BX16 (packaging; Apache-2.0, `@pathcompiler/*`, not publishing yet) is not started. |
+| Next recommended phase | The real-software trial: C6 for the original product and [REAL_SOFTWARE_TRIAL.md](../REAL_SOFTWARE_TRIAL.md) for the expansion. Then packaging (BX16) and whatever the trial shows. Known issues and deferred items: [ISSUES_LOG.md](ISSUES_LOG.md). |
 
 Roadmap: [MASTER_ROADMAP.md](MASTER_ROADMAP.md). Reconciliation decisions:
 ADR 0032, ADR 0033, ADR 0034. Per-phase records follow.
@@ -5622,7 +5623,7 @@ Complete — verified locally on 2026-10-30. A correction against the end goal
 | Project without tests | none | review: nothing independent vouched |
 
 The business-rule violation in the fast path is only caught by a reviewer here,
-because no specification exists for Python yet (BX13).
+because no specification exists for Python yet (the behavior contract, BX12, later supplies one).
 
 ### Verification
 
@@ -5691,8 +5692,8 @@ unit tests (new: 10 in `agent-tools`, 3 in the CLI) and e2e (50 passed).
 
 - `_check_change` does not run the project's tests (the harness does).
 - The behavior check is only as strong as the specification: none exists for
-  Python or Go until a harness submits rules (BX13).
-- Calls are not recorded for datasets yet (BX12).
+  Python or Go until a harness describes it in the behavior contract (BX12).
+- Calls are not recorded for datasets yet (done later, opt-in, in BX14).
 
 ## Expansion BX12 — The behavior contract: one format for any language
 
@@ -5815,3 +5816,25 @@ Complete — verified locally on 2026-10-31.
 
 - The answer check is as good as the claims it is given (ISSUES_LOG #77).
 - Datasets inherit the specification's accuracy (#76).
+
+## Documentation and issue pass (after BX15)
+
+Complete — 2026-10-31.
+
+**Covered.** The expanded roadmap and architecture (as-built rows for BX10-BX15,
+package count 68, evaluation plan rows marked unmeasured), the harness handoff
+status (a "since the handoff" table and the trust rules), the behavior guide
+(other languages, agents, the current trial protocol), the master roadmap and the
+STATUS header (they still described BX0-BX9 and the 2026-10-25 state), the README
+overview, tools section and package table (twelve tools, any language, harnesses
+and datasets), ADRs 0097 and 0098 and earlier STATUS records (old BX12/BX13
+numbers now point to what was built), and ISSUES_LOG (the left-open table, and
+rows #51, #52, #54, #56, #57, #72 whose text had been overtaken). AGENTS.md now
+says the Next.js stack belongs to the workflow/UX track and the behavior track
+must not depend on any stack. All relative links in the 131 tracked markdown files
+resolve.
+
+**Not covered.** The original specifications and ADRs 0001-0087 were not re-read
+line by line, as in the earlier pass; `PRODUCT_ARCHITECTURE.md` and
+`CODEX_BUILD_SPEC.md` were not touched. Claims about numbers in older phase
+records were not re-measured.

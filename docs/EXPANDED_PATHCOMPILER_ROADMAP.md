@@ -1,13 +1,18 @@
 # Expanded PathCompiler roadmap
 
 Companion to [EXPANDED_PATHCOMPILER_ARCHITECTURE.md](EXPANDED_PATHCOMPILER_ARCHITECTURE.md).
-Phases are named **BX0–BX7** (behavior expansion) because P0–P5 already
+Phases are named **BX0–BX16** (behavior expansion) because P0–P5 already
 exist in the probabilistic track of
-[phases/MASTER_ROADMAP.md](phases/MASTER_ROADMAP.md).
+[phases/MASTER_ROADMAP.md](phases/MASTER_ROADMAP.md). BX0–BX7 were the original
+plan; BX8 onwards were added at the owner's direction and are governed by
+[PRODUCT_NORTH_STAR.md](PRODUCT_NORTH_STAR.md). Phase numbers after BX11 were
+reassigned on 2026-10-30; older documents that say BX12 or BX13 mean what is
+now BX14 and BX15.
 
 ## Status
 
-All ten phases are complete (2026-10-30). Each has an ADR and a record in
+BX0–BX15 are complete (2026-10-31); BX16 (packaging) waits for the real-software
+trial and is not started. Each phase has an ADR and a record in
 [phases/STATUS.md](phases/STATUS.md); the as-built differences from the design
 are in [the architecture document](EXPANDED_PATHCOMPILER_ARCHITECTURE.md#17-what-was-built-and-where-it-differs-from-the-design);
 usage is in [BEHAVIOR_SPEC_GUIDE.md](BEHAVIOR_SPEC_GUIDE.md).
@@ -24,6 +29,13 @@ usage is in [BEHAVIOR_SPEC_GUIDE.md](BEHAVIOR_SPEC_GUIDE.md).
 | BX7 | `repair-loop`: bounded, logged, human-approved prototype | 0094 | `repair propose` |
 | BX8 | `rule-discovery`: a harness (file contract) or a model (provider adapters) proposes rules from code and history; validated, checked against the code, stored as candidates, approved by a person | 0095 | `rules task`, `import`, `discover`, `list`, `approve`, `reject` |
 | BX9 | `harness-runner`: the harness handoff implemented. A harness command runs in an isolated worktree; the candidate is assessed independently; **approval** and **automatic** modes decide what happens next; never merges or deploys; a JSON-command protocol lets a harness serve analysis, rule discovery and repair | 0096 | `harness run`, `runs`, `status`, `approve`, `reject`; `--harness-command` on `rules discover` and `repair propose` |
+| BX10 | Stack-neutral change assessment: project checks of any ecosystem compared with the base, risk signals from the diff in any language, an independent reviewer, configurable vouching | 0097 | `harness detect`; `--review-command` |
+| BX11 | `agent-tools`: one registry of tools for harnesses served as an MCP server, function-calling schemas and an SDK; `check_change` self-checks uncommitted work | 0098 | `mcp-agent`, `tools list`, `tools call` |
+| BX12 | The behavior contract: a language-neutral description of what code does, anchored to the code so changes are noticed; approval cannot be self-granted by a pull request | 0099 | `contract task`, `status`, `import`, `approve` |
+| BX13 | Adoption layer: readiness report, CI mode with report-only rollout, documents in the discovery task, the adoption audit | 0100 | `start`, `ci` |
+| BX14 | `alignment-data`: opt-in capture of checks, outcomes and human decisions; preference, SFT, reward and eval datasets with a dataset card; structure-only by default | 0101 | `feedback summary`, `list`; `dataset export`; `--record` |
+| BX15 | Agentic software: tool definitions (OpenAI, Anthropic, MCP) as a rule source; the answer check before rendering with declared answer policies | 0102 | tool `pathcompiler_check_output` |
+| BX16 | Packaging (Apache-2.0, `@pathcompiler/*`): **not started**, after the real-software trial | 0103 (decisions) | — |
 
 ## Results on the evaluation plan
 
@@ -181,13 +193,15 @@ Package `@pathcompiler/repair-loop`.
 Acceptance: a seeded violation is repaired within a few iterations on the
 fixture, the trace is auditable, and human approval remains required.
 
-## After BX7
+## Later
 
 Considered only later: arbitrary invariant inference, temporal and
 model-checking backends, autonomous merging and deployment, and the training
 loop itself. (Fine-tuning *datasets*, harness tools, agentic software and
-downloadable packages moved into scope: see
-[PRODUCT_NORTH_STAR.md](PRODUCT_NORTH_STAR.md), BX10–BX16.)
+downloadable packages moved into scope and are built or planned as BX10–BX16:
+see [PRODUCT_NORTH_STAR.md](PRODUCT_NORTH_STAR.md).) What the real-software
+trial finds ([REAL_SOFTWARE_TRIAL.md](REAL_SOFTWARE_TRIAL.md)) sets the next
+phase; the open limits are ISSUES_LOG #73–#77.
 
 ## Evaluation plan
 
@@ -200,3 +214,7 @@ Measured on the refund fixture and on the Next.js fixture:
 | PR guard | seeded-regression detection, benign false alarms, runtime |
 | Agent gate | unsafe block rate, safe allow rate, false-block rate, latency |
 | Repair loop | repair success, iterations, recurrence after the eval |
+| Change assessment (BX10) | how often project checks alone vouch for a change, noise of the risk heuristics, reviewer precision (**not measured**, #71) |
+| Behavior contract (BX12) | share of operations described correctly by a harness, stale detection (**not measured on real code**, #73) |
+| Answer check (BX15) | share of commitments a caller lists, policy false alarms (**not measured**, #77) |
+| Datasets (BX14) | label agreement with humans, usefulness for post-training (**not measured**, #76) |

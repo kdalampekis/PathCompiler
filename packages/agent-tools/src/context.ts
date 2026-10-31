@@ -16,7 +16,8 @@ import type { SolverProvider } from "@pathcompiler/solver-provider";
 /**
  * What a tool sees. The workspace is a local directory, usually a repository a
  * harness is working in. Tools read it and never leave it; the only writes are
- * the two explicit ones (candidate rules, feedback) and only when `allowWrite`.
+ * the explicit ones: candidate rules and the behavior contract (only when
+ * `allowWrite`) and feedback (only when a `recorder` is given).
  */
 export type ToolContext = {
   /** The repository (or any directory) the tools look at. */

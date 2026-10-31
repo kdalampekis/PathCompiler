@@ -100,4 +100,7 @@ Deferred until explicitly requested:
 - advanced analytics;
 - polished marketing UI.
 
-The first supported stack is Next.js + React + TypeScript + Playwright.
+The first supported stack of the workflow/UX track (product graph, workflows,
+runtime) is Next.js + React + TypeScript + Playwright. The behavior track
+(BehaviorIR, verification, PR guard, agent gate, harness tools, datasets) must
+not depend on any language or framework; see `docs/PRODUCT_NORTH_STAR.md`.

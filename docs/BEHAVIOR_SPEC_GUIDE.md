@@ -208,10 +208,20 @@ with `expect(a.b).toBeGreaterThanOrEqual(0)`-style assertions. Integer
 amounts (cents), booleans, string enums and string equality. One execution of
 one operation at a time.
 
-**What does not.** Decimal money, null semantics, string length, collections,
-rules that live in called helper functions, ORMs other than raw SQL, languages
-other than TypeScript. These appear as "not modeled" entries and operation
-limitations; they are not guessed.
+**What does not, deterministically.** Decimal money, null semantics, string
+length, collections, rules that live in called helper functions, ORMs other than
+raw SQL, and languages other than TypeScript. These appear as "not modeled"
+entries and operation limitations; they are not guessed.
+
+**Other languages, and agents.** Any language works through the *behavior
+contract*: a harness, model or person describes the operations once
+(`contract task`, `contract import`, `contract approve`), and the same rules,
+PR guard and gate apply (ADR 0099). Tool definitions of an agent (OpenAI,
+Anthropic, MCP JSON) are read directly. Money can be encoded as minor units,
+rates as multiplications, dates as epoch integers and collections as counts;
+the tasks teach this. `pathcompiler start` says which of these applies to a
+repository, and [REAL_SOFTWARE_TRIAL.md](REAL_SOFTWARE_TRIAL.md) is the current
+end-to-end trial protocol (this section is its original, narrower form).
 
 1. **Extract, then read.** Run `behavior extract <repo> --out trial` with
    `--bind` for your entities and `--exclude` for build output or alternative

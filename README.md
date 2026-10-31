@@ -26,16 +26,27 @@ What the repository implements today (details per phase in
   event ingestion, an observed graph, workflow analytics, reconciliation of
   possible versus observed behavior, path efficiency, drop-offs, a Markov
   model, release behavior diffs and probabilistic checks.
-- **Specify and verify behavior (new):** a solver-neutral behavioral
+- **Specify and verify behavior (any language):** a solver-neutral behavioral
   specification (BehaviorIR, every rule with provenance) extracted without a
-  model from SQL schemas, Zod models, OpenAPI documents, tests and guard
-  clauses, plus rules a person approves, plus candidate rules that an external
-  harness or a model proposes from the code and its history and that stay
-  candidates until a person approves them; a verifier with counterexamples that
-  are re-evaluated before they are shown; a pull-request guard that reports
-  only what a change newly breaks; an action gate for agents; counterexamples
-  kept as regression evals; and a conservative, human-approved repair loop
-  (prototype). See [docs/BEHAVIOR_SPEC_GUIDE.md](docs/BEHAVIOR_SPEC_GUIDE.md).
+  model from SQL schemas, Zod models, OpenAPI documents, tests, guard clauses
+  and agent tool definitions; for any other language, a language-neutral
+  behavior contract that a harness, model or person fills in and that notices
+  when the code it describes changes; rules a person approves, plus candidate
+  rules that a harness or model proposes from code, history and documents and
+  that stay candidates until approved; a verifier with counterexamples that are
+  re-evaluated before they are shown; a pull-request guard that reports only
+  what a change newly breaks (with a report-only CI mode); an action gate and
+  an answer check for agents; counterexamples kept as regression evals; a
+  conservative, human-approved repair loop (prototype); and a harness runner
+  with approval and automatic modes. See
+  [docs/BEHAVIOR_SPEC_GUIDE.md](docs/BEHAVIOR_SPEC_GUIDE.md) and
+  [docs/PRODUCT_NORTH_STAR.md](docs/PRODUCT_NORTH_STAR.md).
+- **Work with harnesses and agents:** twelve tools served over MCP, as
+  function-calling schemas and as an SDK, so a coding harness can check its own
+  work and an agent's actions and answers are checked before they take effect;
+  opt-in capture of those checks and of human decisions, exported as preference,
+  SFT, reward and eval datasets (nothing is trained). See
+  [docs/HARNESS_TOOLS.md](docs/HARNESS_TOOLS.md).
 - **Recommend and evaluate:** model providers (opt-in), probabilistic
   interpretation and diagnosis, change-risk scoring, findings, an improvement
   gate, recommendations, candidate evaluation with browser verification,
@@ -44,8 +55,11 @@ What the repository implements today (details per phase in
 
 Everything runs locally on a repository checkout; no source is sent to a model
 or network service unless a model provider is explicitly configured. Run
-`pathcompiler --help` for the command list. Alpha validation on real
-repositories (C6) is the next step.
+`pathcompiler --help` for the command list. Nothing here has yet met software
+the authors did not write: the real-software trial
+([docs/REAL_SOFTWARE_TRIAL.md](docs/REAL_SOFTWARE_TRIAL.md)) is the next step,
+and [docs/ADOPTION_AUDIT.md](docs/ADOPTION_AUDIT.md) lists what still stands in
+the way of adoption.
 
 ## Start here
 
@@ -1784,9 +1798,13 @@ pnpm pathcompiler tools list --format anthropic                     # or openai,
 pnpm pathcompiler tools call pathcompiler_check_change <repository> # self-check uncommitted work
 ```
 
-Seven tools: describe the rules, verify them, check my change before I finish,
-check an agent action, ask for the discovery task, submit rules I found, list
-rules. They work on any repository and say what they could not check. See
+Twelve tools: where does this repository stand (`pathcompiler_readiness`), describe the
+rules, verify them, check my change before I finish, check an agent action,
+check an answer before it is sent, ask for and submit the language-neutral
+code description (contract), ask for and submit business rules, list rules,
+and report what I did after a check. They work on any repository and say what
+they could not check; only the two submit tools and the feedback tool can
+write, and only when the server allows it (`--allow-write`, `--record`). See
 [docs/HARNESS_TOOLS.md](docs/HARNESS_TOOLS.md) and
 [ADR 0098](docs/decisions/0098-tools-for-harnesses.md).
 

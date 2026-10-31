@@ -428,7 +428,8 @@ sets the end goal: any business, any codebase, harness-integrated. As of
 
 ## 17. What was built, and where it differs from the design
 
-All ten phases (BX0–BX9) are implemented and merged; each has an ADR (0088–0096) and a
+Phases BX0–BX15 are implemented and merged; each has an ADR (0088–0102; 0103 records
+the packaging decisions for BX16, which is not started) and a
 verification record in [phases/STATUS.md](phases/STATUS.md). The design above
 held, with these differences, which matter if you rely on it:
 
@@ -442,6 +443,12 @@ held, with these differences, which matter if you rely on it:
 | An authorization extractor reusing Next.js permission edges | Role checks are read from guard clauses (`if (actor.role !== …) throw`) and become `allow` permissions; the Next.js permission edges are not used. |
 | (not in the design) A harness or model that reads code and commits to find rules | **BX8, added later**: `rules task/import/discover`. Proposals are candidates with inferred, model-assisted provenance, validated for evidence and checked against the code, and become approved rules only when a person runs `rules approve`. This is a narrow form of the deferred `analysis_backend: external_harness` of ADR 0034: it finds *rules*, not the product model. |
 | (not in the design) Running the harness | **BX9, added later**: `harness run` executes a harness command in an isolated worktree and decides by mode (`approval` or `automatic`) what happens to the candidate; the assessment merges deterministic checks with the harness's own report. See ADR 0096 and `docs/HARNESS_HANDOFF_STATUS.md`. |
+| (not in the design) Stack-neutral assessment of a candidate | **BX10**: project checks of any ecosystem compared with the base, risk signals read from the diff (paths and changed lines, not syntax), an independent reviewer whose findings must cite evidence found in the candidate, and a user-configured rule for what may vouch. The assessment never reads a language. See ADR 0097. |
+| (not in the design) Calling PathCompiler from a harness | **BX11**: `agent-tools` serves twelve tools (seven at BX11, the rest added by BX12-BX15) over MCP, function-calling schemas, an SDK and the CLI; `check_change` compares the working tree with a base using the base's approved rules. Read-only except three opt-in writes: candidate rules and the contract (`--allow-write`) and feedback (`--record`). See ADR 0098. |
+| Extractors read TypeScript, SQL, OpenAPI | **BX12**: for any other language the operation is described in a **behavior contract** (`spec/behavior-contract.json`) by a harness, model or person, validated, and anchored to the code by line range, quote and a fingerprint, so changed code is noticed without a parser. Contract facts are INFERRED until a person approves them; in a pull request they count as approved only if identical to the base's approved contract, and a violation found through unapproved facts is capped at `review`. See ADR 0099. |
+| (not in the design) Onboarding and CI rollout | **BX13**: `start` (readiness report and ordered next steps, for people and, as a tool, for harnesses) and `ci` with `--report-only`. See ADR 0100 and `docs/ADOPTION_AUDIT.md`. |
+| (not in the design) Training data | **BX14**: opt-in capture of checks, outcomes and human decisions, and export of preference, SFT, reward and eval datasets with a dataset card; structure only unless content is requested. The training loop remains out of scope. See ADR 0101. |
+| (not in the design) Agentic software | **BX15**: tool definitions become operations (`tooldefs` extractor); an answer is checked before rendering by judging its claimed actions with the gate and matching declared answer policies. Claims must be supplied by the caller. See ADR 0102. |
 | Ground truth written by hand per fixture file (section 13) | Generated from the extractors' output, then reviewed fact by fact. Precision and recall of 1.0 are therefore weak evidence; an independent ground truth is an open item. |
 | `ALLOWED` and `DESIRED` as separate objects (section 15) | **Partly.** POSSIBLE ∧ ¬ALLOWED is `verify` / `verify-pr`; OBSERVED ∧ ¬ALLOWED is `agent audit` (replay a log of actions). ALLOWED ∧ ¬OBSERVED, DESIRED ∧ ¬POSSIBLE and OBSERVED ∧ ¬POSSIBLE for the new rules are not built; RQ6 is therefore **not evaluated**. |
 | Verification of the transition system from the initial state | One execution of one operation from **any state satisfying the invariants** (inductive). A `VIOLATED` counterexample may start in an unreachable state; the result says so. Temporal rules exist in the IR but no verifier checks them. |
@@ -453,6 +460,8 @@ may be weaker than the code); a vacuity check on proofs; the `relevant` field
 that keeps counterexamples readable; `approved_only` enforcement in the gate;
 the rule that a PR is judged against the base's approved rules.
 
-Package count after the expansion: 65 (nine new: `harness-runner`, `rule-discovery`, `behavior-ir`,
-`behavior-extraction`, `verification`, `pr-guard`, `agent-gate`,
-`counterexamples`, `repair-loop`).
+Package count after the expansion: 68 (twelve new: `behavior-ir`, `behavior-extraction`,
+`verification`, `pr-guard`, `agent-gate`, `counterexamples`, `repair-loop`,
+`rule-discovery`, `harness-runner`, `agent-tools`, `onboarding`, `alignment-data`).
+Dependencies point one way: `alignment-data` and `onboarding` are used by
+`agent-tools` and the CLI; `agent-gate` knows nothing of them.

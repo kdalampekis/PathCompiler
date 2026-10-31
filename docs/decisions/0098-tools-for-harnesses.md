@@ -11,6 +11,12 @@ developer reasoning over a Next.js model. The end goal
 (docs/PRODUCT_NORTH_STAR.md, principle 5) is that every capability is a tool
 any harness can call, in any language, with feedback coming back.
 
+> **As built later:** the registry grew to twelve tools. `pathcompiler_readiness`
+> (BX13), `_contract_task` and `_submit_contract` (BX12), `_check_output` (BX15)
+> and `_record_feedback` (BX14) were added with the same rules: input validated,
+> failures returned as messages, read-only unless the server is started with
+> `--allow-write` (rules, contract) or `--record` (feedback).
+
 ## Decision
 
 One provider-neutral registry, `@pathcompiler/agent-tools`, with thin adapters.
@@ -58,6 +64,6 @@ One provider-neutral registry, `@pathcompiler/agent-tools`, with thin adapters.
   checks without PathCompiler running the harness.
 - The behavior check inside `_check_change` is as strong as the specification:
   strong for TypeScript, SQL, OpenAPI and approved rules, absent for a language
-  with no extractor until a harness submits rules (BX13 extends this). The tool
+  with no extractor until a harness describes it in the behavior contract (BX12 does this). The tool
   says so in `behaviorCheck.reason` instead of passing silently.
-- Feedback from these calls is not yet recorded for datasets (BX12).
+- Feedback from these calls is recorded for datasets only when capture is on (BX14, ADR 0101).

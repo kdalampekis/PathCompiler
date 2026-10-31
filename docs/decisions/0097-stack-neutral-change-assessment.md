@@ -59,7 +59,7 @@ what may vouch for a change is the user's configuration.
 - **Let the reviewer decide.** An LLM's opinion would make the verdict as
   unreliable as the implementer's. It raises concerns; evidence-checking keeps
   it honest.
-- **Per-language analyzers first.** Needed for rule *extraction* (BX13) but not
+- **Per-language analyzers first.** Needed for rule *extraction* (the behavior contract, BX12, is the language-neutral answer) but not
   for judging a change: paths, lines and the project's own checks are enough to
   be useful everywhere today.
 
@@ -71,8 +71,9 @@ what may vouch for a change is the user's configuration.
   a raised limit or a dropped guard goes to review.
 - The default can vouch with tests alone, which cannot see a business rule no
   one encoded (the support-agent fast path passes the Python tests). Closing that
-  needs the rules: BX13 lets a harness propose operation contracts for any
-  language, and the reviewer already catches it when it reads the diff.
+  needs the rules: the behavior contract (BX12, ADR 0099) lets a harness describe
+  operations in any language so the approved rules apply, and the reviewer
+  already catches it when it reads the diff.
 - Running the checks twice roughly doubles the time; `harness.baseline: false`
   trades attribution for speed.
 - The risk heuristics are crude by nature and will have false positives and
